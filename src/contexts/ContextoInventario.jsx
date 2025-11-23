@@ -80,6 +80,19 @@ export const ProveedorInventario = ({ children }) => {
     };
 
     const entregarAlquiler = (idAlquiler) => {
+        const alquiler = alquileres.find(a => a.id === idAlquiler);
+        if (!alquiler) return;
+
+        if (alquiler.saldoPendiente > 0) {
+            alert(`⚠️ No se puede entregar: El cliente tiene una deuda pendiente de S/ ${alquiler.saldoPendiente.toFixed(2)}.`);
+            return;
+        }
+
+        // Si es anticipada, el stock NO se descontó al reservar, así que se descuenta AHORA al entregar.
+        if (alquiler.tipoReserva === 'anticipada') {
+            alquiler.items.forEach(item => actualizarStock(item.id, item.cantidad));
+        }
+
         setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_uso', fechaEntrega: new Date() } : a));
     };
 
@@ -89,8 +102,11 @@ export const ProveedorInventario = ({ children }) => {
             const fechaDevolucion = new Date();
             let totalPenalizacion = 0;
             alquiler.items.forEach(item => {
-                const fechaFinEstimada = new Date(alquiler.fechaInicio.getTime() + (item.horas * 60 * 60 * 1000));
-                totalPenalizacion += calcularPenalizacion(fechaFinEstimada, fechaDevolucion, item.precioPorHora, item.cantidad);
+                const fechaFinEstimada = new Date(new Date(alquiler.fechaInicio).getTime() + (item.horas * 60 * 60 * 1000));
+                // Solo cobrar penalización si se pasa de la hora estimada + 15 minutos de gracia
+                if (fechaDevolucion > new Date(fechaFinEstimada.getTime() + 15 * 60000)) {
+                    totalPenalizacion += calcularPenalizacion(fechaFinEstimada, fechaDevolucion, item.precioPorHora, item.cantidad);
+                }
             });
 
             setAlquileres(prev => prev.map(a => a.id === idAlquiler ? {
@@ -106,10 +122,9 @@ export const ProveedorInventario = ({ children }) => {
     const finalizarMantenimiento = (idAlquiler) => {
         const alquiler = alquileres.find(a => a.id === idAlquiler);
         if (alquiler) {
-            // Solo reponer stock si fue descontado (reserva inmediata o ya entregada)
-            if (alquiler.tipoReserva === 'inmediata' || alquiler.estado === 'finalizado') {
-                alquiler.items.forEach(item => actualizarStock(item.id, -item.cantidad));
-            }
+            // Reponer stock SIEMPRE al finalizar el ciclo, ya que se descontó al inicio (inmediata) o al entregar (anticipada)
+            alquiler.items.forEach(item => actualizarStock(item.id, -item.cantidad));
+
             setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'finalizado' } : a));
         }
     };

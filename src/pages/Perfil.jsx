@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { Settings, User, CreditCard, Calendar } from 'lucide-react';
+import { Settings, User, CreditCard, Calendar, Briefcase, MapPin, Phone, Shield } from 'lucide-react';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import Boton from '../components/ui/Boton';
 
@@ -13,7 +13,16 @@ const Perfil = () => {
         numeroDocumento: usuario.numeroDocumento || '',
         fechaNacimiento: usuario.fechaNacimiento || '',
         nacionalidad: usuario.nacionalidad || 'Nacional',
-        licenciaConducir: usuario.licenciaConducir || false
+        licenciaConducir: usuario.licenciaConducir || false,
+        // Campos adicionales
+        direccion: usuario.direccion || '',
+        contactoEmergencia: usuario.contactoEmergencia || '',
+        codigoEmpleado: usuario.codigoEmpleado || '',
+        turno: usuario.turno || 'Mañana',
+        especialidad: usuario.especialidad || '',
+        experiencia: usuario.experiencia || '',
+        anexo: usuario.anexo || '',
+        oficina: usuario.oficina || ''
     });
 
     const [tarjetas, setTarjetas] = useState([
@@ -51,12 +60,82 @@ const Perfil = () => {
         alert('Perfil actualizado correctamente.');
     };
 
-    return (
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
-                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><Settings /> Mi Perfil</h2>
-                <form onSubmit={guardarCambios} className="space-y-6">
+    const renderCamposPorRol = () => {
+        switch (usuario.rol) {
+            case 'cliente':
+                return (
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><MapPin size={18} /> Dirección y Contacto</h3>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Dirección de Domicilio</label><input className="w-full p-2 border rounded" value={datos.direccion} onChange={e => setDatos({ ...datos, direccion: e.target.value })} placeholder="Av. Principal 123, Dpto 401" /></div>
+                            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Contacto de Emergencia (Nombre y Teléfono)</label><input className="w-full p-2 border rounded" value={datos.contactoEmergencia} onChange={e => setDatos({ ...datos, contactoEmergencia: e.target.value })} placeholder="Maria Perez - 999111222" /></div>
+                        </div>
+                    </div>
+                );
+            case 'vendedor':
+                return (
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><Briefcase size={18} /> Información Laboral</h3>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Código de Empleado</label><input className="w-full p-2 border rounded bg-gray-50" value={datos.codigoEmpleado} disabled /></div>
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Turno Asignado</label>
+                                <select className="w-full p-2 border rounded" value={datos.turno} onChange={e => setDatos({ ...datos, turno: e.target.value })}>
+                                    <option value="Mañana">Mañana</option>
+                                    <option value="Tarde">Tarde</option>
+                                    <option value="Completo">Completo</option>
+                                </select>
+                            </div>
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Sede Asignada</label><input className="w-full p-2 border rounded bg-gray-50 capitalize" value={usuario.sede || 'No asignada'} disabled /></div>
+                        </div>
+                    </div>
+                );
+            case 'mecanico':
+                return (
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><WrenchIcon size={18} /> Perfil Técnico</h3>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Especialidad</label><input className="w-full p-2 border rounded" value={datos.especialidad} onChange={e => setDatos({ ...datos, especialidad: e.target.value })} placeholder="Ej. Motores, Eléctrico" /></div>
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Años de Experiencia</label><input className="w-full p-2 border rounded" value={datos.experiencia} onChange={e => setDatos({ ...datos, experiencia: e.target.value })} placeholder="Ej. 5 años" /></div>
+                        </div>
+                    </div>
+                );
+            case 'admin':
+            case 'dueno':
+                return (
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><Shield size={18} /> Datos Corporativos</h3>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Anexo Interno</label><input className="w-full p-2 border rounded" value={datos.anexo} onChange={e => setDatos({ ...datos, anexo: e.target.value })} placeholder="Ej. 101" /></div>
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Oficina / Ubicación</label><input className="w-full p-2 border rounded" value={datos.oficina} onChange={e => setDatos({ ...datos, oficina: e.target.value })} placeholder="Ej. Administración Central" /></div>
+                        </div>
+                    </div>
+                );
+            default:
+                return null;
+        }
+    };
 
+    // Helper icon for mechanic
+    const WrenchIcon = ({ size }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></svg>
+    );
+
+    return (
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+                <div className="flex items-center gap-4 mb-8 border-b pb-6">
+                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-2xl font-bold">
+                        {usuario.nombre.charAt(0)}
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Mi Perfil</h2>
+                        <p className="text-gray-500 capitalize">{usuario.rol}</p>
+                    </div>
+                </div>
+
+                <form onSubmit={guardarCambios} className="space-y-8">
+
+                    {/* Datos Personales Comunes */}
                     <div className="space-y-4">
                         <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><User size={18} /> Datos Personales</h3>
                         <div className="grid md:grid-cols-2 gap-4">
@@ -72,6 +151,7 @@ const Perfil = () => {
                         </div>
                     </div>
 
+                    {/* Identificación Legal Común */}
                     <div className="space-y-4">
                         <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><CreditCard size={18} /> Identificación Legal</h3>
                         <div className="grid md:grid-cols-2 gap-4">
@@ -87,9 +167,13 @@ const Perfil = () => {
                         </div>
                     </div>
 
+                    {/* Campos Específicos por Rol */}
+                    {renderCamposPorRol()}
+
+                    {/* Sección de Tarjetas (Solo Clientes) */}
                     {usuario.rol === 'cliente' && (
                         <div className="space-y-4">
-                            <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><CreditCard size={18} /> Mis Tarjetas</h3>
+                            <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><CreditCard size={18} /> Métodos de Pago</h3>
                             <div className="space-y-3">
                                 {tarjetas.map(tarjeta => (
                                     <div key={tarjeta.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-gray-50">
@@ -114,9 +198,10 @@ const Perfil = () => {
                         </div>
                     )}
 
+                    {/* Permisos (Clientes y Mecánicos) */}
                     {(usuario.rol === 'cliente' || usuario.rol === 'mecanico') && (
                         <div className="space-y-4">
-                            <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><Calendar size={18} /> Permisos</h3>
+                            <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-700 border-b pb-2"><Calendar size={18} /> Permisos y Licencias</h3>
                             <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
                                 <input
                                     type="checkbox"
@@ -132,7 +217,9 @@ const Perfil = () => {
                         </div>
                     )}
 
-                    <Boton type="submit" variante="primario" className="w-full">Guardar Cambios</Boton>
+                    <div className="pt-4">
+                        <Boton type="submit" variante="primario" className="w-full py-3 text-lg">Guardar Cambios</Boton>
+                    </div>
                 </form>
             </div>
 

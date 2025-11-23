@@ -75,6 +75,16 @@ function AppContenido() {
     const [aceptaTerminos, setAceptaTerminos] = useState(false);
     const [mostrarTerminos, setMostrarTerminos] = useState(false);
 
+    // Auto-switch tipoReserva based on date
+    React.useEffect(() => {
+        const hoy = new Date().toISOString().split('T')[0];
+        if (fechaReserva !== hoy) {
+            setTipoReserva('anticipada');
+        } else {
+            setTipoReserva('inmediata');
+        }
+    }, [fechaReserva]);
+
     // Create router
     const router = crearRouterApp();
 
@@ -256,15 +266,31 @@ function AppContenido() {
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Reserva</label>
                                     <div className="flex gap-4">
-                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                            <input type="radio" name="tipoReserva" value="inmediata" checked={tipoReserva === 'inmediata'} onChange={() => setTipoReserva('inmediata')} />
+                                        <label className={`flex items-center gap-2 text-sm ${fechaReserva !== new Date().toISOString().split('T')[0] ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <input
+                                                type="radio"
+                                                name="tipoReserva"
+                                                value="inmediata"
+                                                checked={tipoReserva === 'inmediata'}
+                                                onChange={() => setTipoReserva('inmediata')}
+                                                disabled={fechaReserva !== new Date().toISOString().split('T')[0]}
+                                            />
                                             Inmediata (100%)
                                         </label>
                                         <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                            <input type="radio" name="tipoReserva" value="anticipada" checked={tipoReserva === 'anticipada'} onChange={() => setTipoReserva('anticipada')} />
+                                            <input
+                                                type="radio"
+                                                name="tipoReserva"
+                                                value="anticipada"
+                                                checked={tipoReserva === 'anticipada'}
+                                                onChange={() => setTipoReserva('anticipada')}
+                                            />
                                             Anticipada (60%)
                                         </label>
                                     </div>
+                                    {fechaReserva !== new Date().toISOString().split('T')[0] && (
+                                        <p className="text-xs text-orange-600 mt-1">Reservas para fechas futuras son automáticamente anticipadas.</p>
+                                    )}
                                 </div>
 
                                 <div>

@@ -56,6 +56,10 @@ const DetalleProducto = () => {
                             <div className="bg-gray-50 p-4 rounded-xl mb-6 flex justify-between items-center">
                                 <span className="text-gray-600">Precio por hora</span><span className="text-2xl font-bold text-blue-600">S/ {producto.precioPorHora}</span>
                             </div>
+                            <div className="mb-6">
+                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-2">Descripción</h3>
+                                <p className="text-gray-600 leading-relaxed">{producto.descripcion || 'Sin descripción disponible.'}</p>
+                            </div>
                             <div className="flex items-center gap-4 mb-6">
                                 <span className="text-gray-700 font-medium">Horas:</span>
                                 <div className="flex items-center border border-gray-300 rounded-lg">
