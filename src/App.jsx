@@ -118,6 +118,10 @@ function AppContenido() {
     // Total con descuento
     const totalConDescuento = total - descuentoTotal;
 
+    // Cálculos para mostrar en el carrito
+    const garantiaUI = totalConDescuento * 0.20; // 20% de garantía
+    const totalFinalUI = totalConDescuento + garantiaUI;
+
     // Auto-switch tipoReserva based on date
     React.useEffect(() => {
         const hoy = new Date().toISOString().split('T')[0];
