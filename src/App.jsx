@@ -101,13 +101,19 @@ function AppContenido() {
                 setDescuentoTotal(descuentoTotal || 0);
                 setPromocionesAplicadas(promocionesAplicadas || []);
                 setAlertas(alertas || []);
+            }).catch(err => {
+                console.error('Error al calcular descuentos:', err);
+                setDescuentoTotal(0);
+                setPromocionesAplicadas([]);
+                setAlertas([]);
             });
         } else {
             setDescuentoTotal(0);
             setPromocionesAplicadas([]);
             setAlertas([]);
         }
-    }, [carrito, calcularDescuentos]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [carrito]); // Solo depende de carrito, no de calcularDescuentos
 
     // Total con descuento
     const totalConDescuento = total - descuentoTotal;
