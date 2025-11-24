@@ -131,9 +131,9 @@ export const crearReserva = async (datosReserva) => {
 
     if (error) {
         console.error('Error al crear reserva:', error);
-        return { success: false, error };
+        return { success: false, error: error.message };
     }
-    return { success: true, data };
+    return data;
 };
 
 export const verificarDisponibilidadDB = async (items, fechaInicio) => {
@@ -379,3 +379,5 @@ export const actualizarRecursoDB = async (id, datos) => {
     }
     return { success: true, data: data[0] };
 };
+
+

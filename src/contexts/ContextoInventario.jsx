@@ -11,22 +11,18 @@ export const ProveedorInventario = ({ children }) => {
     const [sedeActual, setSedeActual] = useState('costa'); // Default ID
 
     // Cargar datos iniciales
-    useEffect(() => {
-        const cargarDatos = async () => {
+    const recargarDatos = async () => {
+        try {
             const [recursosData, sedesData, alquileresData] = await Promise.all([
                 obtenerRecursos(),
                 obtenerSedes(),
                 obtenerAlquileres()
             ]);
 
-            // Mapear recursos para incluir stockTotal si es necesario o usar el de DB
-            // La DB ya tiene 'stock', asumimos que es el stock actual disponible.
-            // Pero el frontend usa 'stockTotal' para lógica de disponibilidad.
-            // Vamos a usar 'stock' de DB como 'stockTotal' inicial.
             const inventarioFormateado = recursosData.map(item => ({
                 ...item,
-                stockTotal: item.stock, // En DB 'stock' es el actual, pero mantenemos la prop para compatibilidad
-                sedeId: item.sede_id, // Mapear snake_case a camelCase
+                stockTotal: item.stock,
+                sedeId: item.sede_id,
                 precioPorHora: item.precio_por_hora
             }));
 
@@ -44,12 +40,14 @@ export const ProveedorInventario = ({ children }) => {
                 tipoReserva: a.tipo_reserva,
                 sedeId: a.sede_id
             })));
+        } catch (error) {
+            console.error("Error al recargar datos:", error);
+        }
+    };
 
-            if (sedesData.length > 0) {
-                // setSedeActual(sedesData[0].id); // Mantener 'costa' por defecto o usar el primero
-            }
-        };
-        cargarDatos();
+    // Cargar datos iniciales
+    useEffect(() => {
+        recargarDatos();
     }, []);
 
     // Filtrar inventario por sede
@@ -96,19 +94,15 @@ export const ProveedorInventario = ({ children }) => {
 
     const registrarAlquiler = async (nuevoAlquiler) => {
         // Llamar a Supabase RPC
-        const resultado = await crearReserva(nuevoAlquiler);
+        const respuesta = await crearReserva(nuevoAlquiler);
 
-        if (resultado.success) {
-            // Actualizar estado local
-            const alquilerConId = { ...nuevoAlquiler, id: resultado.data.id, sedeId: sedeActual };
-            setAlquileres(prev => [...prev, alquilerConId]);
-
-            if (nuevoAlquiler.tipoReserva === 'inmediata') {
-                nuevoAlquiler.items.forEach(item => actualizarStock(item.id, item.cantidad));
-            }
+        if (respuesta && respuesta.success) {
+            // Recargar todos los datos para asegurar consistencia (stock, alquileres, etc)
+            await recargarDatos();
             return true;
         } else {
-            alert("Error al registrar la reserva en la base de datos.");
+            const mensajeError = respuesta?.error || "Error al registrar la reserva.";
+            alert(mensajeError);
             return false;
         }
     };

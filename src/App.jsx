@@ -205,44 +205,26 @@ function AppContenido() {
                 return;
             }
 
-            // Calcular montos (Async DB)
-            calcularDescuentos(carrito).then(({ descuentoTotal }) => {
-                const montoTotalServicio = total - descuentoTotal;
-                const garantia = montoTotalServicio * 0.20; // 20% de garantía
-                const totalConGarantia = montoTotalServicio + garantia;
+            // Preparar datos para la reserva (Cálculos se hacen en DB)
+            const datosReserva = {
+                clienteId: usuario.id,
+                vendedorId: 'WEB',
+                sedeId: sedeActual,
+                items: carrito,
+                fechaInicio: fechaInicio,
+                tipoReserva,
+                metodoPago,
+                tipoComprobante,
+                datosFactura: tipoComprobante === 'factura' ? datosFactura : null
+            };
 
-                const montoPagado = tipoReserva === 'anticipada' ? totalConGarantia * 0.60 : totalConGarantia;
-                const saldoPendiente = totalConGarantia - montoPagado;
-
-                const nuevoAlquiler = {
-                    id: crypto.randomUUID(),
-                    cliente: usuario.nombre,
-                    clienteId: usuario.id,
-                    vendedorId: 'WEB',
-                    items: carrito,
-                    total: total,
-                    descuento: descuentoTotal,
-                    totalServicio: montoTotalServicio,
-                    garantia: garantia,
-                    totalFinal: totalConGarantia,
-                    montoPagado,
-                    saldoPendiente,
-                    fechaInicio: fechaInicio,
-                    tipoReserva,
-                    metodoPago,
-                    tipoComprobante,
-                    datosFactura: tipoComprobante === 'factura' ? datosFactura : null,
-                    estado: 'pendiente',
-                    penalizacion: 0,
-                    contratoFirmado: true,
-                    fechaFirma: new Date()
-                };
-
-                registrarAlquiler(nuevoAlquiler);
-                limpiarCarrito();
-                setEsVisible(false);
-                setAceptaTerminos(false);
-                alert(`¡Reserva Exitosa!\n\nContrato Digital generado y firmado correctamente.\nID Contrato: CTR-${Date.now()}\n\nTotal Original: S/ ${total.toFixed(2)}\nDescuento Promoción: - S/ ${descuentoTotal.toFixed(2)}\nTotal Servicio: S/ ${montoTotalServicio.toFixed(2)}\nGarantía (Reembolsable): S/ ${garantia.toFixed(2)}\nTotal a Pagar: S/ ${totalConGarantia.toFixed(2)}\n\n${tipoReserva === 'anticipada' ? `Adelanto pagado (60%): S/ ${montoPagado.toFixed(2)}. Pendiente: S/ ${saldoPendiente.toFixed(2)}` : 'Pago completo realizado.'}\n\nPor favor espera la revisión del Mecánico.`);
+            registrarAlquiler(datosReserva).then(exito => {
+                if (exito) {
+                    limpiarCarrito();
+                    setEsVisible(false);
+                    setAceptaTerminos(false);
+                    alert(`¡Reserva Exitosa!\n\nTu reserva ha sido registrada correctamente en el sistema.\nPuedes ver los detalles y el contrato en tu perfil.`);
+                }
             });
         });
     };
