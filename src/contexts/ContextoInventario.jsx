@@ -1,193 +1,283 @@
-import React, { createContext, useState } from 'react';
-import { inventarioInicial, sedes } from '../utils/constants';
+import React, { createContext, useState, useEffect } from 'react';
+import { obtenerRecursos, obtenerSedes, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 
 export const ContextoInventario = createContext();
 
 export const ProveedorInventario = ({ children }) => {
-    // Inicializar inventario agregando stockTotal para manejar disponibilidad real
-    const [inventario, setInventario] = useState(() =>
-        inventarioInicial.map(item => ({ ...item, stockTotal: item.stock }))
-    );
+    const [inventario, setInventario] = useState([]);
     const [alquileres, setAlquileres] = useState([]);
-    const [sedeActual, setSedeActual] = useState(sedes[0].id); // Por defecto Costa
+    const [sedes, setSedes] = useState([]);
+    const [sedeActual, setSedeActual] = useState('costa'); // Default ID
+
+    // Cargar datos iniciales
+    useEffect(() => {
+        const cargarDatos = async () => {
+            const [recursosData, sedesData, alquileresData] = await Promise.all([
+                obtenerRecursos(),
+                obtenerSedes(),
+                obtenerAlquileres()
+            ]);
+
+            // Mapear recursos para incluir stockTotal si es necesario o usar el de DB
+            // La DB ya tiene 'stock', asumimos que es el stock actual disponible.
+            // Pero el frontend usa 'stockTotal' para lógica de disponibilidad.
+            // Vamos a usar 'stock' de DB como 'stockTotal' inicial.
+            const inventarioFormateado = recursosData.map(item => ({
+                ...item,
+                stockTotal: item.stock, // En DB 'stock' es el actual, pero mantenemos la prop para compatibilidad
+                sedeId: item.sede_id, // Mapear snake_case a camelCase
+                precioPorHora: item.precio_por_hora
+            }));
+
+            setInventario(inventarioFormateado);
+            setSedes(sedesData);
+            setAlquileres(alquileresData.map(a => ({
+                ...a,
+                fechaInicio: a.fecha_inicio,
+                clienteId: a.cliente_id,
+                vendedorId: a.vendedor_id,
+                totalServicio: a.total_servicio,
+                totalFinal: a.total_final,
+                montoPagado: a.monto_pagado,
+                saldoPendiente: a.saldo_pendiente,
+                tipoReserva: a.tipo_reserva,
+                sedeId: a.sede_id
+            })));
+
+            if (sedesData.length > 0) {
+                // setSedeActual(sedesData[0].id); // Mantener 'costa' por defecto o usar el primero
+            }
+        };
+        cargarDatos();
+    }, []);
 
     // Filtrar inventario por sede
     const inventarioVisible = inventario.filter(item => item.sedeId === sedeActual);
 
-    const agregarProducto = (producto) => setInventario(prev => [...prev, {
-        ...producto,
-        id: Date.now(),
-        sedeId: sedeActual,
-        stockTotal: producto.stock
-    }]);
+    const agregarProducto = (producto) => {
+        // Implementar si se requiere agregar a DB
+        console.warn("Agregar producto no implementado en DB aún");
+    };
 
-    const editarProducto = (id, datos) => setInventario(prev => prev.map(p => p.id === id ? { ...p, ...datos, stockTotal: datos.stock || p.stockTotal } : p));
-    const eliminarProducto = (id) => setInventario(prev => prev.filter(p => p.id !== id));
+    const editarProducto = async (id, datos) => {
+        const { actualizarRecursoDB } = await import('../services/db');
+        const resultado = await actualizarRecursoDB(id, datos);
+
+        if (resultado.success) {
+            setInventario(prev => prev.map(item => {
+                if (item.id === id) {
+                    return { ...item, ...datos };
+                }
+                return item;
+            }));
+            return true;
+        } else {
+            alert("Error al actualizar el producto en la base de datos.");
+            return false;
+        }
+    };
+
+    const eliminarProducto = (id) => {
+        // Implementar si se requiere eliminar en DB
+        console.warn("Eliminar producto no implementado en DB aún");
+    };
 
     const actualizarStock = (idProducto, cantidad) => {
+        // Esto ahora se maneja en el backend al crear reserva, pero actualizamos localmente para feedback inmediato
         setInventario(prev => prev.map(item => item.id === idProducto ? { ...item, stock: item.stock - cantidad } : item));
     };
 
-    // Verificar disponibilidad para una fecha específica
-    const verificarDisponibilidad = (itemsCarrito, fechaInicio) => {
-        for (const itemCarrito of itemsCarrito) {
-            const producto = inventario.find(p => p.id === itemCarrito.id);
-            if (!producto) continue;
+    // Verificar disponibilidad (Lógica Backend RPC)
+    const verificarDisponibilidad = async (itemsCarrito, fechaInicio) => {
+        const { verificarDisponibilidadDB } = await import('../services/db');
+        return await verificarDisponibilidadDB(itemsCarrito, fechaInicio);
+    };
 
-            const fechaFinSolicitado = new Date(fechaInicio.getTime() + (itemCarrito.horas * 60 * 60 * 1000));
+    const registrarAlquiler = async (nuevoAlquiler) => {
+        // Llamar a Supabase RPC
+        const resultado = await crearReserva(nuevoAlquiler);
 
-            // Filtrar alquileres que se solapen con el rango solicitado y sean del mismo producto
-            const alquileresSolapados = alquileres.filter(a => {
-                const inicioAlquiler = new Date(a.fechaInicio);
-                // Calcular fin del alquiler existente
-                const itemEnAlquiler = a.items.find(i => i.id === itemCarrito.id);
-                if (!itemEnAlquiler) return false;
+        if (resultado.success) {
+            // Actualizar estado local
+            const alquilerConId = { ...nuevoAlquiler, id: resultado.data.id, sedeId: sedeActual };
+            setAlquileres(prev => [...prev, alquilerConId]);
 
-                const finAlquiler = new Date(inicioAlquiler.getTime() + (itemEnAlquiler.horas * 60 * 60 * 1000));
-
-                // Verificar solapamiento de fechas
-                return (inicioAlquiler < fechaFinSolicitado) && (finAlquiler > fechaInicio) &&
-                    (a.estado !== 'finalizado' && a.estado !== 'cancelado');
-            });
-
-            // Contar cantidad reservada en ese periodo
-            const cantidadReservada = alquileresSolapados.reduce((acc, a) => {
-                const itemEnAlquiler = a.items.find(i => i.id === itemCarrito.id);
-                return acc + (itemEnAlquiler ? itemEnAlquiler.cantidad : 0);
-            }, 0);
-
-            if (cantidadReservada + itemCarrito.cantidad > producto.stockTotal) {
-                return { valido: false, mensaje: `No hay disponibilidad suficiente para ${producto.nombre} el ${fechaInicio.toLocaleString()} (Stock: ${producto.stockTotal}, Reservados: ${cantidadReservada}).` };
+            if (nuevoAlquiler.tipoReserva === 'inmediata') {
+                nuevoAlquiler.items.forEach(item => actualizarStock(item.id, item.cantidad));
             }
-        }
-        return { valido: true };
-    };
-
-    const registrarAlquiler = (nuevoAlquiler) => {
-        // Asegurar que el alquiler tenga la sede actual
-        const alquilerConSede = { ...nuevoAlquiler, sedeId: sedeActual };
-        setAlquileres(prev => [...prev, alquilerConSede]);
-
-        // Solo descontar stock visual si es reserva inmediata (empieza ya)
-        if (nuevoAlquiler.tipoReserva === 'inmediata') {
-            nuevoAlquiler.items.forEach(item => actualizarStock(item.id, item.cantidad));
+            return true;
+        } else {
+            alert("Error al registrar la reserva en la base de datos.");
+            return false;
         }
     };
 
-    const aprobarParaEntrega = (idAlquiler) => {
-        setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'listo_para_entrega' } : a));
+    // Funciones de gestión de estado (Simuladas localmente por ahora, idealmente deberían ser llamadas a DB)
+    const aprobarParaEntrega = async (idAlquiler) => {
+        const resultado = await aprobarReservaDB(idAlquiler);
+        if (resultado.success) {
+            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'listo_para_entrega' } : a));
+            return true;
+        } else {
+            alert(resultado.error);
+            return false;
+        }
     };
 
-    const entregarAlquiler = (idAlquiler) => {
-        const alquiler = alquileres.find(a => a.id === idAlquiler);
-        if (!alquiler) return;
-
-        if (alquiler.saldoPendiente > 0) {
-            alert(`⚠️ No se puede entregar: El cliente tiene una deuda pendiente de S/ ${alquiler.saldoPendiente.toFixed(2)}.`);
-            return;
+    const reprogramarAlquiler = async (idAlquiler, horasAdicionales) => {
+        const resultado = await reprogramarAlquilerDB(idAlquiler, horasAdicionales);
+        if (resultado.success) {
+            // Recargar alquileres para obtener los cálculos exactos del backend
+            const alquileresActualizados = await obtenerAlquileres();
+            // Mapear de nuevo (duplicación de lógica de carga inicial, idealmente refactorizar en una función cargarAlquileres)
+            setAlquileres(alquileresActualizados.map(a => ({
+                ...a,
+                fechaInicio: a.fecha_inicio,
+                clienteId: a.cliente_id,
+                vendedorId: a.vendedor_id,
+                totalServicio: a.total_servicio,
+                totalFinal: a.total_final,
+                montoPagado: a.monto_pagado,
+                saldoPendiente: a.saldo_pendiente,
+                tipoReserva: a.tipo_reserva,
+                sedeId: a.sede_id
+            })));
+            return true;
+        } else {
+            alert(resultado.error);
+            return false;
         }
-
-        // Si es anticipada, el stock NO se descontó al reservar, así que se descuenta AHORA al entregar.
-        if (alquiler.tipoReserva === 'anticipada') {
-            alquiler.items.forEach(item => actualizarStock(item.id, item.cantidad));
-        }
-
-        setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_uso', fechaEntrega: new Date() } : a));
     };
 
-    const devolverAlquiler = (idAlquiler) => {
-        const alquiler = alquileres.find(a => a.id === idAlquiler);
-        if (alquiler) {
-            const fechaDevolucion = new Date();
-            let totalPenalizacion = 0;
-            alquiler.items.forEach(item => {
-                const fechaFinEstimada = new Date(new Date(alquiler.fechaInicio).getTime() + (item.horas * 60 * 60 * 1000));
-                // Solo cobrar penalización si se pasa de la hora estimada + 15 minutos de gracia
-                if (fechaDevolucion > new Date(fechaFinEstimada.getTime() + 15 * 60000)) {
-                    totalPenalizacion += calcularPenalizacion(fechaFinEstimada, fechaDevolucion, item.precioPorHora, item.cantidad);
+    const aplicarDescuentoMantenimiento = async (idAlquiler, porcentaje) => {
+        const resultado = await aplicarDescuentoManualDB(idAlquiler, porcentaje, "Descuento por Mantenimiento/Retraso");
+        if (resultado.success) {
+            setAlquileres(prev => prev.map(a => {
+                if (a.id === idAlquiler) {
+                    const descuento = resultado.descuento_aplicado; // Asumiendo que el RPC devuelve esto
+                    return {
+                        ...a,
+                        totalFinal: a.totalFinal - descuento,
+                        // Nota: El saldo pendiente ya se actualizó en DB, aquí solo actualizamos UI optimista o recargamos
+                    };
                 }
-            });
-
-            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? {
-                ...a, estado: 'limpieza', fechaDevolucionReal: fechaDevolucion, penalizacion: totalPenalizacion, totalFinal: a.total + totalPenalizacion
-            } : a));
+                return a;
+            }));
+            // Recargar para consistencia total
+            const alquileresData = await obtenerAlquileres();
+            setAlquileres(alquileresData.map(a => ({
+                ...a,
+                fechaInicio: a.fecha_inicio,
+                clienteId: a.cliente_id,
+                vendedorId: a.vendedor_id,
+                totalServicio: a.total_servicio,
+                totalFinal: a.total_final,
+                montoPagado: a.monto_pagado,
+                saldoPendiente: a.saldo_pendiente,
+                tipoReserva: a.tipo_reserva,
+                sedeId: a.sede_id
+            })));
+            return true;
+        } else {
+            alert(resultado.error);
+            return false;
         }
     };
 
-    const enviarAMantenimiento = (idAlquiler) => {
-        setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_mantenimiento' } : a));
-    };
-
-    const finalizarMantenimiento = (idAlquiler) => {
-        const alquiler = alquileres.find(a => a.id === idAlquiler);
-        if (alquiler) {
-            // Reponer stock SIEMPRE al finalizar el ciclo, ya que se descontó al inicio (inmediata) o al entregar (anticipada)
-            alquiler.items.forEach(item => actualizarStock(item.id, -item.cantidad));
-
-            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'finalizado' } : a));
+    const registrarPagoSaldo = async (idAlquiler) => {
+        const resultado = await registrarPagoSaldoDB(idAlquiler);
+        if (resultado.success) {
+            setAlquileres(prev => prev.map(a => {
+                if (a.id === idAlquiler) {
+                    return {
+                        ...a,
+                        montoPagado: a.totalFinal,
+                        saldoPendiente: 0,
+                        estado: a.estado === 'pendiente' ? 'confirmado' : a.estado
+                    };
+                }
+                return a;
+            }));
+            return true;
+        } else {
+            alert(resultado.error);
+            return false;
         }
     };
 
-    const marcarFueraDeServicio = (idAlquiler) => {
-        setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'fuera_de_servicio' } : a));
+    const entregarAlquiler = async (idAlquiler) => {
+        const resultado = await entregarAlquilerDB(idAlquiler);
+        if (resultado.success) {
+            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_uso', fechaEntrega: new Date() } : a));
+            return true;
+        } else {
+            alert(resultado.error || "Error al entregar alquiler");
+            return false;
+        }
     };
 
-    const reprogramarAlquiler = (idAlquiler, horasAdicionales) => {
-        setAlquileres(prev => prev.map(a => {
-            if (a.id === idAlquiler) {
-                const costoExtra = a.items.reduce((acc, item) => acc + (item.precioPorHora * horasAdicionales * item.cantidad), 0);
-                const cargoServicio = costoExtra * 0.10;
-                return {
-                    ...a,
-                    total: a.total + costoExtra + cargoServicio,
-                    items: a.items.map(i => ({ ...i, horas: i.horas + horasAdicionales }))
-                };
-            }
-            return a;
-        }));
+    const enviarAMantenimiento = async (idRecurso, motivo = "Mantenimiento preventivo") => {
+        const resultado = await gestionarMantenimientoDB(idRecurso, 'iniciar', motivo);
+        if (resultado.success) {
+            // Actualizar UI localmente
+            setInventario(prev => prev.map(i => i.id === idRecurso ? { ...i, activo: false } : i));
+            return true;
+        } else {
+            alert(resultado.error);
+            return false;
+        }
     };
 
-    const marcarNoShow = (idAlquiler) => {
-        const alquiler = alquileres.find(a => a.id === idAlquiler);
-        if (alquiler) {
-            // Si fue reserva inmediata, liberar stock
-            if (alquiler.tipoReserva === 'inmediata') {
-                alquiler.items.forEach(item => actualizarStock(item.id, -item.cantidad));
-            }
+    const finalizarMantenimiento = async (idRecurso) => {
+        const resultado = await gestionarMantenimientoDB(idRecurso, 'finalizar');
+        if (resultado.success) {
+            setInventario(prev => prev.map(i => i.id === idRecurso ? { ...i, activo: true } : i));
+            return true;
+        } else {
+            alert(resultado.error);
+            return false;
+        }
+    };
+
+    const marcarNoShow = async (idAlquiler) => {
+        const resultado = await registrarNoShowDB(idAlquiler);
+        if (resultado.success) {
             setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'no_show' } : a));
+            return true;
+        } else {
+            alert(resultado.error);
+            return false;
         }
     };
 
-    const aplicarDescuentoMantenimiento = (idAlquiler, porcentaje) => {
-        setAlquileres(prev => prev.map(a => {
-            if (a.id === idAlquiler) {
-                const descuento = a.totalServicio * (porcentaje / 100);
-                return {
-                    ...a,
-                    descuentoMantenimiento: descuento,
-                    totalFinal: a.totalFinal - descuento,
-                    nota: `Descuento por mantenimiento (${porcentaje}%) aplicado.`
-                };
-            }
-            return a;
-        }));
+    const devolverAlquiler = async (idAlquiler) => {
+        const resultado = await registrarDevolucionDB(idAlquiler);
+        if (resultado.success) {
+            setAlquileres(prev => prev.map(a => {
+                if (a.id === idAlquiler) {
+                    return {
+                        ...a,
+                        estado: 'limpieza',
+                        fechaDevolucionReal: new Date(),
+                        penalizacion: resultado.penalizacion,
+                        totalFinal: resultado.nuevo_total
+                    };
+                }
+                return a;
+            }));
+            return true;
+        } else {
+            alert(resultado.error || "Error al registrar devolución");
+            return false;
+        }
     };
 
-    const registrarPagoSaldo = (idAlquiler) => {
-        setAlquileres(prev => prev.map(a => {
-            if (a.id === idAlquiler) {
-                return {
-                    ...a,
-                    montoPagado: a.totalFinal,
-                    saldoPendiente: 0,
-                    estado: a.estado === 'pendiente' ? 'confirmado' : a.estado, // Si estaba pendiente (anticipo), pasa a confirmado
-                    historialPagos: [...(a.historialPagos || []), { fecha: new Date(), monto: a.saldoPendiente, tipo: 'saldo_final' }]
-                };
-            }
-            return a;
-        }));
+    const marcarFueraDeServicio = async (idRecurso) => {
+        return await enviarAMantenimiento(idRecurso, "Fuera de Servicio");
     };
+
+
 
     return (
         <ContextoInventario.Provider value={{
