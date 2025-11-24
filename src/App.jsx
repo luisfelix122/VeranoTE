@@ -89,6 +89,29 @@ function AppContenido() {
     const [aceptaTerminos, setAceptaTerminos] = useState(false);
     const [mostrarTerminos, setMostrarTerminos] = useState(false);
 
+    // Estados para descuentos y promociones en el carrito
+    const [descuentoTotal, setDescuentoTotal] = useState(0);
+    const [promocionesAplicadas, setPromocionesAplicadas] = useState([]);
+    const [alertas, setAlertas] = useState([]);
+
+    // Calcular descuentos cuando cambie el carrito
+    React.useEffect(() => {
+        if (carrito.length > 0) {
+            calcularDescuentos(carrito).then(({ descuentoTotal, promocionesAplicadas, alertas }) => {
+                setDescuentoTotal(descuentoTotal || 0);
+                setPromocionesAplicadas(promocionesAplicadas || []);
+                setAlertas(alertas || []);
+            });
+        } else {
+            setDescuentoTotal(0);
+            setPromocionesAplicadas([]);
+            setAlertas([]);
+        }
+    }, [carrito, calcularDescuentos]);
+
+    // Total con descuento
+    const totalConDescuento = total - descuentoTotal;
+
     // Auto-switch tipoReserva based on date
     React.useEffect(() => {
         const hoy = new Date().toISOString().split('T')[0];
