@@ -175,6 +175,10 @@ export const crearRouterApp = () => {
                     element: <Reportes rol="mecanico" />
                 }
             ]
+        },
+        {
+            path: '*',
+            element: <Navigate to="/" replace />
         }
     ]);
 };
