@@ -84,9 +84,9 @@ const Reportes = ({ rol: rolProp }) => {
         : misAlquileres;
 
     const alquileresFiltrados = datosParaTabla.filter(a =>
-        a.cliente.toLowerCase().includes(filtro.toLowerCase()) ||
+        (a.cliente && a.cliente.toLowerCase().includes(filtro.toLowerCase())) ||
         (a.vendedorId && a.vendedorId.toString().includes(filtro)) ||
-        a.id.toLowerCase().includes(filtro.toLowerCase())
+        (a.id && a.id.toLowerCase().includes(filtro.toLowerCase()))
     );
 
     // Tickets (Soporte)

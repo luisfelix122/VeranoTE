@@ -38,7 +38,8 @@ export const ProveedorInventario = ({ children }) => {
                 montoPagado: a.monto_pagado,
                 saldoPendiente: a.saldo_pendiente,
                 tipoReserva: a.tipo_reserva,
-                sedeId: a.sede_id
+                sedeId: a.sede_id,
+                cliente: a.usuarios?.nombre || 'Cliente Desconocido' // Mapear nombre desde la relación
             })));
         } catch (error) {
             console.error("Error al recargar datos:", error);
