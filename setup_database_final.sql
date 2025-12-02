@@ -27,11 +27,20 @@ CREATE TABLE CONFIGURACION (
     descripcion TEXT
 );
 
+-- Habilitar RLS en CONFIGURACION
+ALTER TABLE CONFIGURACION ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Permitir lectura pública de configuración" ON CONFIGURACION FOR SELECT USING (true);
+
 INSERT INTO CONFIGURACION (clave, valor, descripcion) VALUES
 ('IGV', '0.18', 'Impuesto General a las Ventas'),
 ('GARANTIA_PORCENTAJE', '0.20', 'Porcentaje de garantía sobre el total del servicio'),
 ('TIEMPO_GRACIA_MINUTOS', '15', 'Minutos de tolerancia para devoluciones'),
-('ADELANTO_RESERVA_ANTICIPADA', '0.60', 'Porcentaje requerido para reservas anticipadas');
+('ADELANTO_RESERVA_ANTICIPADA', '0.60', 'Porcentaje requerido para reservas anticipadas'),
+('BANNER_TITULO', 'Tu Aventura de Verano Comienza Aquí', 'Título principal del banner'),
+('BANNER_SUBTITULO', 'Alquila los mejores equipos para disfrutar del sol, la playa y la naturaleza.', 'Subtítulo del banner'),
+('BANNER_IMAGEN_URL', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=1600', 'URL de la imagen de fondo del banner'),
+('CONTACTO_TELEFONO', '(01) 555-0123', 'Teléfono de contacto general'),
+('CONTACTO_EMAIL', 'contacto@alquileresperuanos.pe', 'Correo de contacto general');
 
 -- Tabla de Auditoría (Log de cambios)
 CREATE TABLE AUDITORIA (
@@ -104,10 +113,26 @@ CREATE TABLE SEDES (
     direccion TEXT NOT NULL,
     descripcion TEXT,
     imagen TEXT,
-    horario TEXT,
+    telefono TEXT, -- Nuevo campo
+    correo_contacto TEXT, -- Nuevo campo
+    mapa_url TEXT, -- Nuevo campo para iframe o coordenadas
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE HORARIOS_SEDE (
+    id SERIAL PRIMARY KEY,
+    sede_id TEXT REFERENCES SEDES(id) ON DELETE CASCADE,
+    dia_semana INTEGER NOT NULL CHECK (dia_semana BETWEEN 0 AND 6), -- 0=Domingo, 1=Lunes, ...
+    hora_apertura TIME,
+    hora_cierre TIME,
+    cerrado BOOLEAN DEFAULT FALSE,
+    UNIQUE(sede_id, dia_semana)
+);
+
+-- Habilitar RLS en HORARIOS_SEDE
+ALTER TABLE HORARIOS_SEDE ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Permitir lectura pública de horarios" ON HORARIOS_SEDE FOR SELECT USING (true);
 
 CREATE TABLE SEDE_SERVICIOS (
     sede_id TEXT REFERENCES SEDES(id) ON DELETE CASCADE,
@@ -720,9 +745,39 @@ INSERT INTO METODOS_PAGO (id, nombre) VALUES ('transferencia', 'Transferencia Ba
 INSERT INTO SERVICIOS (nombre) VALUES ('Wifi Gratuito'), ('Vestidores y Duchas'), ('Estacionamiento'), ('Guardarropa'), ('Escuela de Surf'), ('Zona de Camping'), ('Alquiler de Parrillas'), ('Rutas Guiadas'), ('Taller de Bicicletas'), ('Cafetería');
 
 -- Sedes
-INSERT INTO SEDES (id, nombre, direccion, descripcion, imagen, horario) VALUES
-('costa', 'Sede Costa', 'Av. Costanera 123', 'Disfruta del sol y las olas.', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=1000', '08:00 AM - 06:00 PM'),
-('rural', 'Sede Campo', 'Carretera Central Km 40', 'Conecta con la naturaleza.', 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1000', '07:00 AM - 05:00 PM');
+INSERT INTO SEDES (id, nombre, direccion, descripcion, imagen, telefono, correo_contacto, mapa_url) VALUES
+('costa', 'Sede Costa', 'Av. Costanera 123', 'Disfruta del sol y las olas.', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=1000', '999-111-222', 'costa@verano.com', 'https://maps.google.com/?q=-12.046374,-77.042793'),
+('rural', 'Sede Campo', 'Carretera Central Km 40', 'Conecta con la naturaleza.', 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1000', '999-333-444', 'campo@verano.com', 'https://maps.google.com/?q=-11.956374,-76.842793');
+
+-- Asignar Servicios a Sedes
+-- Costa: Wifi, Vestidores, Escuela de Surf, Estacionamiento
+INSERT INTO SEDE_SERVICIOS (sede_id, servicio_id) VALUES
+('costa', 1), ('costa', 2), ('costa', 5), ('costa', 3);
+
+-- Rural: Wifi, Zona de Camping, Parrillas, Rutas Guiadas
+INSERT INTO SEDE_SERVICIOS (sede_id, servicio_id) VALUES
+('rural', 1), ('rural', 6), ('rural', 7), ('rural', 8);
+
+-- Horarios Sede (Lunes a Domingo)
+-- Costa: 08:00 - 18:00
+INSERT INTO HORARIOS_SEDE (sede_id, dia_semana, hora_apertura, hora_cierre, cerrado) VALUES
+('costa', 1, '08:00', '18:00', FALSE), -- Lunes
+('costa', 2, '08:00', '18:00', FALSE),
+('costa', 3, '08:00', '18:00', FALSE),
+('costa', 4, '08:00', '18:00', FALSE),
+('costa', 5, '08:00', '18:00', FALSE),
+('costa', 6, '08:00', '18:00', FALSE), -- Sábado
+('costa', 0, '08:00', '18:00', FALSE); -- Domingo
+
+-- Campo: 07:00 - 17:00
+INSERT INTO HORARIOS_SEDE (sede_id, dia_semana, hora_apertura, hora_cierre, cerrado) VALUES
+('rural', 1, '07:00', '17:00', FALSE),
+('rural', 2, '07:00', '17:00', FALSE),
+('rural', 3, '07:00', '17:00', FALSE),
+('rural', 4, '07:00', '17:00', FALSE),
+('rural', 5, '07:00', '17:00', FALSE),
+('rural', 6, '07:00', '17:00', FALSE),
+('rural', 0, '07:00', '17:00', FALSE);
 
 -- Usuarios
 INSERT INTO USUARIOS (id, nombre, email, telefono, rol_id, password, tipo_documento, numero_documento, fecha_nacimiento, licencia_conducir, nacionalidad, direccion) VALUES
@@ -764,149 +819,6 @@ INSERT INTO PROMOCIONES (nombre, descripcion, tipo, condicion, beneficio, activo
 ('Paquete Cuatrimotos 3x5', 'Alquila 3 Cuatrimotos por el precio de 5 horas', 'regla_cantidad', '{"minCantidad": 3, "categoria": "Motor"}', '{"tipo": "porcentaje", "valor": 15}', FALSE);
 
 -- ==============================================================================
--- 8. FUNCIONES ADICIONALES (FALTANTES)
+-- 8. CONFIRMACIÓN
 -- ==============================================================================
-
--- I. RPC para Reprogramar Alquiler (Cálculo de Costos Extras)
-CREATE OR REPLACE FUNCTION reprogramar_alquiler_robusto(
-    p_alquiler_id TEXT,
-    p_horas_adicionales INTEGER
-) RETURNS JSONB AS $$
-DECLARE
-    v_alquiler RECORD;
-    v_detalle RECORD;
-    v_costo_extra NUMERIC := 0;
-    v_cargo_servicio NUMERIC;
-    v_nuevo_total NUMERIC;
-BEGIN
-    SELECT * INTO v_alquiler FROM ALQUILERES WHERE id = p_alquiler_id;
-    
-    IF v_alquiler.estado_id IN ('finalizado', 'cancelado', 'no_show') THEN
-        RETURN jsonb_build_object('success', false, 'error', 'No se puede reprogramar un alquiler finalizado.');
-    END IF;
-
-    -- Calcular costo extra por items
-    FOR v_detalle IN SELECT * FROM ALQUILER_DETALLES WHERE alquiler_id = p_alquiler_id LOOP
-        v_costo_extra := v_costo_extra + (v_detalle.precio_unitario * p_horas_adicionales * v_detalle.cantidad);
-        
-        -- Actualizar horas en detalle
-        UPDATE ALQUILER_DETALLES SET
-            horas = horas + p_horas_adicionales,
-            subtotal = subtotal + (v_detalle.precio_unitario * p_horas_adicionales * v_detalle.cantidad)
-        WHERE id = v_detalle.id;
-    END LOOP;
-
-    v_cargo_servicio := v_costo_extra * 0.10; -- 10% cargo por servicio extra
-    v_nuevo_total := v_alquiler.total_final + v_costo_extra + v_cargo_servicio;
-
-    -- Actualizar Alquiler
-    UPDATE ALQUILERES SET
-        total_final = v_nuevo_total,
-        saldo_pendiente = saldo_pendiente + v_costo_extra + v_cargo_servicio,
-        fecha_fin_estimada = fecha_fin_estimada + (p_horas_adicionales || ' hours')::INTERVAL,
-        updated_at = NOW(),
-        notas = COALESCE(notas, '') || ' | Reprogramado +' || p_horas_adicionales || 'h. Costo extra: ' || (v_costo_extra + v_cargo_servicio)
-    WHERE id = p_alquiler_id;
-
-    RETURN jsonb_build_object('success', true, 'nuevo_total', v_nuevo_total);
-END;
-$$ LANGUAGE plpgsql;
-
--- J. RPC para Aplicar Descuento Manual (Mantenimiento/Cortesía)
-CREATE OR REPLACE FUNCTION aplicar_descuento_manual(
-    p_alquiler_id TEXT,
-    p_porcentaje NUMERIC,
-    p_motivo TEXT
-) RETURNS JSONB AS $$
-DECLARE
-    v_alquiler RECORD;
-    v_descuento NUMERIC;
-BEGIN
-    SELECT * INTO v_alquiler FROM ALQUILERES WHERE id = p_alquiler_id;
-    
-    v_descuento := v_alquiler.total_servicio * (p_porcentaje / 100.0);
-    
-    UPDATE ALQUILERES SET
-        total_final = total_final - v_descuento,
-        saldo_pendiente = GREATEST(0, saldo_pendiente - v_descuento), -- No permitir saldo negativo
-        updated_at = NOW(),
-        notas = COALESCE(notas, '') || ' | Descuento Manual (' || p_porcentaje || '%): -' || v_descuento || '. Motivo: ' || p_motivo
-    WHERE id = p_alquiler_id;
-
-    RETURN jsonb_build_object('success', true, 'descuento_aplicado', v_descuento);
-END;
-$$ LANGUAGE plpgsql;
-
--- K. RPC para Registrar Pago de Saldo
-CREATE OR REPLACE FUNCTION registrar_pago_saldo(
-    p_alquiler_id TEXT
-) RETURNS JSONB AS $$
-DECLARE
-    v_alquiler RECORD;
-BEGIN
-    SELECT * INTO v_alquiler FROM ALQUILERES WHERE id = p_alquiler_id;
-    
-    IF v_alquiler.saldo_pendiente <= 0 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'No hay saldo pendiente por pagar.');
-    END IF;
-
-    UPDATE ALQUILERES SET
-        monto_pagado = monto_pagado + saldo_pendiente,
-        saldo_pendiente = 0,
-        estado_id = CASE WHEN estado_id = 'pendiente' THEN 'confirmado' ELSE estado_id END,
-        updated_at = NOW(),
-        notas = COALESCE(notas, '') || ' | Pago de saldo completado el ' || NOW()
-    WHERE id = p_alquiler_id;
-
-    RETURN jsonb_build_object('success', true);
-END;
-$$ LANGUAGE plpgsql;
-
--- L. RPC para Aprobar Reserva (Admin)
-CREATE OR REPLACE FUNCTION aprobar_reserva(
-    p_alquiler_id TEXT
-) RETURNS JSONB AS $$
-BEGIN
-    UPDATE ALQUILERES SET
-        estado_id = 'listo_para_entrega',
-        updated_at = NOW()
-    WHERE id = p_alquiler_id;
-    
-    RETURN jsonb_build_object('success', true);
-END;
-$$ LANGUAGE plpgsql;
-
--- ==============================================================================
--- 9. VISTAS Y REPORTES
--- ==============================================================================
-
-CREATE OR REPLACE VIEW v_resumen_alquileres AS
-SELECT 
-    a.id,
-    a.codigo_reserva,
-    u.nombre as cliente,
-    s.nombre as sede,
-    a.fecha_inicio,
-    a.fecha_fin_estimada,
-    e.nombre as estado,
-    a.total_final,
-    a.saldo_pendiente,
-    COUNT(d.id) as total_items
-FROM ALQUILERES a
-JOIN USUARIOS u ON a.cliente_id = u.id
-JOIN SEDES s ON a.sede_id = s.id
-JOIN ESTADOS_ALQUILER e ON a.estado_id = e.id
-LEFT JOIN ALQUILER_DETALLES d ON a.id = d.alquiler_id
-GROUP BY a.id, a.codigo_reserva, u.nombre, s.nombre, a.fecha_inicio, a.fecha_fin_estimada, e.nombre, a.total_final, a.saldo_pendiente;
-
--- ==============================================================================
--- 10. ÍNDICES DE RENDIMIENTO
--- ==============================================================================
-
-CREATE INDEX idx_alquileres_cliente ON ALQUILERES(cliente_id);
-CREATE INDEX idx_alquileres_estado ON ALQUILERES(estado_id);
-CREATE INDEX idx_alquileres_fechas ON ALQUILERES(fecha_inicio, fecha_fin_estimada);
-CREATE INDEX idx_detalles_alquiler ON ALQUILER_DETALLES(alquiler_id);
-CREATE INDEX idx_detalles_recurso ON ALQUILER_DETALLES(recurso_id);
-CREATE INDEX idx_recursos_categoria ON RECURSOS(categoria_id);
-CREATE INDEX idx_usuarios_email ON USUARIOS(email);
+SELECT 'Base de datos instalada correctamente.' as mensaje;

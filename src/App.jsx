@@ -44,18 +44,6 @@ function AppContenido() {
     const { mostrarLogin, setMostrarLogin, modoRegistro, setModoRegistro } = usarUI();
     const { sedeActual, setSedeActual } = useContext(ContextoInventario);
 
-    // Pantalla de Carga Global
-    if (cargando) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-white">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                    <p className="text-gray-500 font-medium animate-pulse">Cargando Verano...</p>
-                </div>
-            </div>
-        );
-    }
-
     // Sincronizar Sede con el Usuario (Admin/Vendedor)
     React.useEffect(() => {
         if (usuario && (usuario.rol === 'admin' || usuario.rol === 'vendedor') && usuario.sede) {
@@ -243,6 +231,18 @@ function AppContenido() {
     };
 
     const esMenorRegistro = calcularEdadRegistro(regNacimiento) < 18;
+
+    // Pantalla de Carga Global
+    if (cargando) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-white">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                    <p className="text-gray-500 font-medium animate-pulse">Cargando Verano...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <>

@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { obtenerRecursos, obtenerSedes, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB } from '../services/db';
+import { obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerConfiguracion, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 
 export const ContextoInventario = createContext();
@@ -8,15 +8,19 @@ export const ProveedorInventario = ({ children }) => {
     const [inventario, setInventario] = useState([]);
     const [alquileres, setAlquileres] = useState([]);
     const [sedes, setSedes] = useState([]);
+    const [horarios, setHorarios] = useState([]);
+    const [configuracion, setConfiguracion] = useState({});
     const [sedeActual, setSedeActual] = useState('costa'); // Default ID
 
     // Cargar datos iniciales
     const recargarDatos = async () => {
         try {
-            const [recursosData, sedesData, alquileresData] = await Promise.all([
+            const [recursosData, sedesData, alquileresData, horariosData, configData] = await Promise.all([
                 obtenerRecursos(),
                 obtenerSedes(),
-                obtenerAlquileres()
+                obtenerAlquileres(),
+                obtenerHorarios(),
+                obtenerConfiguracion()
             ]);
 
             const inventarioFormateado = recursosData.map(item => ({
@@ -28,6 +32,8 @@ export const ProveedorInventario = ({ children }) => {
 
             setInventario(inventarioFormateado);
             setSedes(sedesData);
+            setHorarios(horariosData);
+            setConfiguracion(configData);
             setAlquileres(alquileresData.map(a => ({
                 ...a,
                 fechaInicio: a.fecha_inicio,
@@ -50,6 +56,32 @@ export const ProveedorInventario = ({ children }) => {
     useEffect(() => {
         recargarDatos();
     }, []);
+
+    const estaAbierto = (sedeId) => {
+        if (!horarios || horarios.length === 0) return { abierto: false, mensaje: 'Horario no disponible' };
+
+        const ahora = new Date();
+        const diaSemana = ahora.getDay(); // 0 = Domingo
+        const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+
+        const horarioHoy = horarios.find(h => h.sede_id === sedeId && h.dia_semana === diaSemana);
+
+        if (!horarioHoy || horarioHoy.cerrado) {
+            return { abierto: false, mensaje: 'Cerrado hoy' };
+        }
+
+        const [hApertura, mApertura] = horarioHoy.hora_apertura.split(':').map(Number);
+        const [hCierre, mCierre] = horarioHoy.hora_cierre.split(':').map(Number);
+
+        const minApertura = hApertura * 60 + mApertura;
+        const minCierre = hCierre * 60 + mCierre;
+
+        if (horaActual >= minApertura && horaActual < minCierre) {
+            return { abierto: true, mensaje: `Abierto hasta las ${horarioHoy.hora_cierre.slice(0, 5)}` };
+        } else {
+            return { abierto: false, mensaje: `Cerrado. Abre a las ${horarioHoy.hora_apertura.slice(0, 5)}` };
+        }
+    };
 
     // Filtrar inventario por sede
     const inventarioVisible = inventario.filter(item => item.sedeId === sedeActual);
@@ -279,6 +311,7 @@ export const ProveedorInventario = ({ children }) => {
             inventario: inventarioVisible,
             inventarioCompleto: inventario,
             alquileres,
+            sedes,
             sedeActual,
             setSedeActual,
             agregarProducto,
@@ -295,7 +328,10 @@ export const ProveedorInventario = ({ children }) => {
             verificarDisponibilidad,
             marcarNoShow,
             aplicarDescuentoMantenimiento,
-            registrarPagoSaldo
+            registrarPagoSaldo,
+            registrarPagoSaldo,
+            estaAbierto,
+            configuracion
         }}>
             {children}
         </ContextoInventario.Provider>

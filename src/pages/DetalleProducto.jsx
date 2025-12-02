@@ -4,6 +4,7 @@ import { Minus, Plus } from 'lucide-react';
 import { ContextoCarrito } from '../contexts/ContextoCarrito';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
+import { usarUI } from '../contexts/ContextoUI';
 import Boton from '../components/ui/Boton';
 
 const DetalleProducto = () => {
@@ -11,6 +12,7 @@ const DetalleProducto = () => {
     const navigate = useNavigate();
     const { agregarAlCarrito } = useContext(ContextoCarrito);
     const { inventario } = useContext(ContextoInventario);
+    const { setMostrarLogin } = usarUI();
     const [horas, setHoras] = useState(1);
 
     const { usuario } = useContext(ContextoAutenticacion);
@@ -28,8 +30,7 @@ const DetalleProducto = () => {
 
     const manejarAgregarAlCarrito = () => {
         if (!usuario) {
-            alert('Debes iniciar sesión para reservar.');
-            navigate('/login');
+            setMostrarLogin(true);
             return;
         }
 
@@ -41,7 +42,6 @@ const DetalleProducto = () => {
         }
 
         agregarAlCarrito(producto, horas);
-        navigate('/');
     };
 
     return (

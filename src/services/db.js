@@ -44,6 +44,35 @@ export const obtenerSedes = async () => {
     }));
 };
 
+export const obtenerHorarios = async () => {
+    const { data, error } = await supabase
+        .from('horarios_sede')
+        .select('*');
+
+    if (error) {
+        console.error('Error al obtener horarios:', error);
+        return [];
+    }
+    return data;
+};
+
+export const obtenerConfiguracion = async () => {
+    const { data, error } = await supabase
+        .from('configuracion')
+        .select('*');
+
+    if (error) {
+        console.error('Error al obtener configuración:', error);
+        return [];
+    }
+    // Convertir array a objeto clave-valor para fácil acceso
+    const config = {};
+    data.forEach(item => {
+        config[item.clave] = item.valor;
+    });
+    return config;
+};
+
 export const obtenerUsuarios = async () => {
     const { data, error } = await supabase
         .from('usuarios')
