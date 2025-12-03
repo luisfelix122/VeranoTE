@@ -98,20 +98,35 @@ export const ProveedorAutenticacion = ({ children }) => {
     };
 
     const actualizarPerfil = async (id, nuevosDatos) => {
-        // Mapear para DB si es necesario (simplificado por ahora)
+        // Mapear camelCase a snake_case para la base de datos
         const datosDB = {};
-        if (nuevosDatos.nombre) datosDB.nombre = nuevosDatos.nombre;
-        // ... mapear otros campos si se editan
+        if (nuevosDatos.nombre !== undefined) datosDB.nombre = nuevosDatos.nombre;
+        if (nuevosDatos.telefono !== undefined) datosDB.telefono = nuevosDatos.telefono;
+        if (nuevosDatos.tipoDocumento !== undefined) datosDB.tipo_documento = nuevosDatos.tipoDocumento;
+        if (nuevosDatos.numeroDocumento !== undefined) datosDB.numero_documento = nuevosDatos.numeroDocumento;
+        if (nuevosDatos.fechaNacimiento !== undefined) datosDB.fecha_nacimiento = nuevosDatos.fechaNacimiento;
+        if (nuevosDatos.nacionalidad !== undefined) datosDB.nacionalidad = nuevosDatos.nacionalidad;
+        if (nuevosDatos.licenciaConducir !== undefined) datosDB.licencia_conducir = nuevosDatos.licenciaConducir;
+        if (nuevosDatos.direccion !== undefined) datosDB.direccion = nuevosDatos.direccion;
+        if (nuevosDatos.contactoEmergencia !== undefined) datosDB.contacto_emergencia = nuevosDatos.contactoEmergencia;
+
+        // Campos de empleado
+        if (nuevosDatos.codigoEmpleado !== undefined) datosDB.codigo_empleado = nuevosDatos.codigoEmpleado;
+        if (nuevosDatos.turno !== undefined) datosDB.turno = nuevosDatos.turno;
+        if (nuevosDatos.especialidad !== undefined) datosDB.especialidad = nuevosDatos.especialidad;
+        if (nuevosDatos.experiencia !== undefined) datosDB.experiencia = nuevosDatos.experiencia;
+        if (nuevosDatos.anexo !== undefined) datosDB.anexo = nuevosDatos.anexo;
+        if (nuevosDatos.oficina !== undefined) datosDB.oficina = nuevosDatos.oficina;
 
         // Actualizar estado local optimista
         setUsuarios(prev => prev.map(u => u.id === id ? { ...u, ...nuevosDatos } : u));
         if (usuario && usuario.id === id) setUsuario(prev => ({ ...prev, ...nuevosDatos }));
 
         // Llamar a DB
-        const resultado = await actualizarUsuarioDB(id, nuevosDatos); // nuevosDatos debe coincidir con columnas DB o ser mapeado
+        const resultado = await actualizarUsuarioDB(id, datosDB);
         if (!resultado.success) {
+            console.error("Error al actualizar perfil:", resultado.error);
             alert("Error al actualizar perfil en base de datos.");
-            // Revertir optimista si falla (opcional)
         }
     };
 

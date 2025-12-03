@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef, useEffect } from 'react';
+    import React, { useContext, useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Package, ShoppingCart, LogOut, MapPin, User, ChevronDown, CreditCard, Bell } from 'lucide-react';
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
@@ -117,7 +117,7 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
                                             onClick={() => navigate('/mis-gastos')}
                                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${location.pathname === '/mis-gastos' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                                         >
-                                            Mis Gastos
+                                            Mis Reportes
                                         </button>
                                         <button
                                             onClick={() => navigate('/soporte')}

@@ -410,3 +410,163 @@ export const actualizarRecursoDB = async (id, datos) => {
 };
 
 
+
+export const obtenerTarjetas = async (usuarioId) => {
+    const { data, error } = await supabase
+        .from('tarjetas_credito')
+        .select('*')
+        .eq('usuario_id', usuarioId);
+
+    if (error) {
+        console.error('Error al obtener tarjetas:', error);
+        return [];
+    }
+    return data;
+};
+
+export const agregarTarjeta = async (usuarioId, tarjeta) => {
+    const { data, error } = await supabase
+        .from('tarjetas_credito')
+        .insert([{
+            usuario_id: usuarioId,
+            numero_oculto: tarjeta.numero, // Ya debe venir enmascarado o solo últimos 4
+            token: 'tok_simulado_' + Date.now(),
+            expiracion: tarjeta.exp,
+            titular: tarjeta.nombre,
+            es_principal: tarjeta.principal
+        }])
+        .select();
+
+    if (error) {
+        console.error('Error al agregar tarjeta:', error);
+        return { success: false, error };
+    }
+    return { success: true, data: data[0] };
+};
+
+export const eliminarTarjeta = async (id) => {
+    const { error } = await supabase
+        .from('tarjetas_credito')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('Error al eliminar tarjeta:', error);
+        return { success: false, error };
+    }
+    return { success: true };
+};
+
+export const obtenerTickets = async (usuarioId) => {
+    const { data, error } = await supabase
+        .from('soporte_tickets')
+        .select(`
+            *,
+            usuario:usuario_id ( nombre, rol_id, roles ( nombre ) )
+        `)
+        .eq('usuario_id', usuarioId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error al obtener tickets:', error);
+        return [];
+    }
+
+    return data.map(t => ({
+        ...t,
+        usuario: {
+            ...t.usuario,
+            rol: t.usuario?.roles?.nombre || 'usuario'
+        }
+    }));
+};
+
+export const crearTicket = async (usuarioId, datos) => {
+    // 1. Crear el Ticket
+    const { data: ticket, error: errorTicket } = await supabase
+        .from('soporte_tickets')
+        .insert([{
+            usuario_id: usuarioId,
+            asunto: datos.asunto,
+            mensaje: datos.mensaje,
+            estado: 'pendiente'
+        }])
+        .select()
+        .single();
+
+    if (errorTicket) return { success: false, error: errorTicket };
+
+    // 2. Crear Mensaje Automático en la Bandeja de Entrada (Enviados)
+    const { error: errorMensaje } = await supabase
+        .from('mensajes')
+        .insert([{
+            remitente_id: usuarioId,
+            destinatario_id: 'u2', // ID del Admin General según setup_database_final.sql
+            asunto: `[Ticket #${ticket.id}] ${datos.asunto}`,
+            contenido: datos.mensaje,
+            leido: false
+        }]);
+
+    if (errorMensaje) console.warn("No se pudo crear copia en mensajes:", errorMensaje);
+
+    return { success: true, data: ticket };
+};
+
+export const obtenerMensajes = async (usuarioId) => {
+    const { data, error } = await supabase
+        .from('mensajes')
+        .select(`
+            *,
+            remitente:remitente_id ( nombre, rol_id, roles ( nombre ) ),
+            destinatario:destinatario_id ( nombre, rol_id, roles ( nombre ) )
+        `)
+        .or(`remitente_id.eq.${usuarioId},destinatario_id.eq.${usuarioId}`)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error al obtener mensajes:', error);
+        return [];
+    }
+    return data;
+};
+
+export const obtenerMisGastos = async (usuarioId) => {
+    const { data, error } = await supabase
+        .from('v_mis_gastos')
+        .select('*')
+        .eq('cliente_id', usuarioId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error al obtener mis gastos:', error);
+        return [];
+    }
+    return data;
+};
+
+export const obtenerMisReclamos = async (usuarioId) => {
+    const { data, error } = await supabase
+        .from('v_mis_reclamos')
+        .select('*')
+        .eq('usuario_id', usuarioId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error al obtener mis reclamos:', error);
+        return [];
+    }
+    return data;
+};
+
+export const obtenerGuiasSeguridad = async () => {
+    const { data, error } = await supabase
+        .from('recursos')
+        .select('id, nombre, guia_seguridad, imagen')
+        .not('guia_seguridad', 'is', null);
+
+    if (error) {
+        console.error('Error al obtener guías:', error);
+        return [];
+    }
+    return data;
+};

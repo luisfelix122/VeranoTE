@@ -4,7 +4,7 @@ import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import { Mail, CheckCircle, Clock, Trash2, Search, Filter } from 'lucide-react';
 
 const BandejaEntrada = ({ modoCompacto = false }) => {
-    const { tickets, marcarComoLeido, resolverTicket, eliminarTicket, crearTicket } = useContext(ContextoSoporte);
+    const { mensajes, marcarComoLeido, eliminarTicket, crearTicket } = useContext(ContextoSoporte);
     const { usuario } = useContext(ContextoAutenticacion);
     const [filtroEstado, setFiltroEstado] = useState('todos'); // todos, pendiente, resuelto
     const [busqueda, setBusqueda] = useState('');
@@ -13,38 +13,24 @@ const BandejaEntrada = ({ modoCompacto = false }) => {
     const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
     const [nuevoMensaje, setNuevoMensaje] = useState('');
 
-    const ticketsFiltrados = tickets.filter(ticket => {
-        // Filtro por Estado
-        const coincideEstado = filtroEstado === 'todos' || ticket.estado === filtroEstado;
+    const mensajesFiltrados = mensajes.filter(mensaje => {
+        // Filtro por Estado (leido/no leido en lugar de estado 'pendiente' para mensajes, aunque DB tiene 'leido')
+        // Si filtroEstado es 'pendiente', mostramos no leidos. Si 'resuelto', leidos. (Adaptación simple)
+        const coincideEstado = filtroEstado === 'todos' ||
+            (filtroEstado === 'pendiente' && !mensaje.leido) ||
+            (filtroEstado === 'resuelto' && mensaje.leido);
 
         // Filtro por Búsqueda
-        const coincideBusqueda = ticket.asunto.toLowerCase().includes(busqueda.toLowerCase()) ||
-            ticket.mensaje.toLowerCase().includes(busqueda.toLowerCase()) ||
-            ticket.id.toString().includes(busqueda);
+        const coincideBusqueda = (mensaje.asunto?.toLowerCase() || '').includes(busqueda.toLowerCase()) ||
+            (mensaje.contenido?.toLowerCase() || '').includes(busqueda.toLowerCase());
 
         if (!coincideEstado || !coincideBusqueda) return false;
 
-        // Filtro por Pestaña (Recibidos vs Enviados)
+        // Filtro por Pestaña
         if (pestanaMensajes === 'recibidos') {
-            // Lógica para mensajes recibidos
-            if (usuario.rol === 'admin') {
-                // Admin ve:
-                // 1. Mensajes dirigidos explícitamente a 'admin'
-                // 2. Mensajes dirigidos a su ID específico
-                // 3. Mensajes sin destinatario (legacy/soporte general)
-                return (ticket.destinatario?.rol === 'admin') ||
-                    (ticket.destinatario?.id === usuario.id) ||
-                    (!ticket.destinatario && ticket.remitente?.rol !== 'admin');
-            } else if (usuario.rol === 'dueno') {
-                return (ticket.destinatario?.rol === 'dueno') || (ticket.destinatario?.id === usuario.id);
-            } else {
-                // Clientes/Vendedores/Mecánicos ven mensajes dirigidos a su ID
-                // O mensajes dirigidos a su rol específico (ej. 'vendedor' -> todos los vendedores)
-                return ticket.destinatario?.id === usuario.id || ticket.destinatario?.rol === usuario.rol;
-            }
+            return mensaje.destinatario_id === usuario.id;
         } else {
-            // Lógica para mensajes enviados
-            return ticket.remitente?.id === usuario.id;
+            return mensaje.remitente_id === usuario.id;
         }
     });
 
@@ -156,39 +142,34 @@ const BandejaEntrada = ({ modoCompacto = false }) => {
             {modoCompacto ? (
                 // VISTA DE LISTA (Compacta para Dropdown)
                 <div className="space-y-2">
-                    {ticketsFiltrados.length === 0 ? (
+                    {mensajesFiltrados.length === 0 ? (
                         <div className="text-center py-8 text-gray-500 text-sm">
                             No hay mensajes.
                         </div>
                     ) : (
-                        ticketsFiltrados.map((ticket) => (
-                            <div key={ticket.id} className={`p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors ${!ticket.leido && pestanaMensajes === 'recibidos' ? 'bg-blue-50/50' : 'bg-white'}`}>
+                        mensajesFiltrados.map((mensaje) => (
+                            <div key={mensaje.id} className={`p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors ${!mensaje.leido && pestanaMensajes === 'recibidos' ? 'bg-blue-50/50' : 'bg-white'}`}>
                                 <div className="flex justify-between items-start mb-1">
-                                    <h4 className={`text-sm font-medium ${!ticket.leido ? 'text-blue-700' : 'text-gray-900'}`}>
-                                        {ticket.asunto}
+                                    <h4 className={`text-sm font-medium ${!mensaje.leido ? 'text-blue-700' : 'text-gray-900'}`}>
+                                        {mensaje.asunto}
                                     </h4>
                                     <span className="text-xs text-gray-400 whitespace-nowrap ml-2">
-                                        {new Date(ticket.fecha).toLocaleDateString()}
+                                        {new Date(mensaje.created_at).toLocaleDateString()}
                                     </span>
                                 </div>
                                 <p className="text-xs text-gray-600 line-clamp-2 mb-2">
-                                    {ticket.mensaje}
+                                    {mensaje.contenido}
                                 </p>
                                 <div className="flex justify-between items-center">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${ticket.estado === 'resuelto' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                        {ticket.estado === 'resuelto' ? <CheckCircle size={10} /> : <Clock size={10} />}
-                                        {ticket.estado}
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${mensaje.leido ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-800'}`}>
+                                        {mensaje.leido ? <CheckCircle size={10} /> : <Clock size={10} />}
+                                        {mensaje.leido ? 'Leído' : 'No leído'}
                                     </span>
 
                                     <div className="flex gap-2">
-                                        {ticket.estado !== 'resuelto' && pestanaMensajes === 'recibidos' && (usuario.rol === 'admin' || usuario.rol === 'dueno') && (
-                                            <button onClick={() => resolverTicket(ticket.id)} className="text-green-600 hover:text-green-800 text-xs font-medium">
-                                                Resolver
-                                            </button>
-                                        )}
-                                        {!ticket.leido && pestanaMensajes === 'recibidos' && (
-                                            <button onClick={() => marcarComoLeido(ticket.id)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
-                                                Leído
+                                        {!mensaje.leido && pestanaMensajes === 'recibidos' && (
+                                            <button onClick={() => marcarComoLeido(mensaje.id)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                                                Marcar Leído
                                             </button>
                                         )}
                                     </div>
@@ -213,66 +194,54 @@ const BandejaEntrada = ({ modoCompacto = false }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {ticketsFiltrados.length === 0 ? (
+                                {mensajesFiltrados.length === 0 ? (
                                     <tr>
                                         <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
                                             No se encontraron mensajes en esta bandeja.
                                         </td>
                                     </tr>
                                 ) : (
-                                    ticketsFiltrados.map((ticket) => (
-                                        <tr key={ticket.id} className={`hover:bg-gray-50 transition-colors ${!ticket.leido && pestanaMensajes === 'recibidos' ? 'bg-blue-50/30' : ''}`}>
+                                    mensajesFiltrados.map((mensaje) => (
+                                        <tr key={mensaje.id} className={`hover:bg-gray-50 transition-colors ${!mensaje.leido && pestanaMensajes === 'recibidos' ? 'bg-blue-50/30' : ''}`}>
                                             <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${ticket.estado === 'resuelto' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${mensaje.leido ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-800'
                                                     }`}>
-                                                    {ticket.estado === 'resuelto' ? <CheckCircle size={12} /> : <Clock size={12} />}
-                                                    {ticket.estado.charAt(0).toUpperCase() + ticket.estado.slice(1)}
+                                                    {mensaje.leido ? <CheckCircle size={12} /> : <Clock size={12} />}
+                                                    {mensaje.leido ? 'Leído' : 'No leído'}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 font-medium text-gray-900">
-                                                {ticket.asunto}
-                                                {!ticket.leido && pestanaMensajes === 'recibidos' && <span className="ml-2 inline-block w-2 h-2 bg-blue-600 rounded-full"></span>}
+                                                {mensaje.asunto}
+                                                {!mensaje.leido && pestanaMensajes === 'recibidos' && <span className="ml-2 inline-block w-2 h-2 bg-blue-600 rounded-full"></span>}
                                             </td>
-                                            <td className="px-6 py-4 text-gray-600 max-w-xs truncate" title={ticket.mensaje}>
-                                                {ticket.mensaje}
+                                            <td className="px-6 py-4 text-gray-600 max-w-xs truncate" title={mensaje.contenido}>
+                                                {mensaje.contenido}
                                             </td>
                                             <td className="px-6 py-4 text-gray-600">
                                                 {pestanaMensajes === 'recibidos' ? (
                                                     <div className="flex flex-col">
-                                                        <span className="font-medium text-sm">{ticket.remitente?.nombre || 'Cliente'}</span>
-                                                        <span className="text-xs text-gray-400 capitalize">{ticket.remitente?.rol || 'cliente'}</span>
-                                                        <span className="text-xs text-gray-500">{ticket.telefono || 'N/A'}</span>
+                                                        <span className="font-medium text-sm">{mensaje.remitente?.nombre || 'Sistema'}</span>
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col">
-                                                        <span className="font-medium text-sm">{ticket.destinatario?.nombre || (ticket.destinatario?.rol === 'admin' ? 'Administración' : 'Usuario')}</span>
-                                                        <span className="text-xs text-gray-400 capitalize">{ticket.destinatario?.rol || 'admin'}</span>
+                                                        <span className="font-medium text-sm">{mensaje.destinatario?.nombre || 'Admin'}</span>
                                                     </div>
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 text-gray-500 whitespace-nowrap">
-                                                {new Date(ticket.fecha).toLocaleDateString()} <span className="text-xs">{new Date(ticket.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                {new Date(mensaje.created_at).toLocaleDateString()} <span className="text-xs">{new Date(mensaje.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                             </td>
                                             <td className="px-6 py-4 text-right space-x-2">
-                                                {ticket.estado !== 'resuelto' && pestanaMensajes === 'recibidos' && (usuario.rol === 'admin' || usuario.rol === 'dueno') && (
-                                                    <button
-                                                        onClick={() => resolverTicket(ticket.id)}
-                                                        className="text-green-600 hover:text-green-800 font-medium text-xs hover:underline"
-                                                        title="Marcar como Resuelto"
-                                                    >
-                                                        Resolver
-                                                    </button>
-                                                )}
                                                 <button
-                                                    onClick={() => eliminarTicket(ticket.id)}
+                                                    onClick={() => eliminarTicket(mensaje.id)}
                                                     className="text-red-500 hover:text-red-700"
                                                     title="Eliminar"
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
-                                                {!ticket.leido && pestanaMensajes === 'recibidos' && (
+                                                {!mensaje.leido && pestanaMensajes === 'recibidos' && (
                                                     <button
-                                                        onClick={() => marcarComoLeido(ticket.id)}
+                                                        onClick={() => marcarComoLeido(mensaje.id)}
                                                         className="text-blue-600 hover:text-blue-800 text-xs hover:underline ml-2"
                                                     >
                                                         Marcar Leído
