@@ -20,6 +20,7 @@ import { crearRouterApp } from './router';
 
 function App() {
     return (
+        /* Preview rama albert-feature */
         <ProveedorAutenticacion>
             <ProveedorInventario>
                 <ProveedorCarrito>

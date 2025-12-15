@@ -1,4 +1,4 @@
-    import React, { useContext, useState, useRef, useEffect } from 'react';
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Package, ShoppingCart, LogOut, MapPin, User, ChevronDown, CreditCard, Bell } from 'lucide-react';
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
@@ -57,9 +57,14 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
                 <div className="flex justify-between h-16 items-center">
                     <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
                         <img src="/favicon.png" alt="Logo" className="w-10 h-10 object-contain hover:scale-105 transition-transform" />
-                        <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-teal-500">
-                            Alquiler de Verano
-                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-teal-500 leading-none">
+                                Alquiler de Verano
+                            </span>
+                            <span className="text-[10px] text-gray-400 font-medium tracking-wider uppercase mt-0.5">
+                                Versión de Desarrollo v0.1
+                            </span>
+                        </div>
                     </div>
 
                     {/* Selector de Sede */}
