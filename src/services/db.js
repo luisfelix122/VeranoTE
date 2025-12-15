@@ -1,14 +1,10 @@
 import { supabase } from '../supabase/client';
 
 export const obtenerRecursos = async () => {
-    // Usamos la VISTA v_recursos_disponibles para obtener el stock dinámico
-    // Hacemos join con CATEGORIAS para obtener el nombre de la categoría
+    // Usamos la VISTA v_recursos_disponibles que ya incluye el stock dinámico y el nombre de categoría
     const { data, error } = await supabase
         .from('v_recursos_disponibles')
-        .select(`
-            *,
-            categorias ( nombre )
-        `);
+        .select('*'); // Ya no necesitamos join porque la vista lo trae
 
     if (error) {
         console.error('Error al obtener recursos:', error);
@@ -17,8 +13,8 @@ export const obtenerRecursos = async () => {
     // Aplanar la estructura para que el frontend reciba 'categoria' como string
     return data.map(item => ({
         ...item,
-        categoria: item.categorias?.nombre || 'Sin Categoría',
-        stock: item.stock_disponible // Usar la columna calculada de la vista
+        categoria: item.categoria_nombre || 'Sin Categoría', // Mapear desde la columna de la vista
+        stock: item.stock_disponible
     }));
 };
 
@@ -497,12 +493,23 @@ export const crearTicket = async (usuarioId, datos) => {
 
     if (errorTicket) return { success: false, error: errorTicket };
 
-    // 2. Crear Mensaje Automático en la Bandeja de Entrada (Enviados)
+    // 2. Obtener un Admin para la notificación (Dinámico)
+    let adminId = 'u2'; // Fallback
+    const { data: adminData } = await supabase
+        .from('usuarios')
+        .select('id')
+        .eq('rol_id', 'admin')
+        .limit(1)
+        .single();
+
+    if (adminData) adminId = adminData.id;
+
+    // 3. Crear Mensaje Automático en la Bandeja de Entrada (Enviados)
     const { error: errorMensaje } = await supabase
         .from('mensajes')
         .insert([{
             remitente_id: usuarioId,
-            destinatario_id: 'u2', // ID del Admin General según setup_database_final.sql
+            destinatario_id: adminId,
             asunto: `[Ticket #${ticket.id}] ${datos.asunto}`,
             contenido: datos.mensaje,
             leido: false
