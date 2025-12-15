@@ -34,6 +34,27 @@ const Perfil = () => {
         if (usuario?.id && usuario.rol === 'cliente') {
             cargarTarjetas();
         }
+        // Sincronizar formulario si el usuario cambia (ej. al guardar)
+        if (usuario) {
+            setDatos({
+                nombre: usuario.nombre || '',
+                email: usuario.email || '',
+                telefono: usuario.telefono || '',
+                tipoDocumento: usuario.tipoDocumento || 'DNI',
+                numeroDocumento: usuario.numero_documento || usuario.numeroDocumento || '', // Handle snake_case or camelCase fallback
+                fechaNacimiento: usuario.fecha_nacimiento || usuario.fechaNacimiento || '',
+                nacionalidad: usuario.nacionalidad || 'Nacional',
+                licenciaConducir: usuario.licencia_conducir || usuario.licenciaConducir || false,
+                direccion: usuario.direccion || '',
+                contactoEmergencia: usuario.contacto_emergencia || usuario.contactoEmergencia || '',
+                codigoEmpleado: usuario.codigo_empleado || usuario.codigoEmpleado || '',
+                turno: usuario.turno || 'Mañana',
+                especialidad: usuario.especialidad || '',
+                experiencia: usuario.experiencia || '',
+                anexo: usuario.anexo || '',
+                oficina: usuario.oficina || ''
+            });
+        }
     }, [usuario]);
 
     const cargarTarjetas = async () => {

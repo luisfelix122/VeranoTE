@@ -84,12 +84,21 @@ function AppContenido() {
     const [terminosTexto, setTerminosTexto] = useState(null);
 
     // Fetch Términos
+    // Fetch Términos
     React.useEffect(() => {
         if (mostrarTerminos && !terminosTexto) {
             import('./services/db').then(({ obtenerPagina }) => {
-                obtenerPagina('terminos').then(data => {
-                    setTerminosTexto(data?.contenido || '<p>No se pudieron cargar los términos.</p>');
-                });
+                obtenerPagina('terminos')
+                    .then(data => {
+                        setTerminosTexto(data?.contenido || '<p>No se encontraron los términos y condiciones en el sistema. Por favor contacte a administración.</p>');
+                    })
+                    .catch(e => {
+                        console.error("Error cargando terminos:", e);
+                        setTerminosTexto('<p>Ocurrió un error al cargar los términos. Intente nuevamente.</p>');
+                    });
+            }).catch(e => {
+                console.error("Error importando db service:", e);
+                setTerminosTexto('<p>Error interno del sistema.</p>');
             });
         }
     }, [mostrarTerminos, terminosTexto]);
@@ -149,13 +158,17 @@ function AppContenido() {
         if (!usuario) return { valido: false, mensaje: "Debes iniciar sesión." };
 
         // Validar datos perfil
-        if (!usuario.numeroDocumento || !usuario.fechaNacimiento) {
+        // Soportar ambas notaciones (snake_case de DB o camelCase de Contexto)
+        const doc = usuario.numeroDocumento || usuario.numero_documento;
+        const nac = usuario.fechaNacimiento || usuario.fecha_nacimiento;
+
+        if (!doc || !nac) {
             return { valido: false, mensaje: "Por favor completa tu perfil (DNI y Fecha Nacimiento) antes de alquilar." };
         }
 
         // Calcular edad
         const hoy = new Date();
-        const nacimiento = new Date(usuario.fechaNacimiento);
+        const nacimiento = new Date(nac);
         let edad = hoy.getFullYear() - nacimiento.getFullYear();
         const m = hoy.getMonth() - nacimiento.getMonth();
         if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
@@ -166,7 +179,10 @@ function AppContenido() {
         const tieneMotor = carrito.some(item => item.categoria === 'Motor');
         if (tieneMotor) {
             if (edad < 18) return { valido: false, mensaje: "Debes ser mayor de 18 años para alquilar vehículos motorizados." };
-            if (!usuario.licenciaConducir) return { valido: false, mensaje: "Se requiere licencia de conducir vigente para vehículos motorizados." };
+
+            // Verificación robusta de licencia
+            const tieneLicencia = usuario.licenciaConducir === true || usuario.licencia_conducir === true;
+            if (!tieneLicencia) return { valido: false, mensaje: "Se requiere licencia de conducir vigente para vehículos motorizados. Actualízalo en tu perfil." };
         }
 
         return { valido: true };

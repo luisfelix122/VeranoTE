@@ -1,9 +1,10 @@
 import { supabase } from '../supabase/client';
 
 export const obtenerRecursos = async () => {
+    // Usamos la VISTA v_recursos_disponibles para obtener el stock dinámico
     // Hacemos join con CATEGORIAS para obtener el nombre de la categoría
     const { data, error } = await supabase
-        .from('recursos')
+        .from('v_recursos_disponibles')
         .select(`
             *,
             categorias ( nombre )
@@ -17,7 +18,7 @@ export const obtenerRecursos = async () => {
     return data.map(item => ({
         ...item,
         categoria: item.categorias?.nombre || 'Sin Categoría',
-        stock: item.stock_total // Mapear stock_total de DB a stock del frontend
+        stock: item.stock_disponible // Usar la columna calculada de la vista
     }));
 };
 
