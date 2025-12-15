@@ -1,0 +1,48 @@
+{
+    "nav": {
+        "tienda": "Store",
+        "mis_reportes": "My Reports",
+        "soporte": "Support",
+        "inventario": "Inventory",
+        "promociones": "Promotions",
+        "punto_venta": "POS",
+        "usuarios": "Users",
+        "reportes": "Reports",
+        "operaciones": "Operations",
+        "taller": "Workshop",
+        "iniciar_sesion": "Log In",
+        "cerrar_sesion": "Log Out",
+        "mi_perfil": "My Profile",
+        "mis_tarjetas": "My Cards",
+        "sede": "Location",
+        "app_name": "Summer Rental"
+    },
+    "home": {
+        "hero_title_1": "Your Paradise,",
+        "hero_title_2": "Your Adventure.",
+        "badge": "The ultimate summer experience",
+        "hero_subtitle": "Find the perfect gear to enjoy nature. Premium quality and exclusive service at our locations.",
+        "search_placeholder": "Search gear (e.g. Kayak, Surf...)",
+        "explore_btn": "Explore",
+        "ver_info": "See Info",
+        "catalog_title": "Available Catalog",
+        "showing_items": "Showing {{count}} items in",
+        "no_results_title": "No results found",
+        "no_results_desc": "There are no available items matching your search in this category or location.",
+        "clear_filters": "Clear filters",
+        "open_now": "OPEN NOW",
+        "closed": "CLOSED",
+        "services": "Available Services",
+        "contact": "Contact",
+        "understood_btn": "Understood",
+        "state_schedule": "Status & Schedule"
+    },
+    "categories": {
+        "Todas": "All",
+        "Playa": "Beach",
+        "Deportes Acuáticos": "Water Sports",
+        "Camping": "Camping",
+        "Electrónica": "Electronics",
+        "Movilidad": "Mobility"
+    }
+}

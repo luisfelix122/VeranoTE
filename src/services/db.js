@@ -570,3 +570,30 @@ export const obtenerGuiasSeguridad = async () => {
     }
     return data;
 };
+
+export const obtenerPagina = async (slug) => {
+    const { data, error } = await supabase
+        .from('paginas')
+        .select('*')
+        .eq('slug', slug)
+        .single();
+
+    if (error) {
+        console.error('Error al obtener página:', error);
+        return null;
+    }
+    return data;
+};
+
+export const obtenerFaqs = async () => {
+    const { data, error } = await supabase
+        .from('faqs')
+        .select('*')
+        .order('orden', { ascending: true });
+
+    if (error) {
+        console.error('Error al obtener faqs:', error);
+        return [];
+    }
+    return data;
+};

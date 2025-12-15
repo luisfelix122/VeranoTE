@@ -1,0 +1,48 @@
+{
+    "nav": {
+        "tienda": "Loja",
+        "mis_reportes": "Meus Relatórios",
+        "soporte": "Suporte",
+        "inventario": "Inventário",
+        "promociones": "Promoções",
+        "punto_venta": "Ponto de Venda",
+        "usuarios": "Usuários",
+        "reportes": "Relatórios",
+        "operaciones": "Operações",
+        "taller": "Oficina",
+        "iniciar_sesion": "Entrar",
+        "cerrar_sesion": "Sair",
+        "mi_perfil": "Meu Perfil",
+        "mis_tarjetas": "Minhas Cartões",
+        "sede": "Localização",
+        "app_name": "Aluguel de Verão"
+    },
+    "home": {
+        "hero_title_1": "Seu Paraíso,",
+        "hero_title_2": "Sua Aventura.",
+        "badge": "A experiência de verão definitiva",
+        "hero_subtitle": "Encontre o equipamento perfeito para curtir a natureza. Qualidade premium e serviço exclusivo em nossas sedes.",
+        "search_placeholder": "Buscar equipamentos (ex. Caiaque, Surf...)",
+        "explore_btn": "Explorar",
+        "ver_info": "Ver Info",
+        "catalog_title": "Catálogo Disponível",
+        "showing_items": "Mostrando {{count}} itens em",
+        "no_results_title": "Nenhum resultado encontrado",
+        "no_results_desc": "Não há equipamentos disponíveis correspondentes à sua pesquisa nesta categoria ou local.",
+        "clear_filters": "Limpar filtros",
+        "open_now": "ABERTO AGORA",
+        "closed": "FECHADO",
+        "services": "Serviços Disponíveis",
+        "contact": "Contato",
+        "understood_btn": "Entendido",
+        "state_schedule": "Status e Horário"
+    },
+    "categories": {
+        "Todas": "Todas",
+        "Playa": "Praia",
+        "Deportes Acuáticos": "Esportes Aquáticos",
+        "Camping": "Camping",
+        "Electrónica": "Eletrônica",
+        "Movilidad": "Mobilidade"
+    }
+}

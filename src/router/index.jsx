@@ -20,6 +20,8 @@ import GestionPromociones from '../pages/GestionPromociones';
 import PuntoVenta from '../pages/PuntoVenta';
 import PanelVendedor from '../pages/PanelVendedor';
 import PanelMecanico from '../pages/PanelMecanico';
+import PaginaLegal from '../pages/PaginaLegal';
+import Ayuda from '../pages/Ayuda';
 
 
 // Componente de Ruta Protegida
@@ -79,6 +81,14 @@ export const crearRouterApp = () => {
                             <BandejaEntrada />
                         </RutaProtegida>
                     )
+                },
+                {
+                    path: 'ayuda',
+                    element: <Ayuda />
+                },
+                {
+                    path: 'legal/:slug',
+                    element: <PaginaLegal />
                 }
             ]
         },

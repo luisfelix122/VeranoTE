@@ -81,6 +81,18 @@ function AppContenido() {
     const [descuentoTotal, setDescuentoTotal] = useState(0);
     const [promocionesAplicadas, setPromocionesAplicadas] = useState([]);
     const [alertas, setAlertas] = useState([]);
+    const [terminosTexto, setTerminosTexto] = useState(null);
+
+    // Fetch Términos
+    React.useEffect(() => {
+        if (mostrarTerminos && !terminosTexto) {
+            import('./services/db').then(({ obtenerPagina }) => {
+                obtenerPagina('terminos').then(data => {
+                    setTerminosTexto(data?.contenido || '<p>No se pudieron cargar los términos.</p>');
+                });
+            });
+        }
+    }, [mostrarTerminos, terminosTexto]);
 
     // Calcular descuentos cuando cambie el carrito
     React.useEffect(() => {
@@ -442,41 +454,11 @@ function AppContenido() {
                             </button>
                         </div>
                         <div className="space-y-4 text-sm text-gray-700 max-h-[60vh] overflow-y-auto p-2">
-                            <p><strong>1. Objeto del Contrato:</strong> El arrendador entrega en alquiler los equipos descritos, y el arrendatario los recibe en perfecto estado de funcionamiento.</p>
-                            <p><strong>2. Duración:</strong> El alquiler se pacta por el periodo seleccionado. Cualquier retraso en la devolución generará penalizaciones automáticas.</p>
-                            <p><strong>3. Pagos y Cancelaciones:</strong>
-                                <ul className="list-disc pl-5 mt-1">
-                                    <li>Para reservas inmediatas, se debe cancelar el 100% del servicio.</li>
-                                    <li>Para reservas anticipadas, se requiere un adelanto del 60%.</li>
-                                    <li><strong>Política de No Reembolso:</strong> En caso de cancelación por parte del cliente, no se realizarán reembolsos. Sin embargo, se permite reprogramar el alquiler sujeto a disponibilidad y condiciones especiales.</li>
-                                    <li><strong>Reprogramación por Clima/Contingencias:</strong> En caso de mala climatología o contingencias de fuerza mayor, el cliente podrá reprogramar su alquiler sin costo adicional para una fecha futura, sujeto a disponibilidad.</li>
-                                </ul>
-                            </p>
-                            <p><strong>4. Política de No Show (Ausencia):</strong>
-                                <ul className="list-disc pl-5 mt-1">
-                                    <li>Si el cliente no se presenta a recoger el recurso dentro de los <strong>10 minutos</strong> posteriores a la hora acordada, el sistema liberará automáticamente la reserva.</li>
-                                    <li>En este caso, no habrá reembolso del monto pagado.</li>
-                                </ul>
-                            </p>
-                            <p><strong>5. Retrasos por Mantenimiento:</strong>
-                                <ul className="list-disc pl-5 mt-1">
-                                    <li>Si un recurso no puede ser entregado a tiempo debido a mantenimiento imprevisto, se aplicará un descuento proporcional al tiempo de espera o se ofrecerá un descuento para la próxima compra.</li>
-                                </ul>
-                            </p>
-                            <p><strong>6. Depósito de Garantía:</strong>
-                                <ul className="list-disc pl-5 mt-1">
-                                    <li>Se retendrá un depósito de garantía equivalente al 20% del valor total del servicio.</li>
-                                    <li>Este depósito es 100% reembolsable al finalizar el alquiler, siempre que los equipos se devuelvan en las mismas condiciones.</li>
-                                </ul>
-                            </p>
-                            <p><strong>7. Responsabilidad por Daños:</strong>
-                                <ul className="list-disc pl-5 mt-1">
-                                    <li>El arrendatario es el único responsable del cuidado y custodia de los equipos durante el periodo de alquiler.</li>
-                                    <li>En caso de daño, pérdida o robo, el arrendatario deberá cubrir el costo total de reparación o reposición del equipo a valor de mercado.</li>
-                                    <li>El depósito de garantía se utilizará para cubrir parcialmente estos costos, sin perjuicio de que el arrendador exija el pago del saldo restante.</li>
-                                </ul>
-                            </p>
-                            <p><strong>8. Uso de Vehículos Motorizados:</strong> El conductor declara tener licencia de conducir vigente y ser mayor de edad. El uso es exclusivo para fines recreativos y bajo su propia responsabilidad.</p>
+                            {terminosTexto ? (
+                                <div dangerouslySetInnerHTML={{ __html: terminosTexto }} />
+                            ) : (
+                                <div className="animate-pulse">Cargando términos...</div>
+                            )}
                         </div>
                         <div className="mt-6 flex justify-end gap-3 pt-4 border-t">
                             <button onClick={() => setMostrarTerminos(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
