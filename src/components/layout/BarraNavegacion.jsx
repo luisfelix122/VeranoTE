@@ -56,12 +56,9 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
     const esHome = location.pathname === '/';
 
     return (
-        <nav className={`${esHome
-            ? 'fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-7xl rounded-full bg-white/80 backdrop-blur-xl border border-white/50 shadow-2xl'
-            : 'sticky top-0 w-full bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm'
-            } z-50 transition-all duration-500 ease-in-out`}>
-            <div className={`mx-auto px-6 ${esHome ? 'py-2' : 'max-w-7xl px-4 sm:px-6 lg:px-8'}`}>
-                <div className="flex justify-between h-14 items-center">
+        <nav className="fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-7xl rounded-full bg-white/80 backdrop-blur-xl border border-white/50 shadow-2xl z-50 transition-all duration-500 ease-in-out">
+            <div className="w-full h-full px-6 flex items-center justify-between">
+                <div className="flex justify-between w-full h-14 items-center">
                     {/* Logo Section */}
                     <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
                         <div className="relative w-10 h-10 flex items-center justify-center bg-gradient-to-br from-blue-600 to-teal-500 rounded-xl shadow-lg shadow-blue-200/50 transform group-hover:scale-105 transition-all duration-300 overflow-hidden">
@@ -69,26 +66,12 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
                             <Sun className="text-yellow-100 absolute top-1.5 right-1.5 opacity-90" size={14} fill="currentColor" />
                             <Waves className="text-white relative z-10 mt-1" size={22} strokeWidth={2.5} />
                         </div>
-                        <span className={`text-xl font-extrabold tracking-tight ${esHome ? 'text-gray-800' : 'bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-teal-500'}`}>
+                        <span className="text-xl font-extrabold tracking-tight text-gray-900">
                             {t('nav.app_name', 'Alquiler de Verano')}
                         </span>
                     </div>
 
-                    {/* Selector de Sede (Solo visible si no es home o si se desea mostrar discreto) */}
-                    {!esHome && (
-                        <div className="hidden md:flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-full px-4 py-1.5 transition-all hover:border-gray-300 hover:shadow-sm">
-                            <MapPin size={14} className="text-gray-400" />
-                            <select
-                                value={sedeActual}
-                                onChange={(e) => setSedeActual(e.target.value)}
-                                className="bg-transparent border-none text-xs font-semibold text-gray-600 focus:ring-0 cursor-pointer p-0"
-                            >
-                                {sedes.map(sede => (
-                                    <option key={sede.id} value={sede.id}>{sede.nombre}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
+
 
                     {/* Actions Section */}
                     <div className="flex items-center gap-3 md:gap-5">

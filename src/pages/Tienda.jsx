@@ -24,8 +24,19 @@ const Tienda = () => {
         }
     }, [usuario, navigate]);
 
-    const categorias = ['Todas', ...new Set(inventario.map(p => p.categoria))];
-    const filtrados = inventario.filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase()) && (categoria === 'Todas' || p.categoria === categoria));
+    const categorias = ['Todas', ...new Set(inventario.map(p => p.categoria)), 'Agotados'];
+
+    const filtrados = inventario.filter(p => {
+        const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
+
+        if (categoria === 'Agotados') {
+            return coincideBusqueda && p.stock <= 0;
+        } else if (categoria === 'Todas') {
+            return coincideBusqueda && p.stock > 0;
+        } else {
+            return coincideBusqueda && p.categoria === categoria && p.stock > 0;
+        }
+    });
 
     const infoSedeActual = sedes.find(s => s.id === sedeActual) || sedes[0];
 
@@ -117,18 +128,32 @@ const Tienda = () => {
                 {/* Categories Scroll */}
                 <div className="flex flex-col items-center -mt-10 mb-12">
                     <div className="flex overflow-x-auto pb-4 gap-3 max-w-full no-scrollbar p-2 bg-white/50 backdrop-blur-md rounded-full border border-white/60 shadow-lg">
-                        {categorias.map(cat => (
-                            <button
-                                key={cat}
-                                onClick={() => setCategoria(cat)}
-                                className={`whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all transform hover:scale-105 ${categoria === cat
+                        {categorias.map(cat => {
+                            const esAgotado = cat === 'Agotados';
+                            const seleccionado = categoria === cat;
+
+                            let clase = "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all transform hover:scale-105 ";
+
+                            if (esAgotado) {
+                                clase += seleccionado
+                                    ? 'bg-red-500 text-white shadow-md'
+                                    : 'bg-transparent text-red-500 hover:bg-red-50 hover:shadow-sm border border-red-200';
+                            } else {
+                                clase += seleccionado
                                     ? 'bg-gray-900 text-white shadow-md'
-                                    : 'bg-transparent text-gray-600 hover:bg-white hover:shadow-sm'
-                                    }`}
-                            >
-                                {t(`categories.${cat}`, cat)}
-                            </button>
-                        ))}
+                                    : 'bg-transparent text-gray-600 hover:bg-white hover:shadow-sm';
+                            }
+
+                            return (
+                                <button
+                                    key={cat}
+                                    onClick={() => setCategoria(cat)}
+                                    className={clase}
+                                >
+                                    {esAgotado ? 'Agotados' : t(`categories.${cat}`, cat)}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 

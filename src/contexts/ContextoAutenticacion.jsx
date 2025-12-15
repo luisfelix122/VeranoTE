@@ -87,8 +87,8 @@ export const ProveedorAutenticacion = ({ children }) => {
             localStorage.setItem('usuario_verano_id', nuevoUsuario.id);
             return true;
         } else {
-            alert("Error al registrar usuario.");
-            return false;
+            // alert("Error al registrar usuario.");
+            return resultado.error?.message || resultado.error || 'Error desconocido';
         }
     };
 

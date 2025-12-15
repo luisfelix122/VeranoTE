@@ -488,9 +488,13 @@ function AppContenido() {
             {/* Modal Login/Registro */}
             <Modal titulo={modoRegistro ? "Crear Cuenta" : "Bienvenido"} abierto={mostrarLogin} alCerrar={() => setMostrarLogin(false)}>
                 {modoRegistro ? (
-                    <form onSubmit={(e) => {
+                    <form onSubmit={async (e) => {
                         e.preventDefault();
-                        registrarUsuario({
+                        if (!/^\d{8}$/.test(regDoc)) {
+                            alert("El DNI debe tener exactamente 8 dígitos numéricos.");
+                            return;
+                        }
+                        const resultado = await registrarUsuario({
                             nombre: regNombre,
                             email: regEmail,
                             password: regPass,
@@ -500,9 +504,22 @@ function AppContenido() {
                             tipoDocumento: 'DNI',
                             nacionalidad: 'Nacional'
                         });
-                        setMostrarLogin(false);
-                        setModoRegistro(false);
-                        alert('Cuenta creada exitosamente. ¡Bienvenido!');
+
+                        if (resultado === true) {
+                            setMostrarLogin(false);
+                            setModoRegistro(false);
+                            alert('Cuenta creada exitosamente. ¡Bienvenido!');
+                        } else {
+                            if (resultado?.toString().includes('usuarios_email_unique')) {
+                                alert("El correo electrónico ya está registrado.");
+                            } else if (resultado?.toString().includes('usuarios_dni_unique_idx')) {
+                                alert("El DNI ya está registrado.");
+                            } else if (resultado?.toString().includes('usuarios_dni_check')) {
+                                alert("El formato del DNI es inválido (debe tener 8 dígitos).");
+                            } else {
+                                alert(resultado || 'Error al crear la cuenta. Intente nuevamente.');
+                            }
+                        }
                     }} className="space-y-4">
                         <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input required className="w-full p-2 border rounded" value={regNombre} onChange={e => setRegNombre(e.target.value)} /></div>
                         <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input required type="email" className="w-full p-2 border rounded" value={regEmail} onChange={e => setRegEmail(e.target.value)} /></div>

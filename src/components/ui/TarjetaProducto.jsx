@@ -22,6 +22,11 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
                         {producto.stock > 0 ? `${producto.stock} disp.` : 'Agotado'}
                     </span>
                 </div>
+                {producto.stock <= 0 && (
+                    <p className="text-xs text-orange-600 mb-2 font-medium">
+                        Disponible aprox. en 2h (Verificar disponibilidad)
+                    </p>
+                )}
                 <Boton
                     onClick={() => alSeleccionar(producto)}
                     variante="primario"
