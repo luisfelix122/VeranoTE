@@ -555,7 +555,7 @@ function AppContenido() {
                             setAceptaTerminosRegistro(false);
                             alert('Cuenta creada exitosamente. ¡Bienvenido!');
                         } else {
-                            if (resultado?.toString().includes('usuarios_email_unique')) {
+                            if (resultado?.toString().includes('usuarios_email_unique') || resultado?.toString().includes('usuarios_email_key')) {
                                 alert("El correo electrónico ya está registrado.");
                             } else if (resultado?.toString().includes('usuarios_dni_unique_idx')) {
                                 alert("El documento de identidad ya está registrado.");
