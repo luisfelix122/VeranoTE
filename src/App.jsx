@@ -84,6 +84,7 @@ function AppContenido() {
     const [regNacimiento, setRegNacimiento] = useState('');
     const [regLicencia, setRegLicencia] = useState(false);
     const [errorDni, setErrorDni] = useState('');
+    const [isRegistering, setIsRegistering] = useState(false);
     const [aceptaTerminosRegistro, setAceptaTerminosRegistro] = useState(false);
 
     // Calcular si es menor de edad
@@ -533,6 +534,8 @@ function AppContenido() {
                             return;
                         }
 
+                        setIsRegistering(true);
+
                         const resultado = await registrarUsuario({
                             nombre: regNombre,
                             email: regEmail,
@@ -543,6 +546,8 @@ function AppContenido() {
                             tipoDocumento: regTipoDocumento,
                             nacionalidad: regNacionalidad
                         });
+
+                        setIsRegistering(false);
 
                         if (resultado === true) {
                             setMostrarLogin(false);
@@ -708,9 +713,9 @@ function AppContenido() {
                             variante="primario"
                             className={`w-full py-3 ${!aceptaTerminosRegistro ? 'opacity-50 cursor-not-allowed' : ''}`}
                             type="submit"
-                            disabled={!aceptaTerminosRegistro}
+                            disabled={!aceptaTerminosRegistro || isRegistering}
                         >
-                            Registrarse
+                            {isRegistering ? 'Registrando...' : 'Registrarse'}
                         </Boton>
                         <p className="text-center text-sm text-gray-600">¿Ya tienes cuenta? <button type="button" onClick={() => setModoRegistro(false)} className="text-blue-600 font-bold">Inicia Sesión</button></p>
                     </form>
