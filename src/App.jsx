@@ -272,25 +272,35 @@ function AppContenido() {
                 return;
             }
 
-            // Preparar datos para la reserva (Cálculos se hacen en DB)
+            // Preparar datos para la reserva con saneamiento
             const datosReserva = {
                 clienteId: usuario.id,
-                vendedorId: 'WEB',
-                sedeId: sedeActual,
-                items: carrito,
-                fechaInicio: fechaInicio,
-                tipoReserva,
-                metodoPago,
-                tipoComprobante,
+                vendedorId: null, // Si es online, va null (o 'WEB' si el server lo soporta, pero preferible null para UUIDs)
+                sedeId: sedeActual || 'costa',
+                items: carrito.map(i => ({
+                    id: Number(i.id),
+                    cantidad: Number(i.cantidad),
+                    horas: Number(i.horas),
+                    precioPorHora: Number(i.precioPorHora),
+                    categoria: i.categoria
+                })),
+                fechaInicio: fechaInicio.toISOString(), // Asegurar formato ISO
+                tipoReserva: tipoReserva || 'inmediata',
+                metodoPago: metodoPago || 'transferencia',
+                tipoComprobante: tipoComprobante || 'boleta',
                 datosFactura: tipoComprobante === 'factura' ? datosFactura : null
             };
+
+            // Loading UI simulación (opcional)
+            setAceptaTerminos(false); // Deshabilitar doble click
 
             registrarAlquiler(datosReserva).then(exito => {
                 if (exito) {
                     limpiarCarrito();
                     setEsVisible(false);
-                    setAceptaTerminos(false);
                     alert(`¡Reserva Exitosa!\n\nTu reserva ha sido registrada correctamente en el sistema.\nPuedes ver los detalles y el contrato en tu perfil.`);
+                } else {
+                    setAceptaTerminos(true); // Permitir reintentar
                 }
             });
         });
