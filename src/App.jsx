@@ -14,9 +14,15 @@ import { ProveedorSoporte } from './contexts/ContextoSoporte';
 
 import Modal from './components/ui/Modal';
 import Boton from './components/ui/Boton';
+import ModalInfoGlobal from './components/ui/ModalInfoGlobal';
 
 // Router
 import { crearRouterApp } from './router';
+
+// Services
+import { registrarUsuarioDB, obtenerConfiguracion, calcularCotizacion, actualizarTipoCambioReal } from './services/db';
+
+const router = crearRouterApp();
 
 function App() {
     return (
@@ -39,10 +45,15 @@ function App() {
 function AppContenido() {
     const { usuario, iniciarSesion, registrarUsuario, cargando } = useContext(ContextoAutenticacion);
     const { carrito, removerDelCarrito, esVisible, setEsVisible, total, limpiarCarrito } = useContext(ContextoCarrito);
-    const { registrarAlquiler, verificarDisponibilidad } = useContext(ContextoInventario);
+    const { registrarAlquiler, verificarDisponibilidad, fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva } = useContext(ContextoInventario);
     const { calcularDescuentos } = useContext(ContextoPromociones);
-    const { mostrarLogin, setMostrarLogin, modoRegistro, setModoRegistro } = usarUI();
+    const { mostrarLogin, setMostrarLogin, modoRegistro, setModoRegistro, abrirModalInfo } = usarUI();
     const { sedeActual, setSedeActual } = useContext(ContextoInventario);
+
+    // Actualizar tipo de cambio al montar
+    React.useEffect(() => {
+        actualizarTipoCambioReal();
+    }, []);
 
     // Sincronizar Sede con el Usuario (Admin/Vendedor)
     React.useEffect(() => {
@@ -63,73 +74,111 @@ function AppContenido() {
     const [regNombre, setRegNombre] = useState('');
     const [regEmail, setRegEmail] = useState('');
     const [regPass, setRegPass] = useState('');
+
+    // Default 'Nacional' -> 'DNI'
+    const [regNacionalidad, setRegNacionalidad] = useState('Nacional');
+    const [regTipoDocumento, setRegTipoDocumento] = useState('DNI');
+
     const [regDoc, setRegDoc] = useState('');
     const [regNacimiento, setRegNacimiento] = useState('');
     const [regLicencia, setRegLicencia] = useState(false);
+    const [errorDni, setErrorDni] = useState('');
+    const [aceptaTerminosRegistro, setAceptaTerminosRegistro] = useState(false);
+
+    // Calcular si es menor de edad
+    const esMenorDeEdad = React.useMemo(() => {
+        if (!regNacimiento) return false;
+        const hoy = new Date();
+        const nacimiento = new Date(regNacimiento);
+        let edad = hoy.getFullYear() - nacimiento.getFullYear();
+        const m = hoy.getMonth() - nacimiento.getMonth();
+        if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
+            edad--;
+        }
+        return edad < 18;
+    }, [regNacimiento]);
+
+    // Validación automática: Si es menor, quitar licencia
+    React.useEffect(() => {
+        if (esMenorDeEdad) {
+            setRegLicencia(false);
+        }
+    }, [esMenorDeEdad]);
 
     // Checkout State
-    const [fechaReserva, setFechaReserva] = useState(new Date().toISOString().split('T')[0]);
+    // const [fechaReserva, setFechaReserva] = useState(new Date().toISOString().split('T')[0]); // Moved to ContextoInventario
     const [horaReserva, setHoraReserva] = useState(new Date().toTimeString().split(' ')[0].slice(0, 5));
     const [tipoReserva, setTipoReserva] = useState('inmediata'); // inmediata, anticipada
     const [metodoPago, setMetodoPago] = useState('transferencia');
     const [tipoComprobante, setTipoComprobante] = useState('boleta');
     const [datosFactura, setDatosFactura] = useState({ ruc: '', razonSocial: '', direccion: '' });
     const [aceptaTerminos, setAceptaTerminos] = useState(false);
-    const [mostrarTerminos, setMostrarTerminos] = useState(false);
 
     // Estados para descuentos y promociones en el carrito
-    const [descuentoTotal, setDescuentoTotal] = useState(0);
+    // const [descuentoTotal, setDescuentoTotal] = useState(0); // REMOVED to avoid conflict with calculated const
     const [promocionesAplicadas, setPromocionesAplicadas] = useState([]);
     const [alertas, setAlertas] = useState([]);
-    const [terminosTexto, setTerminosTexto] = useState(null);
-
-    // Fetch Términos
-    // Fetch Términos
-    React.useEffect(() => {
-        if (mostrarTerminos && !terminosTexto) {
-            import('./services/db').then(({ obtenerPagina }) => {
-                obtenerPagina('terminos')
-                    .then(data => {
-                        setTerminosTexto(data?.contenido || '<p>No se encontraron los términos y condiciones en el sistema. Por favor contacte a administración.</p>');
-                    })
-                    .catch(e => {
-                        console.error("Error cargando terminos:", e);
-                        setTerminosTexto('<p>Ocurrió un error al cargar los términos. Intente nuevamente.</p>');
-                    });
-            }).catch(e => {
-                console.error("Error importando db service:", e);
-                setTerminosTexto('<p>Error interno del sistema.</p>');
-            });
-        }
-    }, [mostrarTerminos, terminosTexto]);
+    const [totalesServer, setTotalesServer] = useState(null);
 
     // Calcular descuentos cuando cambie el carrito
     React.useEffect(() => {
         if (carrito.length > 0) {
             calcularDescuentos(carrito).then(({ descuentoTotal, promocionesAplicadas, alertas }) => {
-                setDescuentoTotal(descuentoTotal || 0);
+                // setDescuentoTotal(descuentoTotal || 0); // Deprecated state
                 setPromocionesAplicadas(promocionesAplicadas || []);
                 setAlertas(alertas || []);
             }).catch(err => {
                 console.error('Error al calcular descuentos:', err);
-                setDescuentoTotal(0);
+                // setDescuentoTotal(0); // Este ya no se usa directamente
                 setPromocionesAplicadas([]);
                 setAlertas([]);
             });
         } else {
-            setDescuentoTotal(0);
+            // setDescuentoTotal(0); // Este ya no se usa directamente
             setPromocionesAplicadas([]);
             setAlertas([]);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [carrito]); // Solo depende de carrito, no de calcularDescuentos
 
-    // Total con descuento
-    const totalConDescuento = total - descuentoTotal;
+    React.useEffect(() => {
+        const actualizarCotizacion = async () => {
+            if (carrito.length === 0) {
+                setTotalesServer({ subtotal: 0, garantia: 0, total: 0 });
+                return;
+            }
 
-    // Cálculos para mostrar en el carrito
-    const garantiaUI = totalConDescuento * 0.20; // 20% de garantía
-    const totalFinalUI = totalConDescuento + garantiaUI;
+            // Mapear carrito al formato que espera la función SQL
+            const itemsParaBD = carrito.map(item => ({
+                id: item.id,
+                horas: item.horas,
+                cantidad: item.cantidad
+            }));
+
+            const resultado = await calcularCotizacion(itemsParaBD);
+            if (resultado) {
+                setTotalesServer(resultado);
+            }
+        };
+
+        const timeout = setTimeout(actualizarCotizacion, 300); // Debounce pequeño
+        return () => clearTimeout(timeout);
+    }, [carrito]);
+
+    // Totales calculados (Fallback al cliente mientras carga el servidor)
+    const totalCliente = carrito.reduce((acc, item) => acc + (item.precioPorHora * item.horas * item.cantidad), 0);
+    const subtotalUI = totalesServer ? totalesServer.subtotal : totalCliente;
+    const garantiaUI = totalesServer ? totalesServer.garantia : (subtotalUI * 0.20); // 20% de garantía (configuracion.GARANTIA_PORCENTAJE || 0.20)
+
+    // Descuentos se aplican sobre el subtotal del servidor
+    const descuentoTotal = promocionesAplicadas.reduce((acc, promo) => {
+        if (promo.tipo === 'porcentaje') return acc + (subtotalUI * (promo.valor / 100));
+        if (promo.tipo === 'fijo') return acc + promo.valor;
+        return acc;
+    }, 0);
+
+    const totalConDescuento = Math.max(0, subtotalUI - descuentoTotal);
+    const totalFinalUI = totalesServer ? (totalConDescuento + garantiaUI) : (totalConDescuento + garantiaUI);
 
     // Auto-switch tipoReserva based on date
     React.useEffect(() => {
@@ -275,9 +324,10 @@ function AppContenido() {
     return (
         <>
             <RouterProvider router={router} />
+            <ModalInfoGlobal />
 
             {/* Modal Carrito */}
-            <Modal titulo="Tu Carrito de Compras" abierto={esVisible} alCerrar={() => setEsVisible(false)}>
+            <Modal titulo="Tu Carrito de Compras" abierto={esVisible} alCerrar={() => setEsVisible(false)} zIndex={60}>
                 {carrito.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                         <ShoppingCart size={48} className="mx-auto mb-4 opacity-20" />
@@ -288,16 +338,22 @@ function AppContenido() {
                     <>
                         <div className="space-y-4 mb-6 max-h-[60vh] overflow-y-auto pr-2">
                             {carrito.map(item => (
-                                <div key={item.id} className="flex gap-4 items-center bg-gray-50 p-3 rounded-lg">
+                                <div key={item.cartId} className="flex gap-4 items-center bg-gray-50 p-3 rounded-lg">
                                     <img src={item.imagen} alt={item.nombre} className="w-16 h-16 object-cover rounded-md" />
                                     <div className="flex-1">
                                         <h4 className="font-medium text-gray-900">{item.nombre}</h4>
-                                        <p className="text-sm text-gray-500">{item.horas}h x S/ {item.precioPorHora}</p>
-                                        {item.categoria === 'Motor' && <span className="text-xs text-orange-600 font-bold flex items-center gap-1"><AlertTriangle size={10} /> Requiere Licencia</span>}
+                                        <p className="text-sm text-gray-500">{item.horas}h x S/ {item.precioPorHora} ({item.cantidad} uni.)</p>
+                                        {item.categoria === 'Motor' && (
+                                            (usuario?.licenciaConducir || usuario?.licencia_conducir) ? (
+                                                <span className="text-xs text-green-600 font-bold flex items-center gap-1"><CheckCircle size={10} /> Licencia Verificada</span>
+                                            ) : (
+                                                <span className="text-xs text-orange-600 font-bold flex items-center gap-1"><AlertTriangle size={10} /> Requiere Licencia</span>
+                                            )
+                                        )}
                                     </div>
                                     <div className="text-right">
                                         <p className="font-bold text-gray-900">S/ {item.precioPorHora * item.horas * item.cantidad}</p>
-                                        <button onClick={() => removerDelCarrito(item.id)} className="text-red-500 text-xs hover:underline mt-1">Eliminar</button>
+                                        <button onClick={() => removerDelCarrito(item.cartId)} className="text-red-500 text-xs hover:underline mt-1">Eliminar</button>
                                     </div>
                                 </div>
                             ))}
@@ -391,7 +447,7 @@ function AppContenido() {
                                     onChange={(e) => setAceptaTerminos(e.target.checked)}
                                 />
                                 <label htmlFor="terminos" className="text-sm text-gray-700 cursor-pointer">
-                                    He leído y acepto los <button type="button" onClick={() => setMostrarTerminos(true)} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>, incluyendo la responsabilidad por daños y el depósito de garantía reembolsable.
+                                    He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos', 'Términos y Condiciones')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>, incluyendo la responsabilidad por daños y el depósito de garantía reembolsable.
                                 </label>
                             </div>
                         </div>
@@ -406,32 +462,31 @@ function AppContenido() {
                                 </div>
                             )}
 
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600">Subtotal</span>
-                                <span className="font-medium text-gray-900">S/ {total.toFixed(2)}</span>
+                            <div class="flex justify-between items-center text-gray-500 text-sm">
+                                <span>Subtotal Base</span>
+                                <span>S/ {totalesServer?.subtotal_base?.toFixed(2) || '0.00'}</span>
                             </div>
 
-                            {promocionesAplicadas.length > 0 && (
-                                <div className="flex justify-between items-center text-green-600">
-                                    <span className="text-sm flex items-center gap-1"><CheckCircle size={12} /> Descuentos ({promocionesAplicadas.length})</span>
-                                    <span className="font-medium">- S/ {descuentoTotal.toFixed(2)}</span>
-                                </div>
-                            )}
+                            <div class="flex justify-between items-center text-gray-500 text-sm">
+                                <span>IGV (18%)</span>
+                                <span>S/ {totalesServer?.igv?.toFixed(2) || '0.00'}</span>
+                            </div>
 
-                            <div className="flex justify-between items-center text-gray-800 font-medium border-t border-gray-100 pt-1">
+                            <div className="flex justify-between items-center text-gray-800 font-medium border-t border-gray-100 pt-1 mt-1">
                                 <span className="text-sm">Total Servicio</span>
-                                <span>S/ {totalConDescuento.toFixed(2)}</span>
+                                <span>S/ {totalesServer?.subtotal?.toFixed(2) || '0.00'}</span>
                             </div>
 
                             <div className="flex justify-between items-center text-green-700">
-                                <span className="text-sm">Garantía (20% Reembolsable)</span>
-                                <span className="font-medium">S/ {garantiaUI.toFixed(2)}</span>
+                                <span className="text-sm">Garantía (Reembolsable)</span>
+                                <span className="font-medium">S/ {totalesServer?.garantia?.toFixed(2) || '0.00'}</span>
                             </div>
-                            <div className="flex justify-between items-center border-t border-dashed pt-2">
+
+                            <div className="flex justify-between items-center border-t border-dashed pt-2 mt-2">
                                 <span className="font-bold text-gray-900">Total a Pagar</span>
                                 <div className="text-right">
-                                    <span className="block text-xl font-bold text-blue-600">S/ {totalFinalUI.toFixed(2)}</span>
-                                    <span className="block text-xs text-gray-500">approx. $ {(totalFinalUI / 3.80).toFixed(2)}</span>
+                                    <span className="block text-xl font-bold text-blue-600">S/ {totalesServer?.total?.toFixed(2) || '0.00'}</span>
+                                    <span className="block text-xs text-gray-500">approx. $ {totalesServer?.total_dolares?.toFixed(2) || '0.00'}</span>
                                 </div>
                             </div>
 
@@ -439,11 +494,11 @@ function AppContenido() {
                                 <div className="bg-orange-50 p-2 rounded text-sm space-y-1 mt-2">
                                     <div className="flex justify-between items-center text-blue-800">
                                         <span className="font-medium">Adelanto a Pagar (60%)</span>
-                                        <span className="font-bold">S/ {(totalFinalUI * 0.60).toFixed(2)}</span>
+                                        <span className="font-bold">S/ {(totalesServer?.total * 0.60)?.toFixed(2) || '0.00'}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-orange-800">
                                         <span className="font-medium">Saldo Pendiente (40%)</span>
-                                        <span className="font-bold">S/ {(totalFinalUI * 0.40).toFixed(2)}</span>
+                                        <span className="font-bold">S/ {(totalesServer?.total * 0.40)?.toFixed(2) || '0.00'}</span>
                                     </div>
                                 </div>
                             )}
@@ -459,41 +514,24 @@ function AppContenido() {
                 )}
             </Modal>
 
-            {/* Modal Términos y Condiciones */}
-            {mostrarTerminos && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl transform transition-all scale-100">
-                        <div className="flex justify-between items-center mb-4 border-b pb-4">
-                            <h2 className="text-2xl font-bold text-gray-900">Términos y Condiciones</h2>
-                            <button onClick={() => setMostrarTerminos(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
-                                <X size={24} />
-                            </button>
-                        </div>
-                        <div className="space-y-4 text-sm text-gray-700 max-h-[60vh] overflow-y-auto p-2">
-                            {terminosTexto ? (
-                                <div dangerouslySetInnerHTML={{ __html: terminosTexto }} />
-                            ) : (
-                                <div className="animate-pulse">Cargando términos...</div>
-                            )}
-                        </div>
-                        <div className="mt-6 flex justify-end gap-3 pt-4 border-t">
-                            <button onClick={() => setMostrarTerminos(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                                Cerrar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+
 
             {/* Modal Login/Registro */}
-            <Modal titulo={modoRegistro ? "Crear Cuenta" : "Bienvenido"} abierto={mostrarLogin} alCerrar={() => setMostrarLogin(false)}>
+            <Modal titulo={modoRegistro ? "Crear Cuenta" : "Bienvenido"} abierto={mostrarLogin} alCerrar={() => setMostrarLogin(false)} zIndex={60}>
                 {modoRegistro ? (
                     <form onSubmit={async (e) => {
                         e.preventDefault();
-                        if (!/^\d{8}$/.test(regDoc)) {
-                            alert("El DNI debe tener exactamente 8 dígitos numéricos.");
+
+                        // Validación DNI en interfaz (Solo si es DNI)
+                        if (regTipoDocumento === 'DNI' && !/^\d{8}$/.test(regDoc)) {
+                            setErrorDni("El DNI debe tener exactamente 8 dígitos numéricos.");
                             return;
                         }
+
+                        if (!aceptaTerminosRegistro) {
+                            return;
+                        }
+
                         const resultado = await registrarUsuario({
                             nombre: regNombre,
                             email: regEmail,
@@ -501,21 +539,22 @@ function AppContenido() {
                             numeroDocumento: regDoc,
                             fechaNacimiento: regNacimiento,
                             licenciaConducir: regLicencia,
-                            tipoDocumento: 'DNI',
-                            nacionalidad: 'Nacional'
+                            tipoDocumento: regTipoDocumento,
+                            nacionalidad: regNacionalidad
                         });
 
                         if (resultado === true) {
                             setMostrarLogin(false);
                             setModoRegistro(false);
+                            setAceptaTerminosRegistro(false);
                             alert('Cuenta creada exitosamente. ¡Bienvenido!');
                         } else {
                             if (resultado?.toString().includes('usuarios_email_unique')) {
                                 alert("El correo electrónico ya está registrado.");
                             } else if (resultado?.toString().includes('usuarios_dni_unique_idx')) {
-                                alert("El DNI ya está registrado.");
+                                alert("El documento de identidad ya está registrado.");
                             } else if (resultado?.toString().includes('usuarios_dni_check')) {
-                                alert("El formato del DNI es inválido (debe tener 8 dígitos).");
+                                setErrorDni("El formato del DNI es inválido (debe tener 8 dígitos).");
                             } else {
                                 alert(resultado || 'Error al crear la cuenta. Intente nuevamente.');
                             }
@@ -523,8 +562,100 @@ function AppContenido() {
                     }} className="space-y-4">
                         <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input required className="w-full p-2 border rounded" value={regNombre} onChange={e => setRegNombre(e.target.value)} /></div>
                         <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input required type="email" className="w-full p-2 border rounded" value={regEmail} onChange={e => setRegEmail(e.target.value)} /></div>
+
                         <div className="grid grid-cols-2 gap-4">
-                            <div><label className="block text-sm font-medium text-gray-700 mb-1">DNI / Documento</label><input required className="w-full p-2 border rounded" value={regDoc} onChange={e => setRegDoc(e.target.value)} /></div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1"> Condición</label>
+                                <select
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={regNacionalidad}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        setRegNacionalidad(val);
+                                        // Auto-switch Logic
+                                        if (val === 'Nacional') {
+                                            setRegPaisOrigen('Perú');
+                                            setRegTipoDocumento('DNI');
+                                        } else {
+                                            setRegPaisOrigen('Argentina');
+                                            setRegTipoDocumento('Pasaporte');
+                                        }
+                                        setErrorDni('');
+                                    }}
+                                >
+                                    <option value="Nacional">Peruana</option>
+                                    <option value="Extranjero">Extranjera</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">País Origen</label>
+                                {regNacionalidad === 'Nacional' ? (
+                                    <input disabled className="w-full p-2 border rounded bg-gray-100 text-gray-500 font-medium" value="Perú" />
+                                ) : (
+                                    <select
+                                        className="w-full p-2 border rounded bg-white"
+                                        value={regPaisOrigen}
+                                        onChange={e => setRegPaisOrigen(e.target.value)}
+                                    >
+                                        <option value="Argentina">Argentina</option>
+                                        <option value="Bolivia">Bolivia</option>
+                                        <option value="Brasil">Brasil</option>
+                                        <option value="Canadá">Canadá</option>
+                                        <option value="Chile">Chile</option>
+                                        <option value="China">China</option>
+                                        <option value="Colombia">Colombia</option>
+                                        <option value="Ecuador">Ecuador</option>
+                                        <option value="España">España</option>
+                                        <option value="Estados Unidos">Estados Unidos</option>
+                                        <option value="Francia">Francia</option>
+                                        <option value="Italia">Italia</option>
+                                        <option value="Japón">Japón</option>
+                                        <option value="México">México</option>
+                                        <option value="Paraguay">Paraguay</option>
+                                        <option value="Reino Unido">Reino Unido</option>
+                                        <option value="Uruguay">Uruguay</option>
+                                        <option value="Venezuela">Venezuela</option>
+                                        <option value="Otro">Otro</option>
+                                    </select>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Doc.</label>
+                                <select
+                                    className="w-full p-2 border rounded bg-gray-50 disabled:bg-gray-100"
+                                    value={regTipoDocumento}
+                                    onChange={e => setRegTipoDocumento(e.target.value)}
+                                    disabled={regNacionalidad === 'Nacional'}
+                                >
+                                    <option value="DNI">DNI</option>
+                                    <option value="Pasaporte">Pasaporte</option>
+                                    <option value="CE">C.E.</option>
+                                    <option value="PTP">PTP</option>
+                                </select>
+                            </div>
+
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    {regTipoDocumento === 'DNI' ? 'Número DNI' : 'N° Documento'}
+                                </label>
+                                <input
+                                    required
+                                    className={`w-full p-2 border rounded ${errorDni ? 'border-red-500 bg-red-50' : ''}`}
+                                    value={regDoc}
+                                    maxLength={regTipoDocumento === 'DNI' ? 8 : 20}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (regTipoDocumento === 'DNI' && !/^\d*$/.test(val)) return;
+                                        setRegDoc(val);
+                                        setErrorDni('');
+                                    }}
+                                />
+                                {errorDni && <p className="text-xs text-red-500 mt-1 font-medium">{errorDni}</p>}
+                            </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Nacimiento</label>
                                 <input
@@ -543,20 +674,43 @@ function AppContenido() {
                         </div>
                         <div><label className="block text-sm font-medium text-gray-700 mb-1">Password</label><input required type="password" className="w-full p-2 border rounded" value={regPass} onChange={e => setRegPass(e.target.value)} /></div>
 
-                        <div className={`flex items-center gap-2 p-2 rounded border ${esMenorRegistro ? 'bg-gray-100 opacity-50' : 'bg-gray-50'}`}>
-                            <input
-                                type="checkbox"
-                                id="regLicencia"
-                                checked={regLicencia}
-                                onChange={e => setRegLicencia(e.target.checked)}
-                                disabled={esMenorRegistro}
-                            />
-                            <label htmlFor="regLicencia" className="text-sm text-gray-700">
-                                Tengo Licencia de Conducir {esMenorRegistro && '(Solo mayores de 18)'}
-                            </label>
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    id="regLicencia"
+                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                                    checked={regLicencia}
+                                    onChange={(e) => setRegLicencia(e.target.checked)}
+                                    disabled={esMenorDeEdad}
+                                />
+                                <label htmlFor="regLicencia" className={`text-sm ${esMenorDeEdad ? 'text-gray-400' : 'text-gray-700'}`}>
+                                    Tengo Licencia de Conducir {esMenorDeEdad && '(Requiere ser mayor de edad)'}
+                                </label>
+                            </div>
+
+                            <div className="flex items-start gap-2 p-3 rounded border bg-gray-50">
+                                <input
+                                    type="checkbox"
+                                    id="regTerminos"
+                                    className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                    checked={aceptaTerminosRegistro}
+                                    onChange={e => setAceptaTerminosRegistro(e.target.checked)}
+                                />
+                                <label htmlFor="regTerminos" className="text-sm text-gray-700 cursor-pointer select-none">
+                                    He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos', 'Términos y Condiciones')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>
+                                </label>
+                            </div>
                         </div>
 
-                        <Boton variante="primario" className="w-full py-3" type="submit">Registrarse</Boton>
+                        <Boton
+                            variante="primario"
+                            className={`w-full py-3 ${!aceptaTerminosRegistro ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            type="submit"
+                            disabled={!aceptaTerminosRegistro}
+                        >
+                            Registrarse
+                        </Boton>
                         <p className="text-center text-sm text-gray-600">¿Ya tienes cuenta? <button type="button" onClick={() => setModoRegistro(false)} className="text-blue-600 font-bold">Inicia Sesión</button></p>
                     </form>
                 ) : (
@@ -569,7 +723,7 @@ function AppContenido() {
                         <div className="mt-4 text-xs text-gray-500 bg-gray-100 p-3 rounded"><p className="font-bold mb-1">Cuentas de prueba:</p><p>Cliente: cliente@demo.com / 123</p><p>Vendedor: vendedor@demo.com / 123</p><p>Admin: admin@demo.com / 123</p><p>Dueño: dueno@demo.com / 123</p><p>Mecánico: mecanico@demo.com / 123</p></div>
                     </form>
                 )}
-            </Modal>
+            </Modal >
         </>
     );
 };

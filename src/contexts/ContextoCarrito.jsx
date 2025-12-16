@@ -6,16 +6,32 @@ export const ProveedorCarrito = ({ children }) => {
     const [carrito, setCarrito] = useState([]);
     const [esVisible, setEsVisible] = useState(false);
 
-    const agregarAlCarrito = (producto, horas) => {
+    const agregarAlCarrito = (producto, horas, cantidad = 1) => {
         setCarrito(prev => {
-            const existente = prev.find(item => item.id === producto.id);
-            if (existente) return prev.map(item => item.id === producto.id ? { ...item, cantidad: item.cantidad + 1, horas } : item);
-            return [...prev, { ...producto, cantidad: 1, horas }];
+            // Buscamos si existe un item con el mismo ID de producto Y la misma cantidad de horas
+            const existente = prev.find(item => item.id === producto.id && item.horas === horas);
+
+            if (existente) {
+                // Si existe exactamente igual (mismo producto, mismas horas), sumamos la cantidad
+                return prev.map(item =>
+                    (item.id === producto.id && item.horas === horas)
+                        ? { ...item, cantidad: item.cantidad + cantidad }
+                        : item
+                );
+            }
+
+            // Si es un producto diferente o el mismo producto con diferentes horas, agregamos nueva entrada
+            return [...prev, {
+                ...producto,
+                cantidad,
+                horas,
+                cartId: `${producto.id}-${horas}-${Date.now()}` // Identificador único para el carrito
+            }];
         });
         setEsVisible(true);
     };
 
-    const removerDelCarrito = (id) => setCarrito(prev => prev.filter(item => item.id !== id));
+    const removerDelCarrito = (cartId) => setCarrito(prev => prev.filter(item => item.cartId !== cartId));
     const limpiarCarrito = () => setCarrito([]);
     const total = carrito.reduce((acc, item) => acc + (item.precioPorHora * item.horas * item.cantidad), 0);
 

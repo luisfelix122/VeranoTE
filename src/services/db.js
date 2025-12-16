@@ -53,6 +53,16 @@ export const obtenerHorarios = async () => {
     return data;
 };
 
+// Función para calcular cotización en el servidor
+export const calcularCotizacion = async (items) => {
+    const { data, error } = await supabase.rpc('calcular_cotizacion', { items });
+    if (error) {
+        console.error('Error calculando cotización:', error);
+        return null;
+    }
+    return data;
+};
+
 export const obtenerConfiguracion = async () => {
     const { data, error } = await supabase
         .from('configuracion')
@@ -68,6 +78,22 @@ export const obtenerConfiguracion = async () => {
         config[item.clave] = item.valor;
     });
     return config;
+};
+
+export const obtenerContenidoWeb = async () => {
+    const { data, error } = await supabase
+        .from('contenido_web')
+        .select('*');
+
+    if (error) {
+        console.error('Error al obtener contenido web:', error);
+        return {};
+    }
+    const contenido = {};
+    data.forEach(item => {
+        contenido[item.clave] = item.valor;
+    });
+    return contenido;
 };
 
 export const obtenerUsuarios = async () => {
@@ -291,9 +317,35 @@ export const registrarUsuarioDB = async (datosUsuario) => {
 export const actualizarUsuarioDB = async (id, datos) => {
     // Mapear rol a rol_id si viene en los datos
     const datosParaActualizar = { ...datos };
+
+    // Mapeo manual de campos camelCase a snake_case
     if (datosParaActualizar.rol) {
         datosParaActualizar.rol_id = datosParaActualizar.rol;
         delete datosParaActualizar.rol;
+    }
+    if (datosParaActualizar.licenciaConducir !== undefined) {
+        datosParaActualizar.licencia_conducir = datosParaActualizar.licenciaConducir;
+        delete datosParaActualizar.licenciaConducir;
+    }
+    if (datosParaActualizar.numeroDocumento) {
+        datosParaActualizar.numero_documento = datosParaActualizar.numeroDocumento;
+        delete datosParaActualizar.numeroDocumento;
+    }
+    if (datosParaActualizar.fechaNacimiento) {
+        datosParaActualizar.fecha_nacimiento = datosParaActualizar.fechaNacimiento;
+        delete datosParaActualizar.fechaNacimiento;
+    }
+    if (datosParaActualizar.tipoDocumento) {
+        datosParaActualizar.tipo_documento = datosParaActualizar.tipoDocumento;
+        delete datosParaActualizar.tipoDocumento;
+    }
+    if (datosParaActualizar.contactoEmergencia) {
+        datosParaActualizar.contacto_emergencia = datosParaActualizar.contactoEmergencia;
+        delete datosParaActualizar.contactoEmergencia;
+    }
+    if (datosParaActualizar.codigoEmpleado) {
+        datosParaActualizar.codigo_empleado = datosParaActualizar.codigoEmpleado;
+        delete datosParaActualizar.codigoEmpleado;
     }
 
     const { data, error } = await supabase
@@ -493,27 +545,26 @@ export const crearTicket = async (usuarioId, datos) => {
 
     if (errorTicket) return { success: false, error: errorTicket };
 
-    // 2. Obtener un Admin para la notificación (Dinámico)
-    let adminId = 'u2'; // Fallback
-    const { data: adminData } = await supabase
+    // 2. Obtener Admins y Dueños para la notificación
+    const { data: destinatarios } = await supabase
         .from('usuarios')
         .select('id')
-        .eq('rol_id', 'admin')
-        .limit(1)
-        .single();
+        .in('rol_id', ['admin', 'dueno']);
 
-    if (adminData) adminId = adminData.id;
+    const usuariosANotificar = destinatarios || [{ id: 'u2' }]; // Fallback a admin default si falla
 
-    // 3. Crear Mensaje Automático en la Bandeja de Entrada (Enviados)
+    // 3. Crear Mensaje Automático para CADA destinatario
+    const mensajesParaInsertar = usuariosANotificar.map(dest => ({
+        remitente_id: usuarioId,
+        destinatario_id: dest.id,
+        asunto: `[Ticket #${ticket.id}] ${datos.asunto}`,
+        contenido: datos.mensaje,
+        leido: false
+    }));
+
     const { error: errorMensaje } = await supabase
         .from('mensajes')
-        .insert([{
-            remitente_id: usuarioId,
-            destinatario_id: adminId,
-            asunto: `[Ticket #${ticket.id}] ${datos.asunto}`,
-            contenido: datos.mensaje,
-            leido: false
-        }]);
+        .insert(mensajesParaInsertar);
 
     if (errorMensaje) console.warn("No se pudo crear copia en mensajes:", errorMensaje);
 
@@ -547,6 +598,36 @@ export const obtenerMisGastos = async (usuarioId) => {
 
     if (error) {
         console.error('Error al obtener mis gastos:', error);
+        return [];
+    }
+    return data;
+};
+
+
+
+export const obtenerPerfilAlquileres = async (usuarioId) => {
+    const { data, error } = await supabase
+        .from('v_perfil_alquileres')
+        .select('*')
+        .eq('cliente_id', usuarioId)
+        .order('fecha_inicio', { ascending: false });
+
+    if (error) {
+        console.error('Error al obtener historial alquileres:', error);
+        return [];
+    }
+    return data;
+};
+
+export const obtenerPerfilSoporte = async (usuarioId) => {
+    const { data, error } = await supabase
+        .from('v_perfil_soporte')
+        .select('*')
+        .eq('usuario_id', usuarioId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error al obtener historial soporte:', error);
         return [];
     }
     return data;
@@ -593,6 +674,54 @@ export const obtenerPagina = async (slug) => {
     return data;
 };
 
+// Función para cambiar contraseña de forma segura
+export async function cambiarPassword(usuarioId, passwordActual, nuevoPassword) {
+    const { data, error } = await supabase
+        .rpc('cambiar_password', {
+            p_usuario_id: usuarioId,
+            p_password_actual: passwordActual,
+            p_nuevo_password: nuevoPassword
+        });
+
+    if (error) {
+        console.error("Error al cambiar password:", error);
+        return { exito: false, mensaje: error.message };
+    }
+
+    return { exito: data, mensaje: data ? 'Contraseña actualizada correctamente' : 'La contraseña actual es incorrecta' };
+}
+
+// Función para actualizar el tipo de cambio con API Externa (USD -> PEN)
+export const actualizarTipoCambioReal = async () => {
+    try {
+        // Usamos una API pública y gratuita de tasas de cambio
+        const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+        if (!response.ok) throw new Error('Error en API de tipo de cambio');
+
+        const data = await response.json();
+        const tipoCambioActual = data.rates.PEN; // Ejemplo: 3.85
+
+        if (tipoCambioActual) {
+            // Actualizamos la base de datos para que todos los cálculos usen el valor real
+            const { error } = await supabase
+                .from('configuracion')
+                .update({ valor: tipoCambioActual.toString() })
+                .eq('clave', 'TIPO_CAMBIO');
+
+            if (error) {
+                console.error('Error actualizando tipo de cambio en BD:', error);
+            } else {
+                console.log('Tipo de cambio actualizado a:', tipoCambioActual);
+            }
+            return tipoCambioActual;
+        }
+    } catch (error) {
+        console.error('No se pudo obtener el tipo de cambio:', error);
+        return null; // Fallback silencioso, se usará el valor anterior de la BD
+    }
+};
+
+
 export const obtenerFaqs = async () => {
     const { data, error } = await supabase
         .from('faqs')
@@ -604,4 +733,15 @@ export const obtenerFaqs = async () => {
         return [];
     }
     return data;
+};
+
+export const estimarDisponibilidad = async (recursoId) => {
+    const { data, error } = await supabase
+        .rpc('estimar_disponibilidad_recurso', { p_recurso_id: recursoId });
+
+    if (error) {
+        console.error('Error al estimar disponibilidad:', error);
+        return null; // O manejar error
+    }
+    return data; // Retorna timestamp o null
 };

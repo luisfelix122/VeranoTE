@@ -1,21 +1,23 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { BarChart3, AlertCircle, Search, Wrench, DollarSign, MessageSquare, FileText, CheckCircle, XCircle, Activity, PieChart, Calendar, Image as ImageIcon } from 'lucide-react';
+import { BarChart3, AlertCircle, Search, Wrench, DollarSign, MessageSquare, FileText, CheckCircle, XCircle, Activity, PieChart, Calendar, Image as ImageIcon, CreditCard } from 'lucide-react';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import { ContextoSoporte } from '../contexts/ContextoSoporte';
-import { obtenerMisGastos, obtenerMisReclamos } from '../services/db';
+import { obtenerMisGastos, obtenerMisReclamos, registrarPagoSaldoDB } from '../services/db';
 import Boton from '../components/ui/Boton';
 import BadgeEstado from '../components/ui/BadgeEstado';
 import { formatearFecha } from '../utils/formatters';
 
 
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+
 
 const Reportes = ({ rol: rolProp }) => {
-    const { alquileres, inventario, reprogramarAlquiler, marcarNoShow, aplicarDescuentoMantenimiento } = useContext(ContextoInventario);
+    const { alquileres, inventario, reprogramarAlquiler, marcarNoShow, aplicarDescuentoMantenimiento, registrarPagoSaldo } = useContext(ContextoInventario);
     const { usuario, usuarios } = useContext(ContextoAutenticacion);
     const { tickets } = useContext(ContextoSoporte);
     const location = useLocation();
+    const navigate = useNavigate();
 
     const rol = rolProp || usuario?.rol;
 
@@ -34,6 +36,8 @@ const Reportes = ({ rol: rolProp }) => {
     const [misGastos, setMisGastos] = useState([]);
     const [misReclamos, setMisReclamos] = useState([]);
     const [cargando, setCargando] = useState(false);
+    const [modalTicketAbierto, setModalTicketAbierto] = useState(false);
+    const { crearTicket } = useContext(ContextoSoporte);
 
     useEffect(() => {
         if (rol === 'cliente' && usuario?.id) {
@@ -65,7 +69,12 @@ const Reportes = ({ rol: rolProp }) => {
     if (rol === 'cliente') {
         // Ya asignado arriba desde misGastos (Vista SQL)
     } else if (rol === 'vendedor') {
-        misAlquileres = alquileres.filter(a => a.vendedorId === usuario?.id);
+        // Vendedor ve todo lo de su sede para poder cobrar a cualquiera
+        if (usuario?.sede) {
+            misAlquileres = alquileres.filter(a => a.sedeId === usuario.sede);
+        } else {
+            misAlquileres = alquileres.filter(a => a.vendedorId === usuario?.id);
+        }
     } else if (rol === 'admin' && usuario?.sede) {
         // Admin ve todo lo de su sede asignada
         misAlquileres = alquileres.filter(a => a.sedeId === usuario.sede);
@@ -221,7 +230,10 @@ const Reportes = ({ rol: rolProp }) => {
             )}
 
             {rol === 'cliente' && (
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <div
+                    onClick={() => setPestanaActiva('soporte')}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:border-blue-300 transition-all"
+                >
                     <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><MessageSquare size={16} /> Mis Reclamos</h3>
                     <p className="text-2xl font-bold text-gray-700">{misTickets.length}</p>
                 </div>
@@ -329,9 +341,31 @@ const Reportes = ({ rol: rolProp }) => {
                                                     {(a.estado_nombre === 'pendiente' || a.estado === 'pendiente') && (
                                                         <button
                                                             onClick={() => manejarReprogramacion(a.id)}
-                                                            className="text-blue-600 hover:text-blue-800 text-xs font-medium hover:underline"
+                                                            className="text-blue-600 hover:text-blue-800 text-xs font-medium hover:underline block w-full mb-2"
                                                         >
                                                             Reprogramar
+                                                        </button>
+                                                    )}
+
+                                                    {Number(a.saldo_pendiente || 0) > 0 && (
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (window.confirm(`¿Deseas pagar la deuda de S/ ${a.saldo_pendiente} usando tu tarjeta predeterminada?`)) {
+                                                                    const res = await registrarPagoSaldoDB(a.id);
+                                                                    if (res) {
+                                                                        alert("¡Pago registrado con éxito! Tu deuda ha quedado saldada.");
+                                                                        // Actualizar estado local para reflejar el cambio inmediato
+                                                                        setMisGastos(prev => prev.map(item =>
+                                                                            item.id === a.id ? { ...item, saldo_pendiente: 0, monto_pagado: Number(item.total_final) } : item
+                                                                        ));
+                                                                    } else {
+                                                                        alert("Error al procesar el pago. Inténtalo nuevamente.");
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-blue-700 transition-all animate-pulse w-full sm:w-auto"
+                                                        >
+                                                            <CreditCard size={12} /> Pagar S/ {Number(a.saldo_pendiente || 0).toFixed(2)}
                                                         </button>
                                                     )}
                                                 </td>
@@ -399,6 +433,20 @@ const Reportes = ({ rol: rolProp }) => {
                                     <td className="p-3">
                                         {(rol === 'admin' || rol === 'vendedor' || rol === 'dueno') && (
                                             <div className="flex flex-col gap-1">
+                                                {/* Botón Cobrar Deuda */}
+                                                {(Number(a.saldoPendiente || a.saldo_pendiente || 0) > 0) && (
+                                                    <button
+                                                        className="text-green-600 hover:text-green-800 text-xs font-bold flex items-center gap-1 border border-green-200 bg-green-50 px-2 py-1 rounded mb-1 animate-pulse"
+                                                        onClick={async () => {
+                                                            if (confirm(`¿Confirmar recepción de pago de S/ ${Number(a.saldoPendiente || a.saldo_pendiente).toFixed(2)}?`)) {
+                                                                await registrarPagoSaldo(a.id);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <DollarSign size={12} /> Cobrar S/ {Number(a.saldoPendiente || a.saldo_pendiente).toFixed(2)}
+                                                    </button>
+                                                )}
+
                                                 {a.estado === 'pendiente' && new Date() > new Date(new Date(a.fechaInicio).getTime() + 10 * 60000) && (
                                                     <button
                                                         className="text-red-600 hover:text-red-800 text-xs font-medium flex items-center gap-1"
@@ -522,211 +570,216 @@ const Reportes = ({ rol: rolProp }) => {
                             <MessageSquare size={18} className="text-blue-600" />
                             {rol === 'cliente' ? 'Historial de Consultas' : 'Bandeja de Soporte'}
                         </h3>
-                        {rol !== 'cliente' && (
-                            <div className="flex bg-gray-100 p-1 rounded-lg">
-                                <button
-                                    onClick={() => setFiltroMensajes('enviados')}
-                                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${filtroMensajes === 'enviados' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                >
-                                    Enviados
-                                </button>
-                                <button
-                                    onClick={() => setFiltroMensajes('recibidos')}
-                                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${filtroMensajes === 'recibidos' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                >
-                                    Recibidos
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 text-gray-700 font-medium border-b border-gray-100">
-                                <tr>
-                                    <th className="p-4">ID / Fecha</th>
-                                    <th className="p-4">Asunto</th>
-                                    <th className="p-4">Mensaje</th>
-                                    {rol !== 'cliente' && <th className="p-4">{filtroMensajes === 'recibidos' ? 'De' : 'Para'}</th>}
-                                    <th className="p-4 text-center">Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {misTickets.map(t => (
-                                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="p-4">
-                                            <div className="font-medium text-gray-900">#{t.id.toString().slice(0, 8)}</div>
-                                            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                                                <Calendar size={10} />
-                                                {new Date(t.created_at).toLocaleDateString()}
-                                            </div>
-                                        </td>
-                                        <td className="p-4 font-medium text-gray-900">{t.asunto}</td>
-                                        <td className="p-4 text-gray-600 max-w-md truncate" title={t.mensaje}>{t.mensaje}</td>
-                                        {rol !== 'cliente' && (
-                                            <td className="p-4 text-gray-600">
-                                                {t.usuario?.nombre || t.nombre_usuario || 'Usuario'}
-                                            </td>
-                                        )}
-                                        <td className="p-4 text-center">
-                                            <BadgeEstado estado={t.estado || 'pendiente'} />
-                                        </td>
-                                    </tr>
-                                ))}
-                                {misTickets.length === 0 && (
-                                    <tr>
-                                        <td colSpan={rol === 'cliente' ? 4 : 5} className="p-12 text-center text-gray-500">
-                                            <div className="flex flex-col items-center gap-3">
-                                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-400">
-                                                    <MessageSquare size={24} />
-                                                </div>
-                                                <p>No hay tickets registrados en esta sección.</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        );
-    };
 
-    // --- Vista Principal ---
+                        <div className="flex items-center gap-2">
 
-    return (
-        <div className="px-4 sm:px-6 lg:px-8 space-y-6 py-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
-                    <BarChart3 className="text-blue-600" />
-                    Reportes: {rol === 'dueno' ? 'Dueño' : rol.charAt(0).toUpperCase() + rol.slice(1)}
-                </h2>
 
-                <div className="flex gap-2 items-center">
-                    {/* Tabs para Admin/Dueño/Cliente/Mecánico */}
-                    {(rol === 'admin' || rol === 'dueno' || rol === 'cliente' || rol === 'mecanico') && (
-                        <div className="flex bg-gray-100 p-1 rounded-lg">
-                            {rol === 'mecanico' ? (
-                                <>
+                            {rol !== 'cliente' && (
+                                <div className="flex bg-gray-100 p-1 rounded-lg">
                                     <button
-                                        onClick={() => setPestanaActiva('trabajos_activos')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'trabajos_activos' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                        onClick={() => setFiltroMensajes('enviados')}
+                                        className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${filtroMensajes === 'enviados' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
                                     >
-                                        Trabajos Activos
+                                        Enviados
                                     </button>
                                     <button
-                                        onClick={() => setPestanaActiva('historial_mantenimiento')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'historial_mantenimiento' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                        onClick={() => setFiltroMensajes('recibidos')}
+                                        className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${filtroMensajes === 'recibidos' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
                                     >
-                                        Historial
+                                        Recibidos
                                     </button>
-                                </>
-                            ) : (
-                                <>
-                                    <button
-                                        onClick={() => setPestanaActiva('ventas')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'ventas' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                    >
-                                        {rol === 'cliente' ? 'Mis Reportes' : 'Ventas'}
-                                    </button>
-                                    {(rol === 'admin' || rol === 'dueno') && (
-                                        <button
-                                            onClick={() => setPestanaActiva('inventario')}
-                                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'inventario' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                        >
-                                            Inventario
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={() => setPestanaActiva('soporte')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'soporte' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                    >
-                                        Soporte
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Controles de Reporte Avanzado (Admin/Dueño) */}
-            {
-                (rol === 'admin' || rol === 'dueno') && (
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex flex-col md:flex-row gap-4 items-end">
-                            <div className="w-full md:w-auto">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Reporte</label>
-                                <select
-                                    className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
-                                    value={modoReporte}
-                                    onChange={(e) => setModoReporte(e.target.value)}
-                                >
-                                    <option value="general">General</option>
-                                    <option value="individual">Individual</option>
-                                </select>
-                            </div>
-
-                            <div className="w-full md:w-auto">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Rol</label>
-                                <select
-                                    className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
-                                    value={rolFiltro}
-                                    onChange={(e) => {
-                                        setRolFiltro(e.target.value);
-                                        setUsuarioFiltroId(''); // Reset user selection when role changes
-                                    }}
-                                >
-                                    <option value="todos">Todos</option>
-                                    <option value="cliente">Clientes</option>
-                                    <option value="vendedor">Vendedores</option>
-                                    <option value="mecanico">Mecánicos</option>
-                                    {rol === 'dueno' && <option value="admin">Administradores</option>}
-                                </select>
-                            </div>
-
-                            {modoReporte === 'individual' && (
-                                <div className="w-full md:w-auto flex-1">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Usuario</label>
-                                    <select
-                                        className="w-full p-2 border rounded-lg text-sm bg-gray-50"
-                                        value={usuarioFiltroId}
-                                        onChange={(e) => setUsuarioFiltroId(e.target.value)}
-                                    >
-                                        <option value="">-- Seleccione un usuario --</option>
-                                        {usuarios
-                                            .filter(u => rolFiltro === 'todos' ? true : u.rol === rolFiltro)
-                                            .map(u => (
-                                                <option key={u.id} value={u.id}>
-                                                    {u.nombre} ({u.rol}) - {u.email}
-                                                </option>
-                                            ))
-                                        }
-                                    </select>
                                 </div>
                             )}
                         </div>
                     </div>
-                )
-            }
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-gray-50 text-gray-700 font-medium border-b border-gray-100">
+                            <tr>
+                                <th className="p-4">ID / Fecha</th>
+                                <th className="p-4">Asunto</th>
+                                <th className="p-4">Mensaje</th>
+                                {rol !== 'cliente' && <th className="p-4">{filtroMensajes === 'recibidos' ? 'De' : 'Para'}</th>}
+                                <th className="p-4 text-center">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {misTickets.map(t => (
+                                <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="p-4">
+                                        <div className="font-medium text-gray-900">#{t.id.toString().slice(0, 8)}</div>
+                                        <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                                            <Calendar size={10} />
+                                            {new Date(t.created_at).toLocaleDateString()}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 font-medium text-gray-900">{t.asunto}</td>
+                                    <td className="p-4 text-gray-600 max-w-md truncate" title={t.mensaje}>{t.mensaje}</td>
+                                    {rol !== 'cliente' && (
+                                        <td className="p-4 text-gray-600">
+                                            {t.usuario?.nombre || t.nombre_usuario || 'Usuario'}
+                                        </td>
+                                    )}
+                                    <td className="p-4 text-center">
+                                        <BadgeEstado estado={t.estado || 'pendiente'} />
+                                    </td>
+                                </tr>
+                            ))}
+                            {misTickets.length === 0 && (
+                                <tr>
+                                    <td colSpan={rol === 'cliente' ? 4 : 5} className="p-12 text-center text-gray-500">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-400">
+                                                <MessageSquare size={24} />
+                                            </div>
+                                            <p>No hay tickets registrados en esta sección.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-            {renderKPIs()}
+        );
+    };
 
-            {/* Renderizado Condicional de Pestañas */}
-            {pestanaActiva === 'ventas' && renderTablaVentas()}
-            {pestanaActiva === 'inventario' && (rol === 'admin' || rol === 'dueno') && renderTablaInventario()}
-            {pestanaActiva === 'soporte' && renderTablaSoporte()}
+// --- Vista Principal ---
 
-            {/* Vistas de Mecánico */}
-            {(pestanaActiva === 'trabajos_activos' || pestanaActiva === 'historial_mantenimiento') && renderTablaVentas()}
+return (
+    <div className="px-4 sm:px-6 lg:px-8 space-y-6 py-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
+                <BarChart3 className="text-blue-600" />
+                Reportes: {rol === 'dueno' ? 'Dueño' : rol.charAt(0).toUpperCase() + rol.slice(1)}
+            </h2>
 
-            {/* Vendedor ve vista simplificada por defecto */}
-            {rol === 'vendedor' && pestanaActiva !== 'ventas' && renderTablaVentas()}
+            <div className="flex gap-2 items-center">
+                {/* Tabs para Admin/Dueño/Cliente/Mecánico */}
+                {(rol === 'admin' || rol === 'dueno' || rol === 'cliente' || rol === 'mecanico') && (
+                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                        {rol === 'mecanico' ? (
+                            <>
+                                <button
+                                    onClick={() => setPestanaActiva('trabajos_activos')}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'trabajos_activos' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                >
+                                    Trabajos Activos
+                                </button>
+                                <button
+                                    onClick={() => setPestanaActiva('historial_mantenimiento')}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'historial_mantenimiento' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                >
+                                    Historial
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={() => setPestanaActiva('ventas')}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'ventas' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                >
+                                    {rol === 'cliente' ? 'Mis Reportes' : 'Ventas'}
+                                </button>
+                                <button
+                                    onClick={() => setPestanaActiva('soporte')}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'soporte' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                >
+                                    {rol === 'cliente' ? 'Mis Reclamos' : 'Soporte'}
+                                </button>
+                                {(rol === 'admin' || rol === 'dueno') && (
+                                    <button
+                                        onClick={() => setPestanaActiva('inventario')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'inventario' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                    >
+                                        Inventario
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
 
-            {/* Modal Dashboard Visual */}
+        {/* Controles de Reporte Avanzado (Admin/Dueño) */}
+        {
+            (rol === 'admin' || rol === 'dueno') && (
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                        <div className="w-full md:w-auto">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Reporte</label>
+                            <select
+                                className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
+                                value={modoReporte}
+                                onChange={(e) => setModoReporte(e.target.value)}
+                            >
+                                <option value="general">General</option>
+                                <option value="individual">Individual</option>
+                            </select>
+                        </div>
 
-        </div >
-    );
+                        <div className="w-full md:w-auto">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Rol</label>
+                            <select
+                                className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
+                                value={rolFiltro}
+                                onChange={(e) => {
+                                    setRolFiltro(e.target.value);
+                                    setUsuarioFiltroId(''); // Reset user selection when role changes
+                                }}
+                            >
+                                <option value="todos">Todos</option>
+                                <option value="cliente">Clientes</option>
+                                <option value="vendedor">Vendedores</option>
+                                <option value="mecanico">Mecánicos</option>
+                                {rol === 'dueno' && <option value="admin">Administradores</option>}
+                            </select>
+                        </div>
+
+                        {modoReporte === 'individual' && (
+                            <div className="w-full md:w-auto flex-1">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Usuario</label>
+                                <select
+                                    className="w-full p-2 border rounded-lg text-sm bg-gray-50"
+                                    value={usuarioFiltroId}
+                                    onChange={(e) => setUsuarioFiltroId(e.target.value)}
+                                >
+                                    <option value="">-- Seleccione un usuario --</option>
+                                    {usuarios
+                                        .filter(u => rolFiltro === 'todos' ? true : u.rol === rolFiltro)
+                                        .map(u => (
+                                            <option key={u.id} value={u.id}>
+                                                {u.nombre} ({u.rol}) - {u.email}
+                                            </option>
+                                        ))
+                                    }
+                                </select>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )
+        }
+
+        {renderKPIs()}
+
+        {/* Renderizado Condicional de Pestañas */}
+        {pestanaActiva === 'ventas' && renderTablaVentas()}
+        {pestanaActiva === 'soporte' && renderTablaSoporte()}
+        {pestanaActiva === 'inventario' && (rol === 'admin' || rol === 'dueno') && renderTablaInventario()}
+
+
+        {/* Vistas de Mecánico */}
+        {(pestanaActiva === 'trabajos_activos' || pestanaActiva === 'historial_mantenimiento') && renderTablaVentas()}
+
+        {/* Vendedor ve vista simplificada por defecto */}
+        {rol === 'vendedor' && pestanaActiva !== 'ventas' && renderTablaVentas()}
+
+    </div >
+);
 };
 
 export default Reportes;

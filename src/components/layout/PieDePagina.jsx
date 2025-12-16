@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 const PieDePagina = () => {
     const { sedes, configuracion } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
-    const { setMostrarLogin } = usarUI();
+    const { setMostrarLogin, abrirModalInfo } = usarUI();
     const navigate = useNavigate();
     const { t } = useTranslation();
 
@@ -59,17 +59,38 @@ const PieDePagina = () => {
                         </div>
                     </div>
 
-                    {/* Links Column (Optional placeholders for better layout balance) */}
+                    {/* Links Column */}
                     <div>
                         <h3 className="text-white font-bold text-lg mb-6">Navegación</h3>
                         <ul className="space-y-3 text-sm">
-                            <li><Link to="/" className="hover:text-blue-400 transition-colors flex items-center gap-2"><ArrowRight size={14} className="opacity-50" />Inicio</Link></li>
+                            <li>
+                                <button
+                                    onClick={() => {
+                                        navigate('/');
+                                        setTimeout(() => {
+                                            const topElement = document.getElementById('top');
+                                            if (topElement) {
+                                                topElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                            } else {
+                                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                                            }
+                                        }, 100);
+                                    }}
+                                    className="hover:text-blue-400 transition-colors flex items-center gap-2 text-left w-full"
+                                >
+                                    <ArrowRight size={14} className="opacity-50" />Inicio
+                                </button>
+                            </li>
                             <li>
                                 <button onClick={() => handleNavegacionProtegida('/perfil')} className="hover:text-blue-400 transition-colors flex items-center gap-2 text-left">
                                     <ArrowRight size={14} className="opacity-50" />Mi Cuenta
                                 </button>
                             </li>
-                            <li><Link to="/ayuda" className="hover:text-blue-400 transition-colors flex items-center gap-2"><ArrowRight size={14} className="opacity-50" />Centro de Ayuda</Link></li>
+                            <li>
+                                <button onClick={() => abrirModalInfo('ayuda', 'Centro de Ayuda')} className="hover:text-blue-400 transition-colors flex items-center gap-2 text-left">
+                                    <ArrowRight size={14} className="opacity-50" />Centro de Ayuda
+                                </button>
+                            </li>
                         </ul>
                     </div>
 
@@ -129,9 +150,9 @@ const PieDePagina = () => {
                         © 2025 {t('nav.app_name', 'Alquiler de Verano')}. Todos los derechos reservados.
                     </p>
                     <div className="flex gap-6">
-                        <Link to="/legal/privacidad" className="hover:text-white transition-colors">Privacidad</Link>
-                        <Link to="/legal/terminos" className="hover:text-white transition-colors">Términos</Link>
-                        <Link to="/legal/cookies" className="hover:text-white transition-colors">Cookies</Link>
+                        <button onClick={() => abrirModalInfo('privacidad', 'Política de Privacidad')} className="hover:text-white transition-colors">Privacidad</button>
+                        <button onClick={() => abrirModalInfo('terminos', 'Términos y Condiciones')} className="hover:text-white transition-colors">Términos</button>
+                        <button onClick={() => abrirModalInfo('cookies', 'Política de Cookies')} className="hover:text-white transition-colors">Cookies</button>
                     </div>
                 </div>
             </div>

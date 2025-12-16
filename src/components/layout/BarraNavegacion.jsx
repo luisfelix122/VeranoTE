@@ -9,7 +9,7 @@ import { ContextoSoporte } from '../../contexts/ContextoSoporte';
 import Boton from '../ui/Boton';
 import BandejaEntrada from '../../pages/BandejaEntrada';
 import { useTranslation } from 'react-i18next';
-import LanguageSelector from '../ui/LanguageSelector';
+
 
 const BarraNavegacion = ({ setMostrarLogin }) => {
     const { t } = useTranslation();
@@ -55,12 +55,26 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
 
     const esHome = location.pathname === '/';
 
+    const irAlInicio = () => {
+        navigate('/');
+        // Usar scrollIntoView que es más confiable con elementos específicos
+        setTimeout(() => {
+            const topElement = document.getElementById('top');
+            if (topElement) {
+                topElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                // Fallback
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }, 100);
+    };
+
     return (
         <nav className="fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-7xl rounded-full bg-white/80 backdrop-blur-xl border border-white/50 shadow-2xl z-50 transition-all duration-500 ease-in-out">
             <div className="w-full h-full px-6 flex items-center justify-between">
                 <div className="flex justify-between w-full h-14 items-center">
                     {/* Logo Section */}
-                    <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
+                    <div className="flex items-center gap-3 cursor-pointer group" onClick={irAlInicio}>
                         <div className="relative w-10 h-10 flex items-center justify-center bg-gradient-to-br from-blue-600 to-teal-500 rounded-xl shadow-lg shadow-blue-200/50 transform group-hover:scale-105 transition-all duration-300 overflow-hidden">
                             <div className="absolute top-0 right-0 w-6 h-6 bg-yellow-400 blur-md opacity-40 rounded-full translate-x-1 -translate-y-1"></div>
                             <Sun className="text-yellow-100 absolute top-1.5 right-1.5 opacity-90" size={14} fill="currentColor" />
@@ -75,7 +89,6 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
 
                     {/* Actions Section */}
                     <div className="flex items-center gap-3 md:gap-5">
-                        <LanguageSelector />
 
                         {usuario ? (
                             <>
@@ -101,11 +114,14 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
                                     )}
                                     {usuario.rol === 'cliente' && (
                                         <>
-                                            <button onClick={() => navigate('/')} className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${location.pathname === '/' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                            <button onClick={irAlInicio} className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${location.pathname === '/' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                                                 {t('nav.tienda')}
                                             </button>
                                             <button onClick={() => navigate('/mis-gastos')} className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${location.pathname === '/mis-gastos' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                                                 {t('nav.mis_reportes')}
+                                            </button>
+                                            <button onClick={() => navigate('/soporte')} className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${location.pathname === '/soporte' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                                {t('nav.soporte', 'Soporte')}
                                             </button>
                                         </>
                                     )}
@@ -151,6 +167,20 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
                                                     <p className="text-sm font-bold text-gray-900">{usuario.nombre}</p>
                                                     <p className="text-xs text-gray-500 capitalize">{usuario.rol}</p>
                                                 </div>
+                                                {/* Enlaces Móviles para Clientes */}
+                                                {usuario.rol === 'cliente' && (
+                                                    <div className="lg:hidden border-b border-gray-100 mb-2 pb-2">
+                                                        <button onClick={() => { irAlInicio(); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
+                                                            <Package size={16} /> {t('nav.tienda')}
+                                                        </button>
+                                                        <button onClick={() => { navigate('/mis-gastos'); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
+                                                            <CreditCard size={16} /> {t('nav.mis_reportes')}
+                                                        </button>
+                                                        <button onClick={() => { navigate('/soporte'); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
+                                                            <Bell size={16} /> {t('nav.soporte', 'Soporte')}
+                                                        </button>
+                                                    </div>
+                                                )}
                                                 <button onClick={() => { navigate('/perfil'); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
                                                     <User size={16} /> {t('nav.mi_perfil')}
                                                 </button>

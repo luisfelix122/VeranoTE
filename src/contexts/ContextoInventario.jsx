@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerConfiguracion, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB } from '../services/db';
+import { obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerContenidoWeb, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 
 export const ContextoInventario = createContext();
@@ -9,18 +9,65 @@ export const ProveedorInventario = ({ children }) => {
     const [alquileres, setAlquileres] = useState([]);
     const [sedes, setSedes] = useState([]);
     const [horarios, setHorarios] = useState([]);
-    const [configuracion, setConfiguracion] = useState({});
+    const [contenido, setContenido] = useState({});
     const [sedeActual, setSedeActual] = useState('costa'); // Default ID
+    const [fechaSeleccionada, setFechaSeleccionada] = useState(new Date().toISOString().split('T')[0]); // Global Date
 
+    // Helper: Validar rango de fechas
+    const hayCruce = (inicio1, fin1, inicio2, fin2) => {
+        return inicio1 < fin2 && inicio2 < fin1;
+    };
+
+    // Calcular disponibilidad en tiempo real (Síncrono para UI)
+    const calcularStockDisponible = (recursoId, fecha = fechaSeleccionada) => {
+        const recurso = inventario.find(r => r.id === recursoId);
+        if (!recurso) return 0;
+
+        // Definir rango del día seleccionado (00:00 a 23:59)
+        const inicioDia = new Date(fecha);
+        inicioDia.setHours(0, 0, 0, 0);
+        const finDia = new Date(fecha);
+        finDia.setHours(23, 59, 59, 999);
+
+        // Filtrar reservas activas (pendientes, confirmadas, en_uso...)
+        const reservasActivas = alquileres.filter(a =>
+            a.estado !== 'finalizado' &&
+            a.estado !== 'cancelado' &&
+            a.estado !== 'no_show'
+        );
+
+        let cantidadReservada = 0;
+
+        reservasActivas.forEach(alquiler => {
+            // Verificar si el alquiler se cruza amb el día seleccionado
+            const inicioAlquiler = new Date(alquiler.fechaInicio);
+
+            // Buscar si este alquiler incluye el recurso
+            const itemEnAlquiler = alquiler.items?.find(i => i.id === recursoId);
+
+            if (itemEnAlquiler) {
+                // Calcular Fin de est item
+                const horas = itemEnAlquiler.horas || 1;
+                const finAlquiler = new Date(inicioAlquiler.getTime() + (horas * 60 * 60 * 1000));
+
+                if (hayCruce(inicioDia, finDia, inicioAlquiler, finAlquiler)) {
+                    cantidadReservada += itemEnAlquiler.cantidad;
+                }
+            }
+        });
+
+        // Asegurar que no sea negativo
+        return Math.max(0, recurso.stockTotal - cantidadReservada);
+    };
     // Cargar datos iniciales
     const recargarDatos = async () => {
         try {
-            const [recursosData, sedesData, alquileresData, horariosData, configData] = await Promise.all([
+            const [recursosData, sedesData, alquileresData, horariosData, contenidoData] = await Promise.all([
                 obtenerRecursos(),
                 obtenerSedes(),
                 obtenerAlquileres(),
                 obtenerHorarios(),
-                obtenerConfiguracion()
+                obtenerContenidoWeb()
             ]);
 
             const inventarioFormateado = recursosData.map(item => ({
@@ -33,7 +80,7 @@ export const ProveedorInventario = ({ children }) => {
             setInventario(inventarioFormateado);
             setSedes(sedesData);
             setHorarios(horariosData);
-            setConfiguracion(configData);
+            setContenido(contenidoData);
             setAlquileres(alquileresData.map(a => ({
                 ...a,
                 fechaInicio: a.fecha_inicio,
@@ -314,6 +361,9 @@ export const ProveedorInventario = ({ children }) => {
             sedes,
             sedeActual,
             setSedeActual,
+            fechaSeleccionada,
+            setFechaSeleccionada,
+            calcularStockDisponible,
             agregarProducto,
             editarProducto,
             eliminarProducto,
@@ -329,9 +379,8 @@ export const ProveedorInventario = ({ children }) => {
             marcarNoShow,
             aplicarDescuentoMantenimiento,
             registrarPagoSaldo,
-            registrarPagoSaldo,
             estaAbierto,
-            configuracion
+            contenido
         }}>
             {children}
         </ContextoInventario.Provider>

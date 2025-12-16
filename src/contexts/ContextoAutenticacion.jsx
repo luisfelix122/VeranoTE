@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { obtenerUsuarios, registrarUsuarioDB, actualizarUsuarioDB, obtenerUsuarioPorId } from '../services/db';
+import { obtenerUsuarios, registrarUsuarioDB, actualizarUsuarioDB, obtenerUsuarioPorId, cambiarPassword } from '../services/db';
 
 export const ContextoAutenticacion = createContext();
 
@@ -67,19 +67,13 @@ export const ProveedorAutenticacion = ({ children }) => {
 
     const registrarUsuario = async (datos) => {
         // Mapear camelCase a snake_case para DB
-        const datosDB = {
-            nombre: datos.nombre,
-            email: datos.email,
-            password: datos.password,
-            rol: 'cliente',
-            numero_documento: datos.numeroDocumento,
-            fecha_nacimiento: datos.fechaNacimiento,
-            licencia_conducir: datos.licenciaConducir,
-            tipo_documento: datos.tipoDocumento,
-            nacionalidad: datos.nacionalidad
+        // No necesitamos mapear manualmente a snake_case aquí, porque registrarUsuarioDB en db.js ya hace el mapeo.
+        const datosParaDB = {
+            ...datos,
+            rol: 'cliente'
         };
 
-        const resultado = await registrarUsuarioDB(datosDB);
+        const resultado = await registrarUsuarioDB(datosParaDB);
         if (resultado.success) {
             const nuevoUsuario = { ...resultado.data, ...datos, id: resultado.data.id, rol: 'cliente' };
             setUsuarios(prev => [...prev, nuevoUsuario]);
@@ -99,24 +93,8 @@ export const ProveedorAutenticacion = ({ children }) => {
 
     const actualizarPerfil = async (id, nuevosDatos) => {
         // Mapear camelCase a snake_case para la base de datos
-        const datosDB = {};
-        if (nuevosDatos.nombre !== undefined) datosDB.nombre = nuevosDatos.nombre;
-        if (nuevosDatos.telefono !== undefined) datosDB.telefono = nuevosDatos.telefono;
-        if (nuevosDatos.tipoDocumento !== undefined) datosDB.tipo_documento = nuevosDatos.tipoDocumento;
-        if (nuevosDatos.numeroDocumento !== undefined) datosDB.numero_documento = nuevosDatos.numeroDocumento;
-        if (nuevosDatos.fechaNacimiento !== undefined) datosDB.fecha_nacimiento = nuevosDatos.fechaNacimiento;
-        if (nuevosDatos.nacionalidad !== undefined) datosDB.nacionalidad = nuevosDatos.nacionalidad;
-        if (nuevosDatos.licenciaConducir !== undefined) datosDB.licencia_conducir = nuevosDatos.licenciaConducir;
-        if (nuevosDatos.direccion !== undefined) datosDB.direccion = nuevosDatos.direccion;
-        if (nuevosDatos.contactoEmergencia !== undefined) datosDB.contacto_emergencia = nuevosDatos.contactoEmergencia;
-
-        // Campos de empleado
-        if (nuevosDatos.codigoEmpleado !== undefined) datosDB.codigo_empleado = nuevosDatos.codigoEmpleado;
-        if (nuevosDatos.turno !== undefined) datosDB.turno = nuevosDatos.turno;
-        if (nuevosDatos.especialidad !== undefined) datosDB.especialidad = nuevosDatos.especialidad;
-        if (nuevosDatos.experiencia !== undefined) datosDB.experiencia = nuevosDatos.experiencia;
-        if (nuevosDatos.anexo !== undefined) datosDB.anexo = nuevosDatos.anexo;
-        if (nuevosDatos.oficina !== undefined) datosDB.oficina = nuevosDatos.oficina;
+        // Pasamos los datos tal cual (en camelCase), ya que actualizarUsuarioDB en db.js maneja el mapeo.
+        const datosDB = { ...nuevosDatos };
 
         // Actualizar estado local optimista
         setUsuarios(prev => prev.map(u => u.id === id ? { ...u, ...nuevosDatos } : u));
@@ -141,8 +119,23 @@ export const ProveedorAutenticacion = ({ children }) => {
         // Implementar eliminar en DB si es necesario
     };
 
+    const actualizarPasswordWrapper = async (id, actual, nueva) => {
+        return await cambiarPassword(id, actual, nueva);
+    };
+
     return (
-        <ContextoAutenticacion.Provider value={{ usuario, usuarios, iniciarSesion, registrarUsuario, cerrarSesion, actualizarPerfil, cambiarRolUsuario, eliminarUsuario, cargando }}>
+        <ContextoAutenticacion.Provider value={{
+            usuario,
+            usuarios,
+            iniciarSesion,
+            registrarUsuario,
+            cerrarSesion,
+            actualizarPerfil,
+            cambiarRolUsuario,
+            eliminarUsuario,
+            cargando,
+            actualizarPassword: actualizarPasswordWrapper
+        }}>
             {children}
         </ContextoAutenticacion.Provider>
     );

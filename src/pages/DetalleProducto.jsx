@@ -14,6 +14,7 @@ const DetalleProducto = () => {
     const { inventario } = useContext(ContextoInventario);
     const { setMostrarLogin } = usarUI();
     const [horas, setHoras] = useState(1);
+    const [cantidad, setCantidad] = useState(1);
 
     const { usuario } = useContext(ContextoAutenticacion);
 
@@ -41,7 +42,7 @@ const DetalleProducto = () => {
             return;
         }
 
-        agregarAlCarrito(producto, horas);
+        agregarAlCarrito(producto, horas, cantidad);
     };
 
     return (
@@ -60,17 +61,30 @@ const DetalleProducto = () => {
                                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-2">Descripción</h3>
                                 <p className="text-gray-600 leading-relaxed">{producto.descripcion || 'Sin descripción disponible.'}</p>
                             </div>
-                            <div className="flex items-center gap-4 mb-6">
-                                <span className="text-gray-700 font-medium">Horas:</span>
-                                <div className="flex items-center border border-gray-300 rounded-lg">
-                                    <button onClick={() => setHoras(Math.max(1, horas - 1))} className="px-3 py-2 hover:bg-gray-100"><Minus size={16} /></button>
-                                    <span className="px-3 font-medium w-12 text-center">{horas}h</span>
-                                    <button onClick={() => setHoras(horas + 1)} className="px-3 py-2 hover:bg-gray-100"><Plus size={16} /></button>
+
+                            <div className="flex gap-8 mb-6">
+                                <div className="flex flex-col gap-2">
+                                    <span className="text-gray-700 font-medium">Horas:</span>
+                                    <div className="flex items-center border border-gray-300 rounded-lg">
+                                        <button onClick={() => setHoras(Math.max(1, horas - 1))} className="px-3 py-2 hover:bg-gray-100"><Minus size={16} /></button>
+                                        <span className="px-3 font-medium w-12 text-center">{horas}h</span>
+                                        <button onClick={() => setHoras(horas + 1)} className="px-3 py-2 hover:bg-gray-100"><Plus size={16} /></button>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <span className="text-gray-700 font-medium">Cantidad:</span>
+                                    <div className="flex items-center border border-gray-300 rounded-lg">
+                                        <button onClick={() => setCantidad(Math.max(1, cantidad - 1))} className="px-3 py-2 hover:bg-gray-100"><Minus size={16} /></button>
+                                        <span className="px-3 font-medium w-12 text-center">{cantidad}</span>
+                                        <button onClick={() => setCantidad(Math.min(producto.stock, cantidad + 1))} className="px-3 py-2 hover:bg-gray-100"><Plus size={16} /></button>
+                                    </div>
+                                    <span className="text-xs text-gray-500">Max: {producto.stock}</span>
                                 </div>
                             </div>
+
                         </div>
                         <div className="flex gap-4">
-                            <div className="flex-1"><p className="text-sm text-gray-500">Total estimado</p><p className="text-2xl font-bold text-gray-900">S/ {producto.precioPorHora * horas}</p></div>
+                            <div className="flex-1"><p className="text-sm text-gray-500">Total estimado</p><p className="text-2xl font-bold text-gray-900">S/ {producto.precioPorHora * horas * cantidad}</p></div>
                             <Boton className="flex-1" onClick={manejarAgregarAlCarrito}>Agregar al Carrito</Boton>
                         </div>
                     </div>

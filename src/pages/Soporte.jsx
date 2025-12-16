@@ -3,16 +3,19 @@ import { Phone, Shield, FileText, AlertTriangle, LifeBuoy, ChevronDown, ChevronU
 import Boton from '../components/ui/Boton';
 import { ContextoSoporte } from '../contexts/ContextoSoporte';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
+import { ContextoInventario } from '../contexts/ContextoInventario';
 import { obtenerGuiasSeguridad } from '../services/db';
 
 const Soporte = () => {
     const [seccionActiva, setSeccionActiva] = useState('contacto'); // 'contacto', 'seguridad', 'emergencia'
     const { crearTicket } = useContext(ContextoSoporte);
     const { usuario } = useContext(ContextoAutenticacion);
+    const { sedes } = useContext(ContextoInventario);
 
     const [formulario, setFormulario] = useState({
         asunto: 'Reporte de Incidente',
-        mensaje: ''
+        mensaje: '',
+        sede: ''
     });
 
     const [guiasSeguridad, setGuiasSeguridad] = useState([]);
@@ -28,10 +31,21 @@ const Soporte = () => {
         cargarGuias();
     }, []);
 
+    // Pre-seleccionar primera sede
+    useEffect(() => {
+        if (sedes && sedes.length > 0 && !formulario.sede) {
+            setFormulario(prev => ({ ...prev, sede: sedes[0].nombre }));
+        }
+    }, [sedes]);
+
     const manejarEnvio = (e) => {
         e.preventDefault();
+
+        // Etiquetar asunto con la Sede
+        const asuntoConSede = `[Sede: ${formulario.sede || 'General'}] ${formulario.asunto}`;
+
         crearTicket({
-            asunto: formulario.asunto,
+            asunto: asuntoConSede,
             mensaje: formulario.mensaje,
             remitente: {
                 id: usuario?.id,
@@ -41,7 +55,7 @@ const Soporte = () => {
             destinatario: { rol: 'admin' }
         });
         alert('Mensaje enviado. Nos contactaremos contigo a la brevedad.');
-        setFormulario({ asunto: 'Reporte de Incidente', mensaje: '' });
+        setFormulario(prev => ({ ...prev, asunto: 'Reporte de Incidente', mensaje: '' }));
     };
 
     return (
@@ -85,18 +99,33 @@ const Soporte = () => {
                             Envíanos un Mensaje
                         </h2>
                         <form className="space-y-5" onSubmit={manejarEnvio}>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Asunto</label>
-                                <select
-                                    className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                    value={formulario.asunto}
-                                    onChange={(e) => setFormulario({ ...formulario, asunto: e.target.value })}
-                                >
-                                    <option>Reporte de Incidente</option>
-                                    <option>Problema con Reserva</option>
-                                    <option>Consulta General</option>
-                                    <option>Sugerencia</option>
-                                </select>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Sede / Zona</label>
+                                    <select
+                                        className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        value={formulario.sede}
+                                        onChange={(e) => setFormulario({ ...formulario, sede: e.target.value })}
+                                    >
+                                        {sedes.map(s => (
+                                            <option key={s.id} value={s.nombre}>{s.nombre}</option>
+                                        ))}
+                                        <option value="General">Otra / General</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Asunto</label>
+                                    <select
+                                        className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        value={formulario.asunto}
+                                        onChange={(e) => setFormulario({ ...formulario, asunto: e.target.value })}
+                                    >
+                                        <option>Reporte de Incidente</option>
+                                        <option>Problema con Reserva</option>
+                                        <option>Consulta General</option>
+                                        <option>Sugerencia</option>
+                                    </select>
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Mensaje</label>

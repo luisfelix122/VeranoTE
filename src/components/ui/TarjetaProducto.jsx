@@ -1,14 +1,44 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import Boton from './Boton';
+import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
 
 const TarjetaProducto = ({ producto, alSeleccionar }) => {
+    const { usuario } = useContext(ContextoAutenticacion);
+    // DEBUG: Verificar qué llega en usuario
+    // console.log("Usuario en Tarjeta:", usuario);
+
+    // Normalizar acceso a la propiedad de licencia (snake_case o camelCase)
+    const tieneLicencia = usuario?.licenciaConducir === true || usuario?.licencia_conducir === true;
+    const requiereLicencia = producto.categoria === 'Motor';
+    const bloqueadoPorLicencia = usuario && requiereLicencia && !tieneLicencia;
+
+    const [tiempoEstimado, setTiempoEstimado] = React.useState(null);
+    const [cargandoDisponibilidad, setCargandoDisponibilidad] = React.useState(false);
+
+    React.useEffect(() => {
+        if (producto.stock <= 0) {
+            const cargarEstimacion = async () => {
+                setCargandoDisponibilidad(true);
+                // Import dinámico para evitar ciclo o cargar si no se usa
+                const { estimarDisponibilidad } = await import('../../services/db');
+                const fecha = await estimarDisponibilidad(producto.id);
+                if (fecha) {
+                    const hora = new Date(fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    setTiempoEstimado(hora);
+                }
+                setCargandoDisponibilidad(false);
+            };
+            cargarEstimacion();
+        }
+    }, [producto.stock, producto.id]);
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow group">
             <div className="relative h-48 overflow-hidden">
                 <img
                     src={producto.imagen}
                     alt={producto.nombre}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${bloqueadoPorLicencia ? 'grayscale opacity-70' : ''}`}
                 />
                 <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-bold text-gray-700">
                     {producto.categoria}
@@ -24,16 +54,23 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
                 </div>
                 {producto.stock <= 0 && (
                     <p className="text-xs text-orange-600 mb-2 font-medium">
-                        Disponible aprox. en 2h (Verificar disponibilidad)
+                        {cargandoDisponibilidad ? 'Calculando...' :
+                            (tiempoEstimado ? `Disponible aprox. a las ${tiempoEstimado}` : 'No disponible hoy')
+                        }
+                    </p>
+                )}
+                {bloqueadoPorLicencia && (
+                    <p className="text-xs text-red-600 mb-2 font-bold flex items-center gap-1">
+                        ⚠️ Tu perfil indica que NO tienes licencia.
                     </p>
                 )}
                 <Boton
                     onClick={() => alSeleccionar(producto)}
                     variante="primario"
                     className="w-full"
-                    disabled={producto.stock === 0}
+                    disabled={producto.stock === 0 || bloqueadoPorLicencia}
                 >
-                    {producto.stock > 0 ? 'Ver Detalles' : 'No Disponible'}
+                    {producto.stock === 0 ? 'No Disponible' : (bloqueadoPorLicencia ? 'Requiere Licencia' : 'Ver Detalles')}
                 </Boton>
             </div>
         </div>

@@ -1,0 +1,48 @@
+{
+    "nav": {
+        "tienda": "Boutique",
+        "mis_reportes": "Mes Rapports",
+        "soporte": "Support",
+        "inventario": "Inventaire",
+        "promociones": "Promotions",
+        "punto_venta": "Point de Vente",
+        "usuarios": "Utilisateurs",
+        "reportes": "Rapports",
+        "operaciones": "Opérations",
+        "taller": "Atelier",
+        "iniciar_sesion": "Connexion",
+        "cerrar_sesion": "Déconnexion",
+        "mi_perfil": "Mon Profil",
+        "mis_tarjetas": "Mes Cartes",
+        "sede": "Emplacement",
+        "app_name": "Location d'Été"
+    },
+    "home": {
+        "hero_title_1": "Votre Paradis,",
+        "hero_title_2": "Votre Aventure.",
+        "badge": "L'expérience estivale ultime",
+        "hero_subtitle": "Trouvez l'équipement parfait pour profiter de la nature. Qualité premium et service exclusif dans nos centres.",
+        "search_placeholder": "Rechercher équipement (ex. Kayak, Surf...)",
+        "explore_btn": "Explorer",
+        "ver_info": "Voir Info",
+        "catalog_title": "Catalogue Disponible",
+        "showing_items": "Affichage de {{count}} articles à",
+        "no_results_title": "Aucun résultat trouvé",
+        "no_results_desc": "Il n'y a aucun article disponible correspondant à votre recherche dans cette catégorie ou ce lieu.",
+        "clear_filters": "Effacer les filtres",
+        "open_now": "OUVERT MAINTENANT",
+        "closed": "FERMÉ",
+        "services": "Services Disponibles",
+        "contact": "Contact",
+        "understood_btn": "Compris",
+        "state_schedule": "Statut et Horaire"
+    },
+    "categories": {
+        "Todas": "Toutes",
+        "Playa": "Plage",
+        "Deportes Acuáticos": "Sports Nautiques",
+        "Camping": "Camping",
+        "Electrónica": "Électronique",
+        "Movilidad": "Mobilité"
+    }
+}

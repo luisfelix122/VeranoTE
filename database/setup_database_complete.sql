@@ -8,14 +8,20 @@
 
 -- 1. LIMPIEZA INICIAL
 DROP SCHEMA IF EXISTS public CASCADE;
+
 CREATE SCHEMA public;
+
 GRANT ALL ON SCHEMA public TO postgres;
+
 GRANT ALL ON SCHEMA public TO anon;
+
 GRANT ALL ON SCHEMA public TO authenticated;
+
 GRANT ALL ON SCHEMA public TO service_role;
 
 -- Habilitar extensiones necesarias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ==============================================================================
@@ -29,18 +35,57 @@ CREATE TABLE CONFIGURACION (
 );
 
 ALTER TABLE CONFIGURACION ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Permitir lectura pública de configuración" ON CONFIGURACION FOR SELECT USING (true);
 
-INSERT INTO CONFIGURACION (clave, valor, descripcion) VALUES
-('IGV', '0.18', 'Impuesto General a las Ventas'),
-('GARANTIA_PORCENTAJE', '0.20', 'Porcentaje de garantía sobre el total del servicio'),
-('TIEMPO_GRACIA_MINUTOS', '15', 'Minutos de tolerancia para devoluciones'),
-('ADELANTO_RESERVA_ANTICIPADA', '0.60', 'Porcentaje requerido para reservas anticipadas'),
-('BANNER_TITULO', 'Tu Aventura de Verano Comienza Aquí', 'Título principal del banner'),
-('BANNER_SUBTITULO', 'Alquila los mejores equipos para disfrutar del sol, la playa y la naturaleza.', 'Subtítulo del banner'),
-('BANNER_IMAGEN_URL', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=1600', 'URL de la imagen de fondo del banner'),
-('CONTACTO_TELEFONO', '(01) 555-0123', 'Teléfono de contacto general'),
-('CONTACTO_EMAIL', 'contacto@alquileresperuanos.pe', 'Correo de contacto general');
+CREATE POLICY "Permitir lectura pública de configuración" ON CONFIGURACION FOR
+SELECT USING (true);
+
+INSERT INTO
+    CONFIGURACION (clave, valor, descripcion)
+VALUES (
+        'IGV',
+        '0.18',
+        'Impuesto General a las Ventas'
+    ),
+    (
+        'GARANTIA_PORCENTAJE',
+        '0.20',
+        'Porcentaje de garantía sobre el total del servicio'
+    ),
+    (
+        'TIEMPO_GRACIA_MINUTOS',
+        '15',
+        'Minutos de tolerancia para devoluciones'
+    ),
+    (
+        'ADELANTO_RESERVA_ANTICIPADA',
+        '0.60',
+        'Porcentaje requerido para reservas anticipadas'
+    ),
+    (
+        'BANNER_TITULO',
+        'Tu Aventura de Verano Comienza Aquí',
+        'Título principal del banner'
+    ),
+    (
+        'BANNER_SUBTITULO',
+        'Alquila los mejores equipos para disfrutar del sol, la playa y la naturaleza.',
+        'Subtítulo del banner'
+    ),
+    (
+        'BANNER_IMAGEN_URL',
+        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=1600',
+        'URL de la imagen de fondo del banner'
+    ),
+    (
+        'CONTACTO_TELEFONO',
+        '(01) 555-0123',
+        'Teléfono de contacto general'
+    ),
+    (
+        'CONTACTO_EMAIL',
+        'contacto@alquileresperuanos.pe',
+        'Correo de contacto general'
+    );
 
 CREATE TABLE AUDITORIA (
     id SERIAL PRIMARY KEY,
@@ -49,7 +94,9 @@ CREATE TABLE AUDITORIA (
     usuario TEXT DEFAULT 'sistema',
     datos_antiguos JSONB,
     datos_nuevos JSONB,
-    fecha TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    fecha TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW()
 );
 
 CREATE OR REPLACE FUNCTION registrar_auditoria() RETURNS TRIGGER AS $$
@@ -114,26 +161,32 @@ CREATE TABLE SEDES (
     telefono TEXT,
     correo_contacto TEXT,
     mapa_url TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE HORARIOS_SEDE (
     id SERIAL PRIMARY KEY,
-    sede_id TEXT REFERENCES SEDES(id) ON DELETE CASCADE,
+    sede_id TEXT REFERENCES SEDES (id) ON DELETE CASCADE,
     dia_semana INTEGER NOT NULL CHECK (dia_semana BETWEEN 0 AND 6),
     hora_apertura TIME,
     hora_cierre TIME,
     cerrado BOOLEAN DEFAULT FALSE,
-    UNIQUE(sede_id, dia_semana)
+    UNIQUE (sede_id, dia_semana)
 );
 
 ALTER TABLE HORARIOS_SEDE ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Permitir lectura pública de horarios" ON HORARIOS_SEDE FOR SELECT USING (true);
+
+CREATE POLICY "Permitir lectura pública de horarios" ON HORARIOS_SEDE FOR
+SELECT USING (true);
 
 CREATE TABLE SEDE_SERVICIOS (
-    sede_id TEXT REFERENCES SEDES(id) ON DELETE CASCADE,
-    servicio_id INTEGER REFERENCES SERVICIOS(id) ON DELETE CASCADE,
+    sede_id TEXT REFERENCES SEDES (id) ON DELETE CASCADE,
+    servicio_id INTEGER REFERENCES SERVICIOS (id) ON DELETE CASCADE,
     PRIMARY KEY (sede_id, servicio_id)
 );
 
@@ -145,7 +198,7 @@ CREATE TABLE USUARIOS (
     nombre TEXT NOT NULL,
     telefono TEXT,
     tipo_documento TEXT,
-    numero_documento TEXT,
+    numero_documento TEXT UNIQUE,
     fecha_nacimiento DATE,
     licencia_conducir BOOLEAN DEFAULT FALSE,
     nacionalidad TEXT,
@@ -164,17 +217,21 @@ CREATE TABLE USUARIOS (
 
 CREATE TABLE RECURSOS (
     id SERIAL PRIMARY KEY,
-    sede_id TEXT NOT NULL REFERENCES SEDES(id),
+    sede_id TEXT NOT NULL REFERENCES SEDES (id),
     nombre TEXT NOT NULL,
-    categoria_id INTEGER NOT NULL REFERENCES CATEGORIAS(id),
+    categoria_id INTEGER NOT NULL REFERENCES CATEGORIAS (id),
     precio_por_hora NUMERIC(10, 2) NOT NULL CHECK (precio_por_hora >= 0),
     stock_total INTEGER NOT NULL DEFAULT 0 CHECK (stock_total >= 0),
     imagen TEXT,
     descripcion TEXT,
     guia_seguridad TEXT, -- Nueva columna agregada
     activo BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE PROMOCIONES (
@@ -219,8 +276,8 @@ CREATE TABLE ALQUILERES (
 
 CREATE TABLE ALQUILER_DETALLES (
     id SERIAL PRIMARY KEY,
-    alquiler_id TEXT NOT NULL REFERENCES ALQUILERES(id) ON DELETE CASCADE,
-    recurso_id INTEGER NOT NULL REFERENCES RECURSOS(id),
+    alquiler_id TEXT NOT NULL REFERENCES ALQUILERES (id) ON DELETE CASCADE,
+    recurso_id INTEGER NOT NULL REFERENCES RECURSOS (id),
     cantidad INTEGER NOT NULL CHECK (cantidad > 0),
     horas INTEGER NOT NULL CHECK (horas > 0),
     precio_unitario NUMERIC(10, 2) NOT NULL,
@@ -229,13 +286,21 @@ CREATE TABLE ALQUILER_DETALLES (
 
 CREATE TABLE MANTENIMIENTOS (
     id SERIAL PRIMARY KEY,
-    recurso_id INTEGER NOT NULL REFERENCES RECURSOS(id),
-    fecha_inicio TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    fecha_fin TIMESTAMP WITH TIME ZONE,
-    descripcion TEXT,
-    costo NUMERIC(10, 2) DEFAULT 0,
-    estado TEXT NOT NULL CHECK (estado IN ('en_proceso', 'finalizado')) DEFAULT 'en_proceso',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    recurso_id INTEGER NOT NULL REFERENCES RECURSOS (id),
+    fecha_inicio TIMESTAMP
+    WITH
+        TIME ZONE NOT NULL DEFAULT NOW(),
+        fecha_fin TIMESTAMP
+    WITH
+        TIME ZONE,
+        descripcion TEXT,
+        costo NUMERIC(10, 2) DEFAULT 0,
+        estado TEXT NOT NULL CHECK (
+            estado IN ('en_proceso', 'finalizado')
+        ) DEFAULT 'en_proceso',
+        created_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW()
 );
 
 -- ==============================================================================
@@ -253,36 +318,52 @@ CREATE TABLE TARJETAS_CREDITO (
     es_principal BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
 ALTER TABLE TARJETAS_CREDITO ENABLE ROW LEVEL SECURITY;
+
 CREATE POLICY "Permitir acceso total a tarjetas" ON TARJETAS_CREDITO FOR ALL USING (true);
 
 -- Tabla de Tickets de Soporte (Corregida con FK a public.usuarios)
 CREATE TABLE SOPORTE_TICKETS (
     id SERIAL PRIMARY KEY,
-    usuario_id TEXT REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    usuario_id TEXT REFERENCES public.usuarios (id) ON DELETE CASCADE,
     asunto TEXT NOT NULL,
     mensaje TEXT NOT NULL,
     estado TEXT NOT NULL DEFAULT 'pendiente',
     respuesta TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW()
 );
+
 ALTER TABLE SOPORTE_TICKETS ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Acceso Total Soporte" ON SOPORTE_TICKETS FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Acceso Total Soporte" ON SOPORTE_TICKETS FOR ALL USING (true)
+WITH
+    CHECK (true);
 
 -- Tabla de Mensajes (Corregida)
 CREATE TABLE MENSAJES (
     id SERIAL PRIMARY KEY,
-    remitente_id TEXT REFERENCES USUARIOS(id),
-    destinatario_id TEXT REFERENCES USUARIOS(id),
+    remitente_id TEXT REFERENCES USUARIOS (id),
+    destinatario_id TEXT REFERENCES USUARIOS (id),
     asunto TEXT,
     contenido TEXT NOT NULL,
     leido BOOLEAN DEFAULT FALSE,
     tipo TEXT DEFAULT 'mensaje',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT NOW()
 );
+
 ALTER TABLE MENSAJES ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Acceso Total Mensajes" ON MENSAJES FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Acceso Total Mensajes" ON MENSAJES FOR ALL USING (true)
+WITH
+    CHECK (true);
 
 -- Vista de Reclamos
 CREATE OR REPLACE VIEW v_mis_reclamos AS
@@ -296,12 +377,11 @@ SELECT
     u.nombre as nombre_usuario,
     u.email as email_usuario,
     t.updated_at as ultima_actualizacion
-FROM
-    soporte_tickets t
-JOIN
-    usuarios u ON t.usuario_id = u.id;
+FROM soporte_tickets t
+    JOIN usuarios u ON t.usuario_id = u.id;
 
 GRANT SELECT ON v_mis_reclamos TO anon;
+
 GRANT SELECT ON v_mis_reclamos TO authenticated;
 
 -- ==============================================================================
@@ -316,12 +396,17 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON USUARIOS FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER trg_sedes_updated BEFORE UPDATE ON SEDES FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER trg_recursos_updated BEFORE UPDATE ON RECURSOS FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER trg_alquileres_updated BEFORE UPDATE ON ALQUILERES FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER trg_audit_alquileres AFTER INSERT OR UPDATE OR DELETE ON ALQUILERES FOR EACH ROW EXECUTE FUNCTION registrar_auditoria();
+
 CREATE TRIGGER trg_audit_recursos AFTER INSERT OR UPDATE OR DELETE ON RECURSOS FOR EACH ROW EXECUTE FUNCTION registrar_auditoria();
+
 CREATE TRIGGER trg_audit_usuarios AFTER INSERT OR UPDATE OR DELETE ON USUARIOS FOR EACH ROW EXECUTE FUNCTION registrar_auditoria();
 
 -- ==============================================================================
@@ -499,52 +584,336 @@ $$ LANGUAGE plpgsql;
 -- 8. DATOS SEMILLA (SEED DATA)
 -- ==============================================================================
 -- Roles
-INSERT INTO ROLES (id, nombre) VALUES ('admin', 'Administrador'), ('cliente', 'Cliente'), ('vendedor', 'Vendedor'), ('dueno', 'Dueño'), ('mecanico', 'Mecánico');
+INSERT INTO
+    ROLES (id, nombre)
+VALUES ('admin', 'Administrador'),
+    ('cliente', 'Cliente'),
+    ('vendedor', 'Vendedor'),
+    ('dueno', 'Dueño'),
+    ('mecanico', 'Mecánico');
 
 -- Categorías
-INSERT INTO CATEGORIAS (nombre) VALUES ('Acuático'), ('Terrestre'), ('Motor'), ('Playa'), ('Camping');
+INSERT INTO
+    CATEGORIAS (nombre)
+VALUES ('Acuático'),
+    ('Terrestre'),
+    ('Motor'),
+    ('Playa'),
+    ('Camping');
 
 -- Estados
-INSERT INTO ESTADOS_ALQUILER (id, nombre, es_final) VALUES 
-('pendiente', 'Pendiente de Pago', 'false'),
-('confirmado', 'Confirmado', 'false'),
-('en_uso', 'En Uso', 'false'),
-('listo_para_entrega', 'Listo para Entrega', 'false'),
-('limpieza', 'En Limpieza', 'false'),
-('en_mantenimiento', 'En Mantenimiento', 'false'),
-('finalizado', 'Finalizado', 'true'),
-('cancelado', 'Cancelado', 'true'),
-('no_show', 'No Show', 'true'),
-('fuera_de_servicio', 'Fuera de Servicio', 'false');
+INSERT INTO
+    ESTADOS_ALQUILER (id, nombre, es_final)
+VALUES (
+        'pendiente',
+        'Pendiente de Pago',
+        'false'
+    ),
+    (
+        'confirmado',
+        'Confirmado',
+        'false'
+    ),
+    ('en_uso', 'En Uso', 'false'),
+    (
+        'listo_para_entrega',
+        'Listo para Entrega',
+        'false'
+    ),
+    (
+        'limpieza',
+        'En Limpieza',
+        'false'
+    ),
+    (
+        'en_mantenimiento',
+        'En Mantenimiento',
+        'false'
+    ),
+    (
+        'finalizado',
+        'Finalizado',
+        'true'
+    ),
+    (
+        'cancelado',
+        'Cancelado',
+        'true'
+    ),
+    ('no_show', 'No Show', 'true'),
+    (
+        'fuera_de_servicio',
+        'Fuera de Servicio',
+        'false'
+    );
 
 -- Métodos Pago
-INSERT INTO METODOS_PAGO (id, nombre) VALUES ('transferencia', 'Transferencia Bancaria'), ('yape', 'Yape / Plin'), ('tarjeta', 'Tarjeta de Crédito/Débito'), ('efectivo', 'Efectivo');
+INSERT INTO
+    METODOS_PAGO (id, nombre)
+VALUES (
+        'transferencia',
+        'Transferencia Bancaria'
+    ),
+    ('yape', 'Yape / Plin'),
+    (
+        'tarjeta',
+        'Tarjeta de Crédito/Débito'
+    ),
+    ('efectivo', 'Efectivo');
 
 -- Servicios
-INSERT INTO SERVICIOS (nombre) VALUES ('Wifi Gratuito'), ('Vestidores y Duchas'), ('Estacionamiento'), ('Guardarropa'), ('Escuela de Surf'), ('Zona de Camping'), ('Alquiler de Parrillas'), ('Rutas Guiadas'), ('Taller de Bicicletas'), ('Cafetería');
+INSERT INTO
+    SERVICIOS (nombre)
+VALUES ('Wifi Gratuito'),
+    ('Vestidores y Duchas'),
+    ('Estacionamiento'),
+    ('Guardarropa'),
+    ('Escuela de Surf'),
+    ('Zona de Camping'),
+    ('Alquiler de Parrillas'),
+    ('Rutas Guiadas'),
+    ('Taller de Bicicletas'),
+    ('Cafetería');
 
 -- Sedes
-INSERT INTO SEDES (id, nombre, direccion, descripcion, imagen, telefono, correo_contacto, mapa_url) VALUES
-('costa', 'Sede Costa', 'Av. Costanera 123', 'Disfruta del sol y las olas.', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=1000', '999-111-222', 'costa@verano.com', 'https://maps.google.com/?q=-12.046374,-77.042793'),
-('rural', 'Sede Campo', 'Carretera Central Km 40', 'Conecta con la naturaleza.', 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1000', '999-333-444', 'campo@verano.com', 'https://maps.google.com/?q=-11.956374,-76.842793');
+INSERT INTO
+    SEDES (
+        id,
+        nombre,
+        direccion,
+        descripcion,
+        imagen,
+        telefono,
+        correo_contacto,
+        mapa_url
+    )
+VALUES (
+        'costa',
+        'Sede Costa',
+        'Av. Costanera 123',
+        'Disfruta del sol y las olas.',
+        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=1000',
+        '999-111-222',
+        'costa@verano.com',
+        'https://maps.google.com/?q=-12.046374,-77.042793'
+    ),
+    (
+        'rural',
+        'Sede Campo',
+        'Carretera Central Km 40',
+        'Conecta con la naturaleza.',
+        'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1000',
+        '999-333-444',
+        'campo@verano.com',
+        'https://maps.google.com/?q=-11.956374,-76.842793'
+    );
 
 -- Asignar Servicios a Sedes
-INSERT INTO SEDE_SERVICIOS (sede_id, servicio_id) VALUES
-('costa', 1), ('costa', 2), ('costa', 5), ('costa', 3),
-('rural', 1), ('rural', 6), ('rural', 7), ('rural', 8);
+INSERT INTO
+    SEDE_SERVICIOS (sede_id, servicio_id)
+VALUES ('costa', 1),
+    ('costa', 2),
+    ('costa', 5),
+    ('costa', 3),
+    ('rural', 1),
+    ('rural', 6),
+    ('rural', 7),
+    ('rural', 8);
 
 -- Horarios Sede
-INSERT INTO HORARIOS_SEDE (sede_id, dia_semana, hora_apertura, hora_cierre, cerrado) VALUES
-('costa', 1, '08:00', '18:00', FALSE), ('costa', 2, '08:00', '18:00', FALSE), ('costa', 3, '08:00', '18:00', FALSE), ('costa', 4, '08:00', '18:00', FALSE), ('costa', 5, '08:00', '18:00', FALSE), ('costa', 6, '08:00', '18:00', FALSE), ('costa', 0, '08:00', '18:00', FALSE),
-('rural', 1, '07:00', '17:00', FALSE), ('rural', 2, '07:00', '17:00', FALSE), ('rural', 3, '07:00', '17:00', FALSE), ('rural', 4, '07:00', '17:00', FALSE), ('rural', 5, '07:00', '17:00', FALSE), ('rural', 6, '07:00', '17:00', FALSE), ('rural', 0, '07:00', '17:00', FALSE);
+INSERT INTO
+    HORARIOS_SEDE (
+        sede_id,
+        dia_semana,
+        hora_apertura,
+        hora_cierre,
+        cerrado
+    )
+VALUES (
+        'costa',
+        1,
+        '08:00',
+        '18:00',
+        FALSE
+    ),
+    (
+        'costa',
+        2,
+        '08:00',
+        '18:00',
+        FALSE
+    ),
+    (
+        'costa',
+        3,
+        '08:00',
+        '18:00',
+        FALSE
+    ),
+    (
+        'costa',
+        4,
+        '08:00',
+        '18:00',
+        FALSE
+    ),
+    (
+        'costa',
+        5,
+        '08:00',
+        '18:00',
+        FALSE
+    ),
+    (
+        'costa',
+        6,
+        '08:00',
+        '18:00',
+        FALSE
+    ),
+    (
+        'costa',
+        0,
+        '08:00',
+        '18:00',
+        FALSE
+    ),
+    (
+        'rural',
+        1,
+        '07:00',
+        '17:00',
+        FALSE
+    ),
+    (
+        'rural',
+        2,
+        '07:00',
+        '17:00',
+        FALSE
+    ),
+    (
+        'rural',
+        3,
+        '07:00',
+        '17:00',
+        FALSE
+    ),
+    (
+        'rural',
+        4,
+        '07:00',
+        '17:00',
+        FALSE
+    ),
+    (
+        'rural',
+        5,
+        '07:00',
+        '17:00',
+        FALSE
+    ),
+    (
+        'rural',
+        6,
+        '07:00',
+        '17:00',
+        FALSE
+    ),
+    (
+        'rural',
+        0,
+        '07:00',
+        '17:00',
+        FALSE
+    );
 
 -- Usuarios
-INSERT INTO USUARIOS (id, nombre, email, telefono, rol_id, password, tipo_documento, numero_documento, fecha_nacimiento, licencia_conducir, nacionalidad, direccion) VALUES
-('u1', 'Juan Pérez', 'cliente@demo.com', '999888777', 'cliente', '123', 'DNI', '12345678', '1990-01-01', TRUE, 'Nacional', 'Av. Larco 101, Lima'),
-('u2', 'Admin General', 'admin@demo.com', '999000111', 'admin', '123', NULL, NULL, NULL, FALSE, NULL, NULL),
-('u3', 'Vendedor Local', 'vendedor@demo.com', '999222333', 'vendedor', '123', NULL, NULL, NULL, FALSE, NULL, NULL),
-('u4', 'Sr. Dueño', 'dueno@demo.com', '999999999', 'dueno', '123', NULL, NULL, NULL, FALSE, NULL, NULL),
-('u5', 'Mecánico Jefe', 'mecanico@demo.com', '999555666', 'mecanico', '123', NULL, NULL, NULL, FALSE, NULL, NULL);
+INSERT INTO
+    USUARIOS (
+        id,
+        nombre,
+        email,
+        telefono,
+        rol_id,
+        password,
+        tipo_documento,
+        numero_documento,
+        fecha_nacimiento,
+        licencia_conducir,
+        nacionalidad,
+        direccion
+    )
+VALUES (
+        'u1',
+        'Juan Pérez',
+        'cliente@demo.com',
+        '999888777',
+        'cliente',
+        '123',
+        'DNI',
+        '12345678',
+        '1990-01-01',
+        TRUE,
+        'Nacional',
+        'Av. Larco 101, Lima'
+    ),
+    (
+        'u2',
+        'Admin General',
+        'admin@demo.com',
+        '999000111',
+        'admin',
+        '123',
+        NULL,
+        NULL,
+        NULL,
+        FALSE,
+        NULL,
+        NULL
+    ),
+    (
+        'u3',
+        'Vendedor Local',
+        'vendedor@demo.com',
+        '999222333',
+        'vendedor',
+        '123',
+        NULL,
+        NULL,
+        NULL,
+        FALSE,
+        NULL,
+        NULL
+    ),
+    (
+        'u4',
+        'Sr. Dueño',
+        'dueno@demo.com',
+        '999999999',
+        'dueno',
+        '123',
+        NULL,
+        NULL,
+        NULL,
+        FALSE,
+        NULL,
+        NULL
+    ),
+    (
+        'u5',
+        'Mecánico Jefe',
+        'mecanico@demo.com',
+        '999555666',
+        'mecanico',
+        '123',
+        NULL,
+        NULL,
+        NULL,
+        FALSE,
+        NULL,
+        NULL
+    );
 
 -- Recursos (Originales + Nuevos)
 DO $$
@@ -614,19 +983,70 @@ BEGIN
 END $$;
 
 -- Promociones
-INSERT INTO PROMOCIONES (nombre, descripcion, tipo, condicion, beneficio, activo) VALUES
-('Descuento Larga Duración', '10% de descuento en alquileres mayores a 3 horas', 'regla_tiempo', '{"minHoras": 3}', '{"tipo": "porcentaje", "valor": 10}', TRUE),
-('Paquete Cuatrimotos 3x5', 'Alquila 3 Cuatrimotos por el precio de 5 horas', 'regla_cantidad', '{"minCantidad": 3, "categoria": "Motor"}', '{"tipo": "porcentaje", "valor": 15}', FALSE);
+INSERT INTO
+    PROMOCIONES (
+        nombre,
+        descripcion,
+        tipo,
+        condicion,
+        beneficio,
+        activo
+    )
+VALUES (
+        'Descuento Larga Duración',
+        '10% de descuento en alquileres mayores a 3 horas',
+        'regla_tiempo',
+        '{"minHoras": 3}',
+        '{"tipo": "porcentaje", "valor": 10}',
+        TRUE
+    ),
+    (
+        'Paquete Cuatrimotos 3x5',
+        'Alquila 3 Cuatrimotos por el precio de 5 horas',
+        'regla_cantidad',
+        '{"minCantidad": 3, "categoria": "Motor"}',
+        '{"tipo": "porcentaje", "valor": 15}',
+        FALSE
+    );
 
 -- Tarjeta para el usuario demo (u1)
-INSERT INTO TARJETAS_CREDITO (usuario_id, numero_oculto, token, expiracion, titular, es_principal)
-VALUES ('u1', '**** **** **** 4242', 'tok_visa_demo_123', '12/28', 'Juan Pérez', TRUE);
+INSERT INTO
+    TARJETAS_CREDITO (
+        usuario_id,
+        numero_oculto,
+        token,
+        expiracion,
+        titular,
+        es_principal
+    )
+VALUES (
+        'u1',
+        '**** **** **** 4242',
+        'tok_visa_demo_123',
+        '12/28',
+        'Juan Pérez',
+        TRUE
+    );
 
 -- Mensajes para el usuario demo
-INSERT INTO MENSAJES (destinatario_id, asunto, contenido, tipo)
-VALUES 
-('u1', 'Bienvenido a Verano', 'Gracias por registrarte en nuestra plataforma. ¡Disfruta tu aventura!', 'notificacion'),
-('u1', 'Recordatorio de Reserva', 'Recuerda que tienes una reserva pendiente para el fin de semana.', 'alerta');
+INSERT INTO
+    MENSAJES (
+        destinatario_id,
+        asunto,
+        contenido,
+        tipo
+    )
+VALUES (
+        'u1',
+        'Bienvenido a Verano',
+        'Gracias por registrarte en nuestra plataforma. ¡Disfruta tu aventura!',
+        'notificacion'
+    ),
+    (
+        'u1',
+        'Recordatorio de Reserva',
+        'Recuerda que tienes una reserva pendiente para el fin de semana.',
+        'alerta'
+    );
 
 SELECT 'Base de datos completa instalada correctamente.' as mensaje;
-
