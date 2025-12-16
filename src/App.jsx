@@ -78,6 +78,7 @@ function AppContenido() {
     // Default 'Nacional' -> 'DNI'
     const [regNacionalidad, setRegNacionalidad] = useState('Nacional');
     const [regTipoDocumento, setRegTipoDocumento] = useState('DNI');
+    const [regPaisOrigen, setRegPaisOrigen] = useState('Perú');
 
     const [regDoc, setRegDoc] = useState('');
     const [regNacimiento, setRegNacimiento] = useState('');
