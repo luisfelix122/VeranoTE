@@ -72,7 +72,7 @@ export const ProveedorInventario = ({ children }) => {
 
             const inventarioFormateado = recursosData.map(item => ({
                 ...item,
-                stockTotal: item.stock,
+                stockTotal: item.stockTotal, // Usar el stock TOTAL físico, no el disponible actual
                 sedeId: item.sede_id,
                 precioPorHora: item.precio_por_hora
             }));

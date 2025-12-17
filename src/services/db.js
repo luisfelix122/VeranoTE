@@ -14,7 +14,8 @@ export const obtenerRecursos = async () => {
     return data.map(item => ({
         ...item,
         categoria: item.categoria_nombre || 'Sin Categoría', // Mapear desde la columna de la vista
-        stock: item.stock_disponible
+        stock: item.stock_disponible,
+        stockTotal: item.stock_total // STOCK FÍSICO REAL (Sin descontar reservas)
     }));
 };
 

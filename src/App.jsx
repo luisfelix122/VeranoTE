@@ -391,8 +391,8 @@ function AppContenido() {
                                 setEsVisible(false);
                                 setCompraExitosa(false);
                                 limpiarCarrito();
-                                window.location.href = '/perfil'; // O usar navigate si router disponible
-                            }}>Ver en Perfil</Boton>
+                                window.location.href = '/mis-gastos'; // O usar navigate si router disponible
+                            }}>Ver Mis Reportes</Boton>
                         </div>
                     </div>
                 ) : carrito.length === 0 ? (
