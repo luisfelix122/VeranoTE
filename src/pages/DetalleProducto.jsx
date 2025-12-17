@@ -11,7 +11,7 @@ const DetalleProducto = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { agregarAlCarrito } = useContext(ContextoCarrito);
-    const { inventario } = useContext(ContextoInventario);
+    const { inventario, calcularStockDisponible } = useContext(ContextoInventario);
     const { setMostrarLogin } = usarUI();
     const [horas, setHoras] = useState(1);
     const [cantidad, setCantidad] = useState(1);
@@ -19,6 +19,7 @@ const DetalleProducto = () => {
     const { usuario } = useContext(ContextoAutenticacion);
 
     const producto = inventario.find(p => String(p.id) === id);
+    const stockDisponible = producto ? calcularStockDisponible(producto.id) : 0;
 
     if (!producto) {
         return (
@@ -76,9 +77,9 @@ const DetalleProducto = () => {
                                     <div className="flex items-center border border-gray-300 rounded-lg">
                                         <button onClick={() => setCantidad(Math.max(1, cantidad - 1))} className="px-3 py-2 hover:bg-gray-100"><Minus size={16} /></button>
                                         <span className="px-3 font-medium w-12 text-center">{cantidad}</span>
-                                        <button onClick={() => setCantidad(Math.min(producto.stock, cantidad + 1))} className="px-3 py-2 hover:bg-gray-100"><Plus size={16} /></button>
+                                        <button onClick={() => setCantidad(Math.min(stockDisponible, cantidad + 1))} className={`px-3 py-2 hover:bg-gray-100 ${cantidad >= stockDisponible ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={cantidad >= stockDisponible}><Plus size={16} /></button>
                                     </div>
-                                    <span className="text-xs text-gray-500">Max: {producto.stock}</span>
+                                    <span className="text-xs text-gray-500">Max: {stockDisponible}</span>
                                 </div>
                             </div>
 
