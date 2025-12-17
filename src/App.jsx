@@ -789,7 +789,7 @@ function AppContenido() {
                                         He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos', 'Términos y Condiciones')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>
                                     </label>
                                 </div>
-                                {erroresRegistro.terminos && <p className="text-xs text-red-500 ml-6">{erroresRegistro.terminos}</p>}
+                                {erroresRegistro.terminos && <p className="text-sm font-medium text-red-600 ml-6 animate-pulse">{erroresRegistro.terminos}</p>}
                             </div>
 
                             <Boton
