@@ -794,7 +794,7 @@ function AppContenido() {
 
                             <Boton
                                 variante="primario"
-                                className="w-full py-3"
+                                className={`w-full py-3 ${!aceptaTerminosRegistro ? 'opacity-50' : ''}`}
                                 type="submit"
                                 disabled={isRegistering}
                             >
