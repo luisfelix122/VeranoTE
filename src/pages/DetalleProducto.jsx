@@ -15,6 +15,7 @@ const DetalleProducto = () => {
     const { setMostrarLogin } = usarUI();
     const [horas, setHoras] = useState(1);
     const [cantidad, setCantidad] = useState(1);
+    const { fechaSeleccionada, setFechaSeleccionada } = useContext(ContextoInventario); // Usar fecha global del contexto
 
     const { usuario } = useContext(ContextoAutenticacion);
 
@@ -61,6 +62,17 @@ const DetalleProducto = () => {
                             <div className="mb-6">
                                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-2">Descripción</h3>
                                 <p className="text-gray-600 leading-relaxed">{producto.descripcion || 'Sin descripción disponible.'}</p>
+                            </div>
+
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Fecha de Reserva</label>
+                                <input
+                                    type="date"
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-gray-900"
+                                    value={fechaSeleccionada}
+                                    onChange={(e) => setFechaSeleccionada(e.target.value)}
+                                    min={new Date().toISOString().split('T')[0]}
+                                />
                             </div>
 
                             <div className="flex gap-8 mb-6">

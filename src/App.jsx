@@ -45,7 +45,7 @@ function App() {
 function AppContenido() {
     const { usuario, iniciarSesion, registrarUsuario, cargando } = useContext(ContextoAutenticacion);
     const { carrito, removerDelCarrito, esVisible, setEsVisible, total, limpiarCarrito } = useContext(ContextoCarrito);
-    const { registrarAlquiler, verificarDisponibilidad, fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva } = useContext(ContextoInventario);
+    const { registrarAlquiler, verificarDisponibilidad, calcularStockDisponible, fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva } = useContext(ContextoInventario);
     const { calcularDescuentos } = useContext(ContextoPromociones);
     const { mostrarLogin, setMostrarLogin, modoRegistro, setModoRegistro, abrirModalInfo } = usarUI();
     const { sedeActual, setSedeActual, sedes } = useContext(ContextoInventario);
@@ -285,49 +285,45 @@ function AppContenido() {
             setErroresCheckout(prev => ({ ...prev, factura: null }));
         }
 
-        // Validar disponibilidad
-        const fechaInicio = new Date(`${fechaReserva}T${horaReserva}`);
-
-        verificarDisponibilidad(carrito, fechaInicio).then(disponibilidad => {
-            if (!disponibilidad.valido) {
-                // alert(disponibilidad.mensaje);
-                // Usar un estado general o una notificación toast sería mejor, pero por ahora inline si es posible, o mantenemos alert solo para disponibilidad critica
-                // El usuario pidió "ese mensaje ponlo más bonito", refiriendose a todos.
-                setErroresCheckout(prev => ({ ...prev, general: disponibilidad.mensaje }));
+        // Validar disponibilidad (Cliente - Enforce UI Logic)
+        for (const item of carrito) {
+            const stockMax = calcularStockDisponible(item.id, fechaReserva);
+            if (item.cantidad > stockMax) {
+                setErroresCheckout(prev => ({ ...prev, general: `Stock insuficiente para ${item.nombre}. Máximo disponible: ${stockMax}` }));
                 return;
             }
+        }
 
-            // Preparar datos para la reserva con saneamiento
-            const datosReserva = {
-                clienteId: usuario.id,
-                vendedorId: null, // Si es online, va null (o 'WEB' si el server lo soporta, pero preferible null para UUIDs)
-                sedeId: sedeActual || 'costa',
-                items: carrito.map(i => ({
-                    id: Number(i.id),
-                    cantidad: Number(i.cantidad),
-                    horas: Number(i.horas),
-                    precioPorHora: Number(i.precioPorHora),
-                    categoria: i.categoria
-                })),
-                fechaInicio: fechaInicio.toISOString(), // Asegurar formato ISO
-                tipoReserva: tipoReserva || 'inmediata',
-                metodoPago: metodoPago || 'transferencia',
-                tipoComprobante: tipoComprobante || 'boleta',
-                datosFactura: tipoComprobante === 'factura' ? datosFactura : null
-            };
+        const fechaInicio = new Date(`${fechaReserva}T${horaReserva}`);
 
-            // Loading UI simulación (opcional)
-            setAceptaTerminos(false); // Deshabilitar doble click
+        // Preparar datos para la reserva con saneamiento
+        const datosReserva = {
+            clienteId: usuario.id,
+            vendedorId: null, // Si es online, va null
+            sedeId: sedeActual || 'costa',
+            items: carrito.map(i => ({
+                id: Number(i.id),
+                cantidad: Number(i.cantidad),
+                horas: Number(i.horas),
+                precioPorHora: Number(i.precioPorHora),
+                categoria: i.categoria
+            })),
+            fechaInicio: fechaInicio.toISOString(), // Asegurar formato ISO
+            tipoReserva: tipoReserva || 'inmediata',
+            metodoPago: metodoPago || 'transferencia',
+            tipoComprobante: tipoComprobante || 'boleta',
+            datosFactura: tipoComprobante === 'factura' ? datosFactura : null
+        };
 
-            registrarAlquiler(datosReserva).then(exito => {
-                if (exito) {
-                    setCompraExitosa(true);
-                    // limpiarCarrito(); // Mover limpieza al cerrar el modal para evitar flash
-                    // setEsVisible(false); // No cerrar, mostrar éxito
-                } else {
-                    setAceptaTerminos(true); // Permitir reintentar
-                }
-            });
+        // Loading UI simulación (opcional)
+        setAceptaTerminos(false); // Deshabilitar doble click
+
+        registrarAlquiler(datosReserva).then(exito => {
+            if (exito) {
+                setCompraExitosa(true);
+            } else {
+                setAceptaTerminos(true); // Permitir reintentar
+            }
         });
     };
 
