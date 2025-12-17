@@ -87,6 +87,10 @@ function AppContenido() {
     const [isRegistering, setIsRegistering] = useState(false);
     const [aceptaTerminosRegistro, setAceptaTerminosRegistro] = useState(false);
 
+    // New UX State
+    const [erroresRegistro, setErroresRegistro] = useState({});
+    const [registroExitoso, setRegistroExitoso] = useState(false);
+
     // Calcular si es menor de edad
     const esMenorDeEdad = React.useMemo(() => {
         if (!regNacimiento) return false;
@@ -529,210 +533,280 @@ function AppContenido() {
 
 
             {/* Modal Login/Registro */}
-            <Modal titulo={modoRegistro ? "Crear Cuenta" : "Bienvenido"} abierto={mostrarLogin} alCerrar={() => setMostrarLogin(false)} zIndex={60}>
+            <Modal titulo={modoRegistro ? "Crear Cuenta" : "Bienvenido"} abierto={mostrarLogin} alCerrar={() => { setMostrarLogin(false); setRegistroExitoso(false); setErroresRegistro({}); }} zIndex={60}>
                 {modoRegistro ? (
-                    <form onSubmit={async (e) => {
-                        e.preventDefault();
-
-                        // Validación DNI en interfaz (Solo si es DNI)
-                        if (regTipoDocumento === 'DNI' && !/^\d{8}$/.test(regDoc)) {
-                            setErrorDni("El DNI debe tener exactamente 8 dígitos numéricos.");
-                            return;
-                        }
-
-                        if (!aceptaTerminosRegistro) {
-                            return;
-                        }
-
-                        setIsRegistering(true);
-
-                        const resultado = await registrarUsuario({
-                            nombre: regNombre,
-                            email: regEmail,
-                            password: regPass,
-                            numeroDocumento: regDoc,
-                            fechaNacimiento: regNacimiento,
-                            licenciaConducir: regLicencia,
-                            tipoDocumento: regTipoDocumento,
-                            nacionalidad: regNacionalidad
-                        });
-
-                        setIsRegistering(false);
-
-                        if (resultado === true) {
-                            setMostrarLogin(false);
-                            setModoRegistro(false);
-                            setAceptaTerminosRegistro(false);
-                            alert('Cuenta creada exitosamente. ¡Bienvenido!');
-                        } else {
-                            if (resultado?.toString().includes('usuarios_email_unique') || resultado?.toString().includes('usuarios_email_key')) {
-                                alert("El correo electrónico ya está registrado.");
-                            } else if (resultado?.toString().includes('usuarios_dni_unique_idx')) {
-                                alert("El documento de identidad ya está registrado.");
-                            } else if (resultado?.toString().includes('usuarios_dni_check')) {
-                                setErrorDni("El formato del DNI es inválido (debe tener 8 dígitos).");
-                            } else {
-                                alert(resultado || 'Error al crear la cuenta. Intente nuevamente.');
-                            }
-                        }
-                    }} className="space-y-4">
-                        <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input required className="w-full p-2 border rounded" value={regNombre} onChange={e => setRegNombre(e.target.value)} /></div>
-                        <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input required type="email" className="w-full p-2 border rounded" value={regEmail} onChange={e => setRegEmail(e.target.value)} /></div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1"> Condición</label>
-                                <select
-                                    className="w-full p-2 border rounded bg-white"
-                                    value={regNacionalidad}
-                                    onChange={e => {
-                                        const val = e.target.value;
-                                        setRegNacionalidad(val);
-                                        // Auto-switch Logic
-                                        if (val === 'Nacional') {
-                                            setRegPaisOrigen('Perú');
-                                            setRegTipoDocumento('DNI');
-                                        } else {
-                                            setRegPaisOrigen('Argentina');
-                                            setRegTipoDocumento('Pasaporte');
-                                        }
-                                        setErrorDni('');
-                                    }}
-                                >
-                                    <option value="Nacional">Peruana</option>
-                                    <option value="Extranjero">Extranjera</option>
-                                </select>
+                    registroExitoso ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-center animate-fade-in-up">
+                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                                <CheckCircle size={32} />
                             </div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">¡Cuenta Creada!</h3>
+                            <p className="text-gray-600 mb-6 max-w-xs">Tu registro se ha completado exitosamente. Ya puedes iniciar sesión.</p>
+                            <Boton variante="primario" onClick={() => { setModoRegistro(false); setRegistroExitoso(false); }} className="w-full">
+                                Iniciar Sesión
+                            </Boton>
+                        </div>
+                    ) : (
+                        <form onSubmit={async (e) => {
+                            e.preventDefault();
+
+                            // 1. Limpiar errores previos
+                            const nuevosErrores = {};
+                            setErroresRegistro({});
+
+                            // 2. Validaciones Manuales
+                            if (!regNombre.trim()) nuevosErrores.nombre = "El nombre es obligatorio.";
+                            if (!regEmail.trim()) nuevosErrores.email = "El email es obligatorio.";
+                            if (!regPass.trim()) nuevosErrores.password = "La contraseña es obligatoria.";
+                            if (!regDoc.trim()) {
+                                nuevosErrores.doc = "El documento es obligatorio.";
+                            } else if (regTipoDocumento === 'DNI' && !/^\d{8}$/.test(regDoc)) {
+                                nuevosErrores.doc = "El DNI debe tener 8 dígitos.";
+                            }
+                            if (!regNacimiento) nuevosErrores.nacimiento = "La fecha de nacimiento es obligatoria.";
+
+                            if (!aceptaTerminosRegistro) {
+                                nuevosErrores.terminos = "Debes aceptar los términos y condiciones.";
+                            }
+
+                            // Si hay errores, detener y mostrar
+                            if (Object.keys(nuevosErrores).length > 0) {
+                                setErroresRegistro(nuevosErrores);
+                                return;
+                            }
+
+                            setIsRegistering(true);
+
+                            const resultado = await registrarUsuario({
+                                nombre: regNombre,
+                                email: regEmail,
+                                password: regPass,
+                                numeroDocumento: regDoc,
+                                fechaNacimiento: regNacimiento,
+                                licenciaConducir: regLicencia,
+                                tipoDocumento: regTipoDocumento,
+                                nacionalidad: regNacionalidad
+                            });
+
+                            setIsRegistering(false);
+
+                            if (resultado === true) {
+                                setRegistroExitoso(true);
+                                setAceptaTerminosRegistro(false);
+                            } else {
+                                // Mapeo de errores de backend a campos
+                                const errorStr = resultado?.toString() || '';
+                                if (errorStr.includes('usuarios_email_unique') || errorStr.includes('usuarios_email_key')) {
+                                    setErroresRegistro({ email: "Este correo ya está registrado." });
+                                } else if (errorStr.includes('usuarios_dni_unique_idx')) {
+                                    setErroresRegistro({ doc: "Este documento ya está registrado." });
+                                } else if (errorStr.includes('usuarios_dni_check')) {
+                                    setErroresRegistro({ doc: "Formato de documento inválido." });
+                                } else {
+                                    setErroresRegistro({ general: "Error al crear cuenta. Inténtalo de nuevo." });
+                                }
+                            }
+                        }} className="space-y-4">
+                            {erroresRegistro.general && (
+                                <div className="bg-red-50 text-red-600 p-3 rounded text-sm flex items-center gap-2">
+                                    <AlertTriangle size={16} /> {erroresRegistro.general}
+                                </div>
+                            )}
+
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">País Origen</label>
-                                {regNacionalidad === 'Nacional' ? (
-                                    <input disabled className="w-full p-2 border rounded bg-gray-100 text-gray-500 font-medium" value="Perú" />
-                                ) : (
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+                                <input
+                                    className={`w-full p-2 border rounded ${erroresRegistro.nombre ? 'border-red-500 bg-red-50' : ''}`}
+                                    value={regNombre}
+                                    onChange={e => setRegNombre(e.target.value)}
+                                    placeholder="Ej. Juan Pérez"
+                                />
+                                {erroresRegistro.nombre && <p className="text-xs text-red-500 mt-1">{erroresRegistro.nombre}</p>}
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    className={`w-full p-2 border rounded ${erroresRegistro.email ? 'border-red-500 bg-red-50' : ''}`}
+                                    value={regEmail}
+                                    onChange={e => setRegEmail(e.target.value)}
+                                    placeholder="ejemplo@correo.com"
+                                />
+                                {erroresRegistro.email && <p className="text-xs text-red-500 mt-1">{erroresRegistro.email}</p>}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1"> Condición</label>
                                     <select
                                         className="w-full p-2 border rounded bg-white"
-                                        value={regPaisOrigen}
-                                        onChange={e => setRegPaisOrigen(e.target.value)}
+                                        value={regNacionalidad}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setRegNacionalidad(val);
+                                            // Auto-switch Logic
+                                            if (val === 'Nacional') {
+                                                setRegPaisOrigen('Perú');
+                                                setRegTipoDocumento('DNI');
+                                            } else {
+                                                setRegPaisOrigen('Argentina');
+                                                setRegTipoDocumento('Pasaporte');
+                                            }
+                                            setErroresRegistro(prev => ({ ...prev, doc: '' }));
+                                        }}
                                     >
-                                        <option value="Argentina">Argentina</option>
-                                        <option value="Bolivia">Bolivia</option>
-                                        <option value="Brasil">Brasil</option>
-                                        <option value="Canadá">Canadá</option>
-                                        <option value="Chile">Chile</option>
-                                        <option value="China">China</option>
-                                        <option value="Colombia">Colombia</option>
-                                        <option value="Ecuador">Ecuador</option>
-                                        <option value="España">España</option>
-                                        <option value="Estados Unidos">Estados Unidos</option>
-                                        <option value="Francia">Francia</option>
-                                        <option value="Italia">Italia</option>
-                                        <option value="Japón">Japón</option>
-                                        <option value="México">México</option>
-                                        <option value="Paraguay">Paraguay</option>
-                                        <option value="Reino Unido">Reino Unido</option>
-                                        <option value="Uruguay">Uruguay</option>
-                                        <option value="Venezuela">Venezuela</option>
-                                        <option value="Otro">Otro</option>
+                                        <option value="Nacional">Peruana</option>
+                                        <option value="Extranjero">Extranjera</option>
                                     </select>
-                                )}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">País Origen</label>
+                                    {regNacionalidad === 'Nacional' ? (
+                                        <input disabled className="w-full p-2 border rounded bg-gray-100 text-gray-500 font-medium" value="Perú" />
+                                    ) : (
+                                        <select
+                                            className="w-full p-2 border rounded bg-white"
+                                            value={regPaisOrigen}
+                                            onChange={e => setRegPaisOrigen(e.target.value)}
+                                        >
+                                            <option value="Argentina">Argentina</option>
+                                            <option value="Bolivia">Bolivia</option>
+                                            <option value="Brasil">Brasil</option>
+                                            <option value="Canadá">Canadá</option>
+                                            <option value="Chile">Chile</option>
+                                            <option value="China">China</option>
+                                            <option value="Colombia">Colombia</option>
+                                            <option value="Ecuador">Ecuador</option>
+                                            <option value="España">España</option>
+                                            <option value="Estados Unidos">Estados Unidos</option>
+                                            <option value="Francia">Francia</option>
+                                            <option value="Italia">Italia</option>
+                                            <option value="Japón">Japón</option>
+                                            <option value="México">México</option>
+                                            <option value="Paraguay">Paraguay</option>
+                                            <option value="Reino Unido">Reino Unido</option>
+                                            <option value="Uruguay">Uruguay</option>
+                                            <option value="Venezuela">Venezuela</option>
+                                            <option value="Otro">Otro</option>
+                                        </select>
+                                    )}
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Doc.</label>
+                                    <select
+                                        className="w-full p-2 border rounded bg-gray-50 disabled:bg-gray-100"
+                                        value={regTipoDocumento}
+                                        onChange={e => setRegTipoDocumento(e.target.value)}
+                                        disabled={regNacionalidad === 'Nacional'}
+                                    >
+                                        <option value="DNI">DNI</option>
+                                        <option value="Pasaporte">Pasaporte</option>
+                                        <option value="CE">C.E.</option>
+                                        <option value="PTP">PTP</option>
+                                    </select>
+                                </div>
+
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        {regTipoDocumento === 'DNI' ? 'Número DNI' : 'N° Documento'}
+                                    </label>
+                                    <input
+                                        className={`w-full p-2 border rounded ${erroresRegistro.doc ? 'border-red-500 bg-red-50' : ''}`}
+                                        value={regDoc}
+                                        maxLength={regTipoDocumento === 'DNI' ? 8 : 20}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (regTipoDocumento === 'DNI' && !/^\d*$/.test(val)) return;
+                                            setRegDoc(val);
+                                            setErroresRegistro(prev => ({ ...prev, doc: '' }));
+                                        }}
+                                        placeholder={regTipoDocumento === 'DNI' ? '8 dígitos' : ''}
+                                    />
+                                    {erroresRegistro.doc && <p className="text-xs text-red-500 mt-1">{erroresRegistro.doc}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Nacimiento</label>
+                                    <input
+                                        type="date"
+                                        className={`w-full p-2 border rounded ${erroresRegistro.nacimiento ? 'border-red-500 bg-red-50' : ''}`}
+                                        value={regNacimiento}
+                                        onChange={e => {
+                                            setRegNacimiento(e.target.value);
+                                            setErroresRegistro(prev => ({ ...prev, nacimiento: '' }));
+                                            if (calcularEdadRegistro(e.target.value) < 18) {
+                                                setRegLicencia(false);
+                                            }
+                                        }}
+                                    />
+                                    {erroresRegistro.nacimiento && <p className="text-xs text-red-500 mt-1">{erroresRegistro.nacimiento}</p>}
+                                </div>
+                            </div>
+
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Doc.</label>
-                                <select
-                                    className="w-full p-2 border rounded bg-gray-50 disabled:bg-gray-100"
-                                    value={regTipoDocumento}
-                                    onChange={e => setRegTipoDocumento(e.target.value)}
-                                    disabled={regNacionalidad === 'Nacional'}
-                                >
-                                    <option value="DNI">DNI</option>
-                                    <option value="Pasaporte">Pasaporte</option>
-                                    <option value="CE">C.E.</option>
-                                    <option value="PTP">PTP</option>
-                                </select>
-                            </div>
-
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    {regTipoDocumento === 'DNI' ? 'Número DNI' : 'N° Documento'}
-                                </label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
                                 <input
-                                    required
-                                    className={`w-full p-2 border rounded ${errorDni ? 'border-red-500 bg-red-50' : ''}`}
-                                    value={regDoc}
-                                    maxLength={regTipoDocumento === 'DNI' ? 8 : 20}
-                                    onChange={e => {
-                                        const val = e.target.value;
-                                        if (regTipoDocumento === 'DNI' && !/^\d*$/.test(val)) return;
-                                        setRegDoc(val);
-                                        setErrorDni('');
-                                    }}
+                                    type="password"
+                                    className={`w-full p-2 border rounded ${erroresRegistro.password ? 'border-red-500 bg-red-50' : ''}`}
+                                    value={regPass}
+                                    onChange={e => setRegPass(e.target.value)}
+                                    placeholder="********"
                                 />
-                                {errorDni && <p className="text-xs text-red-500 mt-1 font-medium">{errorDni}</p>}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Nacimiento</label>
-                                <input
-                                    required
-                                    type="date"
-                                    className="w-full p-2 border rounded"
-                                    value={regNacimiento}
-                                    onChange={e => {
-                                        setRegNacimiento(e.target.value);
-                                        if (calcularEdadRegistro(e.target.value) < 18) {
-                                            setRegLicencia(false);
-                                        }
-                                    }}
-                                />
-                            </div>
-                        </div>
-                        <div><label className="block text-sm font-medium text-gray-700 mb-1">Password</label><input required type="password" className="w-full p-2 border rounded" value={regPass} onChange={e => setRegPass(e.target.value)} /></div>
-
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="regLicencia"
-                                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
-                                    checked={regLicencia}
-                                    onChange={(e) => setRegLicencia(e.target.checked)}
-                                    disabled={esMenorDeEdad}
-                                />
-                                <label htmlFor="regLicencia" className={`text-sm ${esMenorDeEdad ? 'text-gray-400' : 'text-gray-700'}`}>
-                                    Tengo Licencia de Conducir {esMenorDeEdad && '(Requiere ser mayor de edad)'}
-                                </label>
+                                {erroresRegistro.password && <p className="text-xs text-red-500 mt-1">{erroresRegistro.password}</p>}
                             </div>
 
-                            <div className="flex items-start gap-2 p-3 rounded border bg-gray-50">
-                                <input
-                                    type="checkbox"
-                                    id="regTerminos"
-                                    className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                    checked={aceptaTerminosRegistro}
-                                    onChange={e => setAceptaTerminosRegistro(e.target.checked)}
-                                />
-                                <label htmlFor="regTerminos" className="text-sm text-gray-700 cursor-pointer select-none">
-                                    He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos', 'Términos y Condiciones')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>
-                                </label>
-                            </div>
-                        </div>
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="regLicencia"
+                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                                        checked={regLicencia}
+                                        onChange={(e) => setRegLicencia(e.target.checked)}
+                                        disabled={esMenorDeEdad}
+                                    />
+                                    <label htmlFor="regLicencia" className={`text-sm ${esMenorDeEdad ? 'text-gray-400' : 'text-gray-700'}`}>
+                                        Tengo Licencia de Conducir {esMenorDeEdad && '(Requiere ser mayor de edad)'}
+                                    </label>
+                                </div>
 
-                        <Boton
-                            variante="primario"
-                            className={`w-full py-3 ${!aceptaTerminosRegistro ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            type="submit"
-                            disabled={!aceptaTerminosRegistro || isRegistering}
-                        >
-                            {isRegistering ? 'Registrando...' : 'Registrarse'}
-                        </Boton>
-                        <p className="text-center text-sm text-gray-600">¿Ya tienes cuenta? <button type="button" onClick={() => setModoRegistro(false)} className="text-blue-600 font-bold">Inicia Sesión</button></p>
-                    </form>
+                                <div className={`flex items-start gap-2 p-3 rounded border ${erroresRegistro.terminos ? 'border-red-200 bg-red-50' : 'bg-gray-50'}`}>
+                                    <input
+                                        type="checkbox"
+                                        id="regTerminos"
+                                        className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                        checked={aceptaTerminosRegistro}
+                                        onChange={e => {
+                                            setAceptaTerminosRegistro(e.target.checked);
+                                            setErroresRegistro(prev => ({ ...prev, terminos: '' }));
+                                        }}
+                                    />
+                                    <label htmlFor="regTerminos" className="text-sm text-gray-700 cursor-pointer select-none">
+                                        He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos', 'Términos y Condiciones')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>
+                                    </label>
+                                </div>
+                                {erroresRegistro.terminos && <p className="text-xs text-red-500 ml-6">{erroresRegistro.terminos}</p>}
+                            </div>
+
+                            <Boton
+                                variante="primario"
+                                className="w-full py-3"
+                                type="submit"
+                                disabled={isRegistering}
+                            >
+                                {isRegistering ? 'Registrando...' : 'Registrarse'}
+                            </Boton>
+                            <p className="text-center text-sm text-gray-600">¿Ya tienes cuenta? <button type="button" onClick={() => setModoRegistro(false)} className="text-blue-600 font-bold">Inicia Sesión</button></p>
+                        </form>
+                    )
                 ) : (
                     <form onSubmit={manejarLogin} className="space-y-4">
                         <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                        <div><label className="block text-sm font-medium text-gray-700 mb-1">Password</label><input type="password" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label><input type="password" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
                         {errorLogin && <div className="text-red-500 text-sm bg-red-50 p-2 rounded flex items-center gap-2"><AlertTriangle size={16} />{errorLogin}</div>}
                         <Boton variante="primario" className="w-full py-3" type="submit">Ingresar</Boton>
                         <p className="text-center text-sm text-gray-600">¿No tienes cuenta? <button type="button" onClick={() => setModoRegistro(true)} className="text-blue-600 font-bold">Regístrate</button></p>
