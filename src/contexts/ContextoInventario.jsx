@@ -177,6 +177,13 @@ export const ProveedorInventario = ({ children }) => {
         const respuesta = await crearReserva(nuevoAlquiler);
 
         if (respuesta && respuesta.success) {
+            // Actualización optimista para feedback inmediato en UI
+            setAlquileres(prev => [...prev, {
+                ...nuevoAlquiler,
+                id: 'temp-' + Date.now(), // ID temporal
+                estado: 'pendiente'
+            }]);
+
             // Recargar todos los datos para asegurar consistencia (stock, alquileres, etc)
             await recargarDatos();
             return true;

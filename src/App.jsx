@@ -125,6 +125,7 @@ function AppContenido() {
     const [datosFactura, setDatosFactura] = useState({ ruc: '', razonSocial: '', direccion: '' });
     const [aceptaTerminos, setAceptaTerminos] = useState(false);
     const [errorHora, setErrorHora] = useState('');
+    const [erroresCheckout, setErroresCheckout] = useState({});
 
     // Estados para descuentos y promociones en el carrito
     // const [descuentoTotal, setDescuentoTotal] = useState(0); // REMOVED to avoid conflict with calculated const
@@ -264,8 +265,10 @@ function AppContenido() {
         }
 
         if (!aceptaTerminos) {
-            alert("Debes aceptar los términos y condiciones del contrato.");
+            setErroresCheckout(prev => ({ ...prev, terminos: "Debes aceptar los términos y condiciones del contrato." }));
             return;
+        } else {
+            setErroresCheckout(prev => ({ ...prev, terminos: null }));
         }
 
         // Validar Horario de Atención
@@ -275,8 +278,10 @@ function AppContenido() {
         }
 
         if (tipoComprobante === 'factura' && (!datosFactura.ruc || !datosFactura.razonSocial)) {
-            alert("Por favor completa los datos de facturación.");
+            setErroresCheckout(prev => ({ ...prev, factura: "Por favor completa los datos de facturación." }));
             return;
+        } else {
+            setErroresCheckout(prev => ({ ...prev, factura: null }));
         }
 
         // Validar disponibilidad
@@ -284,7 +289,10 @@ function AppContenido() {
 
         verificarDisponibilidad(carrito, fechaInicio).then(disponibilidad => {
             if (!disponibilidad.valido) {
-                alert(disponibilidad.mensaje);
+                // alert(disponibilidad.mensaje);
+                // Usar un estado general o una notificación toast sería mejor, pero por ahora inline si es posible, o mantenemos alert solo para disponibilidad critica
+                // El usuario pidió "ese mensaje ponlo más bonito", refiriendose a todos.
+                setErroresCheckout(prev => ({ ...prev, general: disponibilidad.mensaje }));
                 return;
             }
 
@@ -401,7 +409,6 @@ function AppContenido() {
                                             type="time"
                                             className="w-full p-2 border rounded text-sm"
                                             value={horaReserva}
-                                            onChange={e => setHoraReserva(e.target.value)}
                                             min={horaApertura}
                                             max={horaCierre}
                                             onChange={e => {
@@ -471,8 +478,10 @@ function AppContenido() {
                                             <input placeholder="RUC" className="w-full p-2 border rounded text-sm" value={datosFactura.ruc} onChange={e => setDatosFactura({ ...datosFactura, ruc: e.target.value })} />
                                             <input placeholder="Razón Social" className="w-full p-2 border rounded text-sm" value={datosFactura.razonSocial} onChange={e => setDatosFactura({ ...datosFactura, razonSocial: e.target.value })} />
                                             <input placeholder="Dirección Fiscal" className="w-full p-2 border rounded text-sm" value={datosFactura.direccion} onChange={e => setDatosFactura({ ...datosFactura, direccion: e.target.value })} />
+
                                         </div>
                                     )}
+                                    {erroresCheckout.factura && <p className="text-xs font-bold text-red-600 mt-1 animate-pulse">{erroresCheckout.factura}</p>}
                                 </div>
                             </div>
                         </div>
@@ -485,12 +494,16 @@ function AppContenido() {
                                     id="terminos"
                                     className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                                     checked={aceptaTerminos}
-                                    onChange={(e) => setAceptaTerminos(e.target.checked)}
+                                    onChange={(e) => {
+                                        setAceptaTerminos(e.target.checked);
+                                        setErroresCheckout(prev => ({ ...prev, terminos: null }));
+                                    }}
                                 />
                                 <label htmlFor="terminos" className="text-sm text-gray-700 cursor-pointer">
                                     He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos', 'Términos y Condiciones')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>, incluyendo la responsabilidad por daños y el depósito de garantía reembolsable.
                                 </label>
                             </div>
+                            {erroresCheckout.terminos && <p className="text-xs font-bold text-red-600 ml-8 mt-1 animate-pulse">{erroresCheckout.terminos}</p>}
                         </div>
 
                         <div className="border-t pt-4 space-y-3">
