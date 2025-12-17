@@ -48,7 +48,12 @@ function AppContenido() {
     const { registrarAlquiler, verificarDisponibilidad, fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva } = useContext(ContextoInventario);
     const { calcularDescuentos } = useContext(ContextoPromociones);
     const { mostrarLogin, setMostrarLogin, modoRegistro, setModoRegistro, abrirModalInfo } = usarUI();
-    const { sedeActual, setSedeActual } = useContext(ContextoInventario);
+    const { sedeActual, setSedeActual, sedes } = useContext(ContextoInventario);
+
+    // Obtener horarios de la sede actual
+    const sedeInfo = sedes.find(s => s.id === sedeActual);
+    const horaApertura = sedeInfo?.hora_apertura ? sedeInfo.hora_apertura.slice(0, 5) : '08:00';
+    const horaCierre = sedeInfo?.hora_cierre ? sedeInfo.hora_cierre.slice(0, 5) : '18:00';
 
     // Actualizar tipo de cambio al montar
     React.useEffect(() => {
@@ -262,6 +267,12 @@ function AppContenido() {
             return;
         }
 
+        // Validar Horario de Atención
+        if (horaReserva < horaApertura || horaReserva > horaCierre) {
+            alert(`La hora seleccionada está fuera del horario de atención (${horaApertura} - ${horaCierre}).`);
+            return;
+        }
+
         if (tipoComprobante === 'factura' && (!datosFactura.ruc || !datosFactura.razonSocial)) {
             alert("Por favor completa los datos de facturación.");
             return;
@@ -385,7 +396,15 @@ function AppContenido() {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">Hora Inicio</label>
-                                        <input type="time" className="w-full p-2 border rounded text-sm" value={horaReserva} onChange={e => setHoraReserva(e.target.value)} />
+                                        <input 
+                                            type="time" 
+                                            className="w-full p-2 border rounded text-sm" 
+                                            value={horaReserva} 
+                                            onChange={e => setHoraReserva(e.target.value)} 
+                                            min={horaApertura}
+                                            max={horaCierre}
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">Horario: {horaApertura} - {horaCierre}</p>
                                     </div>
                                 </div>
 
