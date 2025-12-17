@@ -126,6 +126,7 @@ function AppContenido() {
     const [aceptaTerminos, setAceptaTerminos] = useState(false);
     const [errorHora, setErrorHora] = useState('');
     const [erroresCheckout, setErroresCheckout] = useState({});
+    const [compraExitosa, setCompraExitosa] = useState(false);
 
     // Estados para descuentos y promociones en el carrito
     // const [descuentoTotal, setDescuentoTotal] = useState(0); // REMOVED to avoid conflict with calculated const
@@ -320,9 +321,9 @@ function AppContenido() {
 
             registrarAlquiler(datosReserva).then(exito => {
                 if (exito) {
-                    limpiarCarrito();
-                    setEsVisible(false);
-                    alert(`¡Reserva Exitosa!\n\nTu reserva ha sido registrada correctamente en el sistema.\nPuedes ver los detalles y el contrato en tu perfil.`);
+                    setCompraExitosa(true);
+                    // limpiarCarrito(); // Mover limpieza al cerrar el modal para evitar flash
+                    // setEsVisible(false); // No cerrar, mostrar éxito
                 } else {
                     setAceptaTerminos(true); // Permitir reintentar
                 }
@@ -363,8 +364,38 @@ function AppContenido() {
             <ModalInfoGlobal />
 
             {/* Modal Carrito */}
-            <Modal titulo="Tu Carrito de Compras" abierto={esVisible} alCerrar={() => setEsVisible(false)} zIndex={60}>
-                {carrito.length === 0 ? (
+            <Modal titulo={compraExitosa ? "¡Reserva Exitosa!" : "Tu Carrito de Compras"} abierto={esVisible} alCerrar={() => {
+                setEsVisible(false);
+                if (compraExitosa) {
+                    setCompraExitosa(false);
+                    limpiarCarrito();
+                }
+            }} zIndex={60}>
+                {compraExitosa ? (
+                    <div className="text-center py-8">
+                        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                            <CheckCircle size={32} />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">¡Reserva Registrada!</h3>
+                        <p className="text-gray-600 mb-6 px-8">
+                            Hemos enviado los detalles de tu reserva a tu correo electrónico.
+                            Puedes ver el contrato y el estado en tu perfil.
+                        </p>
+                        <div className="flex gap-4 justify-center">
+                            <Boton variante="secundario" onClick={() => {
+                                setEsVisible(false);
+                                setCompraExitosa(false);
+                                limpiarCarrito();
+                            }}>Cerrar</Boton>
+                            <Boton onClick={() => {
+                                setEsVisible(false);
+                                setCompraExitosa(false);
+                                limpiarCarrito();
+                                window.location.href = '/perfil'; // O usar navigate si router disponible
+                            }}>Ver en Perfil</Boton>
+                        </div>
+                    </div>
+                ) : carrito.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                         <ShoppingCart size={48} className="mx-auto mb-4 opacity-20" />
                         <p>Tu carrito está vacío.</p>
