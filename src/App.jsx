@@ -124,6 +124,7 @@ function AppContenido() {
     const [tipoComprobante, setTipoComprobante] = useState('boleta');
     const [datosFactura, setDatosFactura] = useState({ ruc: '', razonSocial: '', direccion: '' });
     const [aceptaTerminos, setAceptaTerminos] = useState(false);
+    const [errorHora, setErrorHora] = useState('');
 
     // Estados para descuentos y promociones en el carrito
     // const [descuentoTotal, setDescuentoTotal] = useState(0); // REMOVED to avoid conflict with calculated const
@@ -269,7 +270,7 @@ function AppContenido() {
 
         // Validar Horario de Atención
         if (horaReserva < horaApertura || horaReserva > horaCierre) {
-            alert(`La hora seleccionada está fuera del horario de atención (${horaApertura} - ${horaCierre}).`);
+            setErrorHora(`El horario de atención es de ${horaApertura} a ${horaCierre}.`);
             return;
         }
 
@@ -396,15 +397,20 @@ function AppContenido() {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">Hora Inicio</label>
-                                        <input 
-                                            type="time" 
-                                            className="w-full p-2 border rounded text-sm" 
-                                            value={horaReserva} 
-                                            onChange={e => setHoraReserva(e.target.value)} 
+                                        <input
+                                            type="time"
+                                            className="w-full p-2 border rounded text-sm"
+                                            value={horaReserva}
+                                            onChange={e => setHoraReserva(e.target.value)}
                                             min={horaApertura}
                                             max={horaCierre}
+                                            onChange={e => {
+                                                setHoraReserva(e.target.value);
+                                                setErrorHora('');
+                                            }}
                                         />
                                         <p className="text-xs text-gray-500 mt-1">Horario: {horaApertura} - {horaCierre}</p>
+                                        {errorHora && <p className="text-xs font-bold text-red-600 mt-1 animate-pulse">{errorHora}</p>}
                                     </div>
                                 </div>
 
