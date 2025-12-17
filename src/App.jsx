@@ -786,7 +786,7 @@ function AppContenido() {
                                         }}
                                     />
                                     <label htmlFor="regTerminos" className="text-sm text-gray-700 cursor-pointer select-none">
-                                        He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos', 'Términos y Condiciones')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>
+                                        He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos-registro', 'Términos de Registro')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>
                                     </label>
                                 </div>
                                 {erroresRegistro.terminos && <p className="text-sm font-medium text-red-600 ml-6 animate-pulse">{erroresRegistro.terminos}</p>}
