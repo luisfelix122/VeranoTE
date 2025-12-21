@@ -873,6 +873,7 @@ function AppContenido() {
                         <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
                         <div><label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label><input type="password" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
                         {errorLogin && <div className="text-red-500 text-sm bg-red-50 p-2 rounded flex items-center gap-2"><AlertTriangle size={16} />{errorLogin}</div>}
+                        <Boton type="submit" variante="primario" className="w-full">Iniciar Sesión</Boton>
                         <p className="text-center text-sm text-gray-600">¿No tienes cuenta? <button type="button" onClick={() => setModoRegistro(true)} className="text-blue-600 font-bold">Regístrate</button></p>
                         <div className="mt-4 text-xs text-gray-500 bg-gray-100 p-3 rounded"><p className="font-bold mb-1">Cuentas de prueba:</p><p>Cliente: cliente@demo.com / 123</p><p>Vendedor: vendedor@demo.com / 123</p><p>Admin: admin@demo.com / 123</p><p>Dueño: dueno@demo.com / 123</p><p>Mecánico: mecanico@demo.com / 123</p></div>
                     </form>
