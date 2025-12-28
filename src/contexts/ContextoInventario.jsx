@@ -1,6 +1,12 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
-import { obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerContenidoWeb, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB } from '../services/db';
+import { obtenerDisponibilidadRecursoDB } from '../services/db';
+import {
+    obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerContenidoWeb,
+    crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB,
+    gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
+    aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB
+} from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 
 export const ContextoInventario = createContext();
@@ -54,12 +60,19 @@ export const ProveedorInventario = ({ children }) => {
 
             // Enriquecer inventario con disponibilidad real del backend
             const inventarioConDisponibilidad = await Promise.all(recursosData.map(async (item) => {
-                const disponibilidad = await obtenerDisponibilidadRecursoDB(item.id);
+                let disponibilidad = null;
+                try {
+                    disponibilidad = await obtenerDisponibilidadRecursoDB(item.id);
+                } catch (e) {
+                    console.error("Error disponibilidad", e);
+                }
+                const safeDisp = disponibilidad || { disponibles_ahora: 0, proximos_liberados: [], total_fisico: item.stockTotal || 0 };
+
                 // Mapeo snake_case (DB) -> camelCase (Frontend)
                 const detalleFormat = {
-                    disponiblesAhora: disponibilidad.disponibles_ahora,
-                    proximosLiberados: disponibilidad.proximos_liberados,
-                    totalFisico: disponibilidad.total_fisico
+                    disponiblesAhora: safeDisp.disponibles_ahora,
+                    proximosLiberados: safeDisp.proximos_liberados || [],
+                    totalFisico: safeDisp.total_fisico
                 };
 
                 return {
