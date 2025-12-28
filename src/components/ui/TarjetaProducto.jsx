@@ -12,25 +12,16 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
     const requiereLicencia = producto.categoria === 'Motor';
     const bloqueadoPorLicencia = usuario && requiereLicencia && !tieneLicencia;
 
-    const [tiempoEstimado, setTiempoEstimado] = React.useState(null);
-    const [cargandoDisponibilidad, setCargandoDisponibilidad] = React.useState(false);
+    const { detalleDisponibilidad } = producto;
+    const proximosLiberados = detalleDisponibilidad?.proximosLiberados || [];
+    const siguienteLiberacion = proximosLiberados.length > 0 ? proximosLiberados[0] : null;
 
-    React.useEffect(() => {
-        if (producto.stock <= 0) {
-            const cargarEstimacion = async () => {
-                setCargandoDisponibilidad(true);
-                // Import dinámico para evitar ciclo o cargar si no se usa
-                const { estimarDisponibilidad } = await import('../../services/db');
-                const fecha = await estimarDisponibilidad(producto.id);
-                if (fecha) {
-                    const hora = new Date(fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    setTiempoEstimado(hora);
-                }
-                setCargandoDisponibilidad(false);
-            };
-            cargarEstimacion();
-        }
-    }, [producto.stock, producto.id]);
+    const formatearHora = (dateObj) => {
+        if (!dateObj) return '';
+        // Asegurarse de que sea objeto Date
+        const d = new Date(dateObj.hora || dateObj);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow group">
@@ -52,11 +43,21 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
                         {producto.stock > 0 ? `${producto.stock} disp.` : 'Agotado'}
                     </span>
                 </div>
-                {producto.stock <= 0 && (
-                    <p className="text-xs text-orange-600 mb-2 font-medium">
-                        {cargandoDisponibilidad ? 'Calculando...' :
-                            (tiempoEstimado ? `Disponible aprox. a las ${tiempoEstimado}` : 'No disponible hoy')
+
+                {/* Información detallada de disponibilidad */}
+                {siguienteLiberacion && (
+                    <p className="text-xs text-orange-600 mb-2 font-medium bg-orange-50 px-2 py-1 rounded-lg">
+                        {producto.stock === 0
+                            ? `Próximo disponible a las ${formatearHora(siguienteLiberacion)}`
+                            : `+${siguienteLiberacion.cantidad} disponible(s) a las ${formatearHora(siguienteLiberacion)}`
                         }
+                    </p>
+                )}
+
+                {/* Fallback si está agotado y no hay próxima liberación calculada (ej. fin del día) */}
+                {producto.stock === 0 && !siguienteLiberacion && (
+                    <p className="text-xs text-red-500 mb-2 font-medium">
+                        No disponible por hoy
                     </p>
                 )}
                 {bloqueadoPorLicencia && (

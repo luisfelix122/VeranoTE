@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { supabase } from '../supabase/client';
 import { obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerContenidoWeb, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 
@@ -18,47 +19,28 @@ export const ProveedorInventario = ({ children }) => {
         return inicio1 < fin2 && inicio2 < fin1;
     };
 
-    // Calcular disponibilidad en tiempo real (Síncrono para UI)
-    const calcularStockDisponible = (recursoId, fecha = fechaSeleccionada) => {
-        const recurso = inventario.find(r => r.id === recursoId);
-        if (!recurso) return 0;
-
-        // Definir rango del día seleccionado (00:00 a 23:59)
-        const inicioDia = new Date(fecha);
-        inicioDia.setHours(0, 0, 0, 0);
-        const finDia = new Date(fecha);
-        finDia.setHours(23, 59, 59, 999);
-
-        // Filtrar reservas activas (pendientes, confirmadas, en_uso...)
-        const reservasActivas = alquileres.filter(a =>
-            a.estado !== 'finalizado' &&
-            a.estado !== 'cancelado' &&
-            a.estado !== 'no_show'
-        );
-
-        let cantidadReservada = 0;
-
-        reservasActivas.forEach(alquiler => {
-            // Verificar si el alquiler se cruza amb el día seleccionado
-            const inicioAlquiler = new Date(alquiler.fechaInicio);
-
-            // Buscar si este alquiler incluye el recurso
-            const itemEnAlquiler = alquiler.items?.find(i => i.id === recursoId);
-
-            if (itemEnAlquiler) {
-                // Calcular Fin de est item
-                const horas = itemEnAlquiler.horas || 1;
-                const finAlquiler = new Date(inicioAlquiler.getTime() + (horas * 60 * 60 * 1000));
-
-                if (hayCruce(inicioDia, finDia, inicioAlquiler, finAlquiler)) {
-                    cantidadReservada += itemEnAlquiler.cantidad;
-                }
-            }
-        });
-
-        // Asegurar que no sea negativo
-        return Math.max(0, recurso.stockTotal - cantidadReservada);
+    // Helper: Parsear fecha como local (Evitar problemas de UTC)
+    const obtenerInicioFinDia = (fechaStr) => {
+        // Asegurar que fechaStr sea YYYY-MM-DD
+        const [anio, mes, dia] = fechaStr.split('-').map(Number);
+        const inicio = new Date(anio, mes - 1, dia, 0, 0, 0, 0); // Mes es 0-index
+        const fin = new Date(anio, mes - 1, dia, 23, 59, 59, 999);
+        return { inicio, fin };
     };
+
+    // Calcular disponibilidad (simplificado, ahora lee del estado ya procesado por backend)
+    const calcularStockDisponible = (recursoId) => {
+        const recurso = inventario.find(r => r.id === recursoId);
+        return recurso?.stock || 0;
+    };
+
+    // Función legacy para compatibilidad si algo la llama, ahora lee directo del recurso
+    const calcularDisponibilidadDetallada = (recursoId) => {
+        const recurso = inventario.find(r => r.id === recursoId);
+        if (!recurso) return { disponiblesAhora: 0, proximosLiberados: [], totalFisico: 0 };
+        return recurso.detalleDisponibilidad || { disponiblesAhora: 0, proximosLiberados: [], totalFisico: 0 };
+    };
+
     // Cargar datos iniciales
     const recargarDatos = async () => {
         try {
@@ -70,14 +52,27 @@ export const ProveedorInventario = ({ children }) => {
                 obtenerContenidoWeb()
             ]);
 
-            const inventarioFormateado = recursosData.map(item => ({
-                ...item,
-                stockTotal: item.stockTotal, // Usar el stock TOTAL físico, no el disponible actual
-                sedeId: item.sede_id,
-                precioPorHora: item.precio_por_hora
+            // Enriquecer inventario con disponibilidad real del backend
+            const inventarioConDisponibilidad = await Promise.all(recursosData.map(async (item) => {
+                const disponibilidad = await obtenerDisponibilidadRecursoDB(item.id);
+                // Mapeo snake_case (DB) -> camelCase (Frontend)
+                const detalleFormat = {
+                    disponiblesAhora: disponibilidad.disponibles_ahora,
+                    proximosLiberados: disponibilidad.proximos_liberados,
+                    totalFisico: disponibilidad.total_fisico
+                };
+
+                return {
+                    ...item,
+                    stock: detalleFormat.disponiblesAhora, // Sobrescribimos stock visual
+                    stockTotal: item.stockTotal,
+                    sedeId: item.sede_id,
+                    precioPorHora: item.precio_por_hora,
+                    detalleDisponibilidad: detalleFormat
+                };
             }));
 
-            setInventario(inventarioFormateado);
+            setInventario(inventarioConDisponibilidad);
             setSedes(sedesData);
             setHorarios(horariosData);
             setContenido(contenidoData);
@@ -92,7 +87,7 @@ export const ProveedorInventario = ({ children }) => {
                 saldoPendiente: a.saldo_pendiente,
                 tipoReserva: a.tipo_reserva,
                 sedeId: a.sede_id,
-                cliente: a.usuarios?.nombre || 'Cliente Desconocido' // Mapear nombre desde la relación
+                cliente: a.usuarios?.nombre || 'Cliente Desconocido'
             })));
         } catch (error) {
             console.error("Error al recargar datos:", error);
@@ -102,7 +97,35 @@ export const ProveedorInventario = ({ children }) => {
     // Cargar datos iniciales
     useEffect(() => {
         recargarDatos();
+
+        // 🟢 SUSCRIPCIÓN REALTIME (El "Noticiero")
+        // Escuchar cambios en alquileres para actualizar stock al instante
+        const canal = supabase
+            .channel('cambios-inventario')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'alquiler_detalles' },
+                (payload) => {
+                    console.log('Cambio detectado en alquileres (Realtime):', payload);
+                    recargarDatos();
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'alquileres' },
+                (payload) => {
+                    // También escuchar cambios de estado (cancelaciones, entregas)
+                    recargarDatos();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(canal);
+        };
     }, []);
+
+
 
     const estaAbierto = (sedeId) => {
         if (!horarios || horarios.length === 0) return { abierto: false, mensaje: 'Horario no disponible' };
@@ -370,7 +393,9 @@ export const ProveedorInventario = ({ children }) => {
             setSedeActual,
             fechaSeleccionada,
             setFechaSeleccionada,
+            setFechaSeleccionada,
             calcularStockDisponible,
+            calcularDisponibilidadDetallada,
             agregarProducto,
             editarProducto,
             eliminarProducto,

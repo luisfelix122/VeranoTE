@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 const Tienda = () => {
     const { t } = useTranslation();
     const navigate = useNavigate();
-    const { inventario, sedeActual, setSedeActual, sedes, estaAbierto, contenido, fechaSeleccionada, setFechaSeleccionada, calcularStockDisponible } = useContext(ContextoInventario);
+    const { inventario, sedeActual, setSedeActual, sedes, estaAbierto, contenido, fechaSeleccionada, setFechaSeleccionada, calcularStockDisponible, calcularDisponibilidadDetallada } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
     const [busqueda, setBusqueda] = useState('');
     const [sedeSeleccionada, setSedeSeleccionada] = useState(null);
@@ -38,11 +38,8 @@ const Tienda = () => {
 
     const categorias = ['Todas', ...new Set(inventario.map(p => p.categoria)), 'Agotados'];
 
-    // Map inventory to include real-time stock availability based on selected date
-    const inventarioConStock = inventario.map(p => ({
-        ...p,
-        stock: calcularStockDisponible(p.id)
-    }));
+    // Map inventory - Ya viene con stock real del backend
+    const inventarioConStock = inventario;
 
     const filtrados = inventarioConStock.filter(p => {
         const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
@@ -194,7 +191,7 @@ const Tienda = () => {
             <div className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 relative z-20">
                 {/* Categories Scroll */}
                 <div className="flex flex-col items-center -mt-10 mb-12">
-                    <div className="flex overflow-x-auto pb-4 gap-3 max-w-full no-scrollbar p-2 bg-white/50 backdrop-blur-md rounded-full border border-white/60 shadow-lg">
+                    <div className="flex overflow-x-auto gap-3 max-w-full no-scrollbar p-2 bg-white/50 backdrop-blur-md rounded-full border border-white/60 shadow-lg">
                         {categorias.map(cat => {
                             const esAgotado = cat === 'Agotados';
                             const seleccionado = categoria === cat;
@@ -204,7 +201,7 @@ const Tienda = () => {
                             if (esAgotado) {
                                 clase += seleccionado
                                     ? 'bg-red-500 text-white shadow-md'
-                                    : 'bg-transparent text-red-500 hover:bg-red-50 hover:shadow-sm border border-red-200';
+                                    : 'bg-transparent text-red-500 hover:bg-red-50 hover:shadow-sm';
                             } else {
                                 clase += seleccionado
                                     ? 'bg-gray-900 text-white shadow-md'

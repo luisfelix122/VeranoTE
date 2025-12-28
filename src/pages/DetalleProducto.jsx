@@ -11,7 +11,7 @@ const DetalleProducto = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { agregarAlCarrito } = useContext(ContextoCarrito);
-    const { inventario, calcularStockDisponible } = useContext(ContextoInventario);
+    const { inventario, calcularDisponibilidadDetallada } = useContext(ContextoInventario);
     const { setMostrarLogin } = usarUI();
     const [horas, setHoras] = useState(1);
     const [cantidad, setCantidad] = useState(1);
@@ -20,7 +20,10 @@ const DetalleProducto = () => {
     const { usuario } = useContext(ContextoAutenticacion);
 
     const producto = inventario.find(p => String(p.id) === id);
-    const stockDisponible = producto ? calcularStockDisponible(producto.id) : 0;
+
+    // Obtener detalle de disponibilidad
+    const detalleDisponibilidad = producto ? calcularDisponibilidadDetallada(producto.id) : { disponiblesAhora: 0, proximosLiberados: [] };
+    const stockDisponible = detalleDisponibilidad.disponiblesAhora;
 
     if (!producto) {
         return (
@@ -47,6 +50,11 @@ const DetalleProducto = () => {
         agregarAlCarrito(producto, horas, cantidad);
     };
 
+    const formatearHora = (dateObj) => {
+        const d = new Date(dateObj.hora || dateObj);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
     return (
         <div className="px-4 sm:px-6 lg:px-8 py-6">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden max-w-5xl mx-auto">
@@ -56,9 +64,30 @@ const DetalleProducto = () => {
                         <div>
                             <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-800 mb-4 flex items-center gap-1">← Volver</button>
                             <h1 className="text-3xl font-bold text-gray-900 mb-2">{producto.nombre}</h1>
-                            <div className="bg-gray-50 p-4 rounded-xl mb-6 flex justify-between items-center">
-                                <span className="text-gray-600">Precio por hora</span><span className="text-2xl font-bold text-blue-600">S/ {producto.precioPorHora}</span>
+                            <div className="bg-gray-50 p-4 rounded-xl mb-6 flex flex-col gap-3">
+                                <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                                    <span className="text-gray-600">Precio por hora</span>
+                                    <span className="text-2xl font-bold text-blue-600">S/ {producto.precioPorHora}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-gray-600">Disponibilidad Actual</span>
+                                    <span className={`font-bold ${stockDisponible > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {stockDisponible > 0 ? `${stockDisponible} unidades` : 'Agotado temporalmente'}
+                                    </span>
+                                </div>
+                                {detalleDisponibilidad.proximosLiberados?.length > 0 && (
+                                    <div className="mt-2 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                        <p className="text-sm font-semibold text-blue-800 mb-1">Próximas liberaciones:</p>
+                                        <ul className="text-sm text-blue-700 space-y-1">
+                                            {detalleDisponibilidad.proximosLiberados.slice(0, 3).map((l, idx) => (
+                                                <li key={idx}>• +{l.cantidad} unidad(es) a las {formatearHora(l)}</li>
+                                            ))}
+                                            {detalleDisponibilidad.proximosLiberados.length > 3 && <li>...</li>}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
+
                             <div className="mb-6">
                                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-2">Descripción</h3>
                                 <p className="text-gray-600 leading-relaxed">{producto.descripcion || 'Sin descripción disponible.'}</p>
