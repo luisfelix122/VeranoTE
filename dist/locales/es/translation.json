@@ -1,0 +1,48 @@
+{
+    "nav": {
+        "tienda": "Tienda",
+        "mis_reportes": "Mis Reportes",
+        "soporte": "Soporte",
+        "inventario": "Inventario",
+        "promociones": "Promociones",
+        "punto_venta": "Punto de Venta",
+        "usuarios": "Usuarios",
+        "reportes": "Reportes",
+        "operaciones": "Operaciones",
+        "taller": "Taller",
+        "iniciar_sesion": "Iniciar Sesión",
+        "cerrar_sesion": "Cerrar Sesión",
+        "mi_perfil": "Mi Perfil",
+        "mis_tarjetas": "Mis Tarjetas",
+        "sede": "Sede",
+        "app_name": "Alquiler de Verano"
+    },
+    "home": {
+        "hero_title_1": "Tu Paraíso,",
+        "hero_title_2": "Tu Aventura.",
+        "badge": "La experiencia definitiva de verano",
+        "hero_subtitle": "Encuentra el equipo perfecto para disfrutar de la naturaleza. Calidad premium y servicio exclusivo en nuestras sedes.",
+        "search_placeholder": "Buscar equipos (ej. Kayak, Surf...)",
+        "explore_btn": "Explorar",
+        "ver_info": "Ver Info",
+        "catalog_title": "Catálogo Disponible",
+        "showing_items": "Mostrando {{count}} equipos en",
+        "no_results_title": "No se encontraron resultados",
+        "no_results_desc": "No hay equipos disponibles que coincidan con tu búsqueda en esta categoría o sede.",
+        "clear_filters": "Limpiar filtros",
+        "open_now": "ABIERTO AHORA",
+        "closed": "CERRADO",
+        "services": "Servicios Disponibles",
+        "contact": "Contacto",
+        "understood_btn": "Entendido",
+        "state_schedule": "Estado y Horario"
+    },
+    "categories": {
+        "Todas": "Todas",
+        "Playa": "Playa",
+        "Deportes Acuáticos": "Deportes Acuáticos",
+        "Camping": "Camping",
+        "Electrónica": "Electrónica",
+        "Movilidad": "Movilidad"
+    }
+}

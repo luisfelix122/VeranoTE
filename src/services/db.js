@@ -141,7 +141,7 @@ export const crearReserva = async (datosReserva) => {
         id: item.id,
         cantidad: item.cantidad,
         horas: item.horas,
-        precioPorHora: item.precioPorHora,
+        precioPorHora: item.precioPorHora, // DB function uses camelCase
         categoria: item.categoria // Necesario para promociones
     }));
 
@@ -186,6 +186,11 @@ export const verificarDisponibilidadDB = async (items, fechaInicio) => {
 };
 
 export const calcularDescuentosDB = async (items, fechaInicio) => {
+    // 1. Calcular totales base localmente (Matemática estándar)
+    const totalBase = items.reduce((acc, item) => acc + (item.precioPorHora * item.horas * item.cantidad), 0);
+    const garantia = totalBase * 0.20;
+
+    // 2. Obtener descuentos avanzados desde DB
     const itemsRPC = items.map(item => ({
         id: item.id,
         cantidad: item.cantidad,
@@ -202,15 +207,34 @@ export const calcularDescuentosDB = async (items, fechaInicio) => {
 
     if (error) {
         console.error('Error al calcular descuentos:', error);
-        return { descuentoTotal: 0, alertas: [], promocionesAplicadas: [] };
+        // Fallback: retornar base sin descuento
+        return {
+            total_servicio: totalBase,
+            garantia: garantia,
+            total_a_pagar: totalBase + garantia,
+            descuento_total: 0,
+            alertas: [],
+            promocionesAplicadas: []
+        };
     }
-    return data;
+
+    // 3. Fusionar resultados
+    const descuento = Number(data.descuentoTotal) || 0;
+    return {
+        total_servicio: totalBase,
+        garantia: garantia,
+        total_a_pagar: totalBase + garantia - descuento,
+        descuento_total: descuento,
+        alertas: data.alertas || [],
+        promocionesAplicadas: data.promocionesAplicadas || []
+    };
 };
 
-export const registrarDevolucionDB = async (alquilerId) => {
+export const registrarDevolucionDB = async (alquilerId, vendedorId) => {
     const { data, error } = await supabase
         .rpc('registrar_devolucion_robusta', {
-            p_alquiler_id: alquilerId
+            p_alquiler_id: alquilerId,
+            p_vendedor_id: vendedorId // Nuevo argumento
         });
 
     if (error) {
@@ -355,8 +379,11 @@ export const aprobarReservaDB = async (alquilerId) => {
     return data;
 };
 
-export const entregarAlquilerDB = async (alquilerId) => {
-    const { data, error } = await supabase.rpc('entregar_alquiler_robusto', { p_alquiler_id: alquilerId });
+export const entregarAlquilerDB = async (alquilerId, vendedorId) => {
+    const { data, error } = await supabase.rpc('entregar_alquiler_robusto', {
+        p_alquiler_id: alquilerId,
+        p_vendedor_id: vendedorId // Nuevo argumento 
+    });
     if (error) {
         console.error('Error al entregar alquiler:', error);
         return { success: false, error };
@@ -593,6 +620,15 @@ export const obtenerFaqs = async () => {
 
     if (error) {
         console.error('Error al obtener faqs:', error);
+        return [];
+    }
+    return data;
+};
+
+export const buscarClientesDB = async (busqueda) => {
+    const { data, error } = await supabase.rpc('buscar_clientes', { p_busqueda: busqueda });
+    if (error) {
+        console.error('Error al buscar clientes:', error);
         return [];
     }
     return data;

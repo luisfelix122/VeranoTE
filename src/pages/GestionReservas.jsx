@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { CreditCard, Calendar, Search, Clock, CheckCircle, AlertCircle, DollarSign, Filter, Play, RotateCcw, XCircle, MoreVertical } from 'lucide-react';
+import { CreditCard, Calendar, Search, Clock, CheckCircle, AlertCircle, DollarSign, Filter, Play, RotateCcw, XCircle, MoreVertical, UserPlus } from 'lucide-react';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import Boton from '../components/ui/Boton';
@@ -16,12 +16,65 @@ const GestionReservas = () => {
         devolverAlquiler,
         marcarNoShow,
         reprogramarAlquiler,
-        sedeActual
+
+        sedeActual,
+        buscarClientes, // New from context
+        registrarCliente // New from context
     } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
 
     const [pestanaActiva, setPestanaActiva] = useState('operaciones'); // 'operaciones' | 'cobros' | 'calendario'
     const [busquedaCliente, setBusquedaCliente] = useState('');
+
+    // --- Search Logic Reused from SimplePOS ---
+    // --- Lógica de Filtrado Local ---
+
+    // Filtrar alquileres por sede actual (si aplica)
+    const alquileresSede = alquileres.filter(a =>
+        (usuario.rol === 'admin' || usuario.rol === 'vendedor') ? a.sedeId === sedeActual : true
+    );
+
+    // Reservas Web (Confirmadas)
+    const alquileresConfirmados = alquileresSede.filter(a =>
+        a.estado === 'confirmado' &&
+        a.cliente.toLowerCase().includes(busquedaCliente.toLowerCase())
+    );
+
+    // Operaciones Activas (Para historial o visualización si se permitiera)
+    // En este modo refactorizado, solo nos interesa 'confirmado' para finalizar.
+    // Pero mantenemos lógica de cobros/calendario si aplica.
+    const alquileresConDeuda = alquileresSede.filter(a =>
+        a.saldoPendiente > 0 &&
+        a.estado !== 'cancelado' &&
+        a.cliente.toLowerCase().includes(busquedaCliente.toLowerCase())
+    );
+
+    const finalizarReserva = async (alquiler) => {
+        if (!confirm(`¿El cliente ha pagado el saldo restante de S/ ${alquiler.saldoPendiente?.toFixed(2)}? \n\nAl confirmar, se registrará el pago y se cambiará el estado a 'En Uso'.`)) return;
+
+        // 1. Registrar pago del saldo
+        const resPago = await registrarPagoSaldo(alquiler.id);
+        if (!resPago.success && !resPago.error?.message?.includes('ya está pagado')) {
+            alert("Error al registrar el pago: " + (resPago.error?.message || 'Desconocido'));
+            return;
+        }
+
+        // 2. Entregar alquiler
+        const resEntrega = await entregarAlquiler(alquiler.id, usuario.id);
+
+        if (resEntrega.success) {
+            alert("¡Reserva finalizada con éxito! El equipo ha sido entregado.");
+        } else {
+            alert("Error al entregar: " + resEntrega.error);
+        }
+    };
+
+    // --- Acciones de Calendario/Otros (Mantenidos simplificados) ---
+    const manejarCobro = async (id, monto) => {
+        if (confirm(`¿Confirmar pago del saldo restante de S/ ${monto.toFixed(2)}?`)) {
+            await registrarPagoSaldo(id);
+        }
+    };
 
     // Estados para Calendario
     const [fechaFiltro, setFechaFiltro] = useState(new Date().toISOString().split('T')[0]);
@@ -31,30 +84,7 @@ const GestionReservas = () => {
     const [alquilerAReprogramar, setAlquilerAReprogramar] = useState(null);
     const [horasReprogramacion, setHorasReprogramacion] = useState(1);
 
-    // Filtrar alquileres por sede actual (si aplica)
-    const alquileresSede = alquileres.filter(a =>
-        (usuario.rol === 'admin' || usuario.rol === 'vendedor') ? a.sedeId === sedeActual : true
-    );
-
-    // --- Lógica Operaciones (Entrega, Devolución, etc) ---
-    const alquileresActivos = alquileresSede.filter(a =>
-        ['confirmado', 'listo_para_entrega', 'en_uso', 'pendiente'].includes(a.estado) &&
-        a.cliente.toLowerCase().includes(busquedaCliente.toLowerCase())
-    );
-
-    // --- Lógica Cobros ---
-    const alquileresConDeuda = alquileresSede.filter(a =>
-        a.saldoPendiente > 0 &&
-        a.estado !== 'cancelado' &&
-        a.cliente.toLowerCase().includes(busquedaCliente.toLowerCase())
-    );
-
     // --- Acciones ---
-    const manejarCobro = async (id, monto) => {
-        if (confirm(`¿Confirmar pago del saldo restante de S/ ${monto.toFixed(2)}?`)) {
-            await registrarPagoSaldo(id);
-        }
-    };
 
     const manejarEntrega = async (id) => {
         if (confirm("¿Confirmar entrega de equipos al cliente?")) {
@@ -123,72 +153,63 @@ const GestionReservas = () => {
             </div>
 
             {pestanaActiva === 'operaciones' && (
-                <div className="space-y-4">
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-                        <Search className="text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Buscar cliente..."
-                            className="flex-1 outline-none text-sm"
-                            value={busquedaCliente}
-                            onChange={(e) => setBusquedaCliente(e.target.value)}
-                        />
+                <>
+                    {/* Header / Buscador */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">Gestión de Reservas</h1>
+                            <p className="text-gray-500">Administra las reservas web confirmadas y finaliza su entrega.</p>
+                        </div>
+
+                        <div className="flex gap-2 w-full sm:w-auto">
+                            <div className="relative flex-1 sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por cliente..."
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    value={busquedaCliente}
+                                    onChange={(e) => setBusquedaCliente(e.target.value)}
+                                />
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {alquileresActivos.map(a => (
-                            <div key={a.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                                <div className="flex justify-between items-start mb-3">
-                                    <div>
-                                        <p className="font-bold text-gray-900">{a.cliente}</p>
-                                        <p className="text-xs text-gray-500">{formatearFecha(a.fechaInicio)}</p>
-                                    </div>
-                                    <BadgeEstado estado={a.estado} />
-                                </div>
+                    {/* Lista de Reservas Confirmadas */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <h2 className="font-semibold text-gray-700">Reservas Confirmadas ({alquileresConfirmados.length})</h2>
+                        </div>
 
-                                <div className="text-sm text-gray-600 mb-4 space-y-1">
-                                    {a.items.map(i => (
-                                        <div key={i.id} className="flex justify-between">
-                                            <span>{i.cantidad}x {i.nombre}</span>
-                                            <span>{i.horas}h</span>
+                        <div className="divide-y divide-gray-100">
+                            {alquileresConfirmados.length === 0 ? (
+                                <div className="p-8 text-center text-gray-500">
+                                    No hay reservas web confirmadas pendientes de entrega.
+                                </div>
+                            ) : (
+                                alquileresConfirmados.map(alquiler => (
+                                    <div key={alquiler.id} className="p-4 hover:bg-gray-50 transition-colors flex flex-col sm:flex-row justify-between items-center gap-4">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="font-bold text-gray-900">{alquiler.cliente}</span>
+                                                <BadgeEstado estado={alquiler.estado} />
+                                            </div>
+                                            <div className="text-sm text-gray-600 space-y-1">
+                                                <p className="flex items-center gap-2"><Calendar size={14} /> Inicio: {formatearFecha(alquiler.fechaInicio)}</p>
+                                                <p className="flex items-center gap-2"><DollarSign size={14} /> Total: S/ {alquiler.totalFinal?.toFixed(2)} | Pagado: S/ {alquiler.montoPagado?.toFixed(2)}</p>
+                                                <p className="text-red-600 font-medium ml-6">Saldo: S/ {alquiler.saldoPendiente?.toFixed(2)}</p>
+                                            </div>
                                         </div>
-                                    ))}
-                                </div>
 
-                                <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
-                                    {/* Botones de Acción según Estado */}
-                                    {(a.estado === 'listo_para_entrega' || a.estado === 'confirmado') && (
-                                        <Boton variante="primario" className="flex-1 text-xs" onClick={() => manejarEntrega(a.id)}>
-                                            <Play size={14} className="mr-1" /> Entregar
+                                        <Boton onClick={() => finalizarReserva(alquiler)}>
+                                            Cobrar Saldo y Entregar
                                         </Boton>
-                                    )}
-
-                                    {a.estado === 'en_uso' && (
-                                        <>
-                                            <Boton variante="exito" className="flex-1 text-xs" onClick={() => manejarDevolucion(a.id)}>
-                                                <RotateCcw size={14} className="mr-1" /> Devolver
-                                            </Boton>
-                                            <Boton variante="secundario" className="flex-1 text-xs" onClick={() => setAlquilerAReprogramar(a)}>
-                                                <Clock size={14} className="mr-1" /> Extender
-                                            </Boton>
-                                        </>
-                                    )}
-
-                                    {(a.estado === 'confirmado' || a.estado === 'pendiente') && (
-                                        <Boton variante="peligro" className="flex-1 text-xs" onClick={() => manejarNoShow(a.id)}>
-                                            <XCircle size={14} className="mr-1" /> No Show
-                                        </Boton>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                        {alquileresActivos.length === 0 && (
-                            <div className="col-span-full text-center py-12 text-gray-500">
-                                No hay operaciones activas pendientes.
-                            </div>
-                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
-                </div>
+                </>
             )}
 
             {pestanaActiva === 'cobros' && (
@@ -257,23 +278,32 @@ const GestionReservas = () => {
             )}
 
             {/* Modal Reprogramación */}
-            <Modal titulo="Extender Alquiler" abierto={!!alquilerAReprogramar} alCerrar={() => setAlquilerAReprogramar(null)}>
+            <Modal
+                abierto={!!alquilerAReprogramar}
+                alCerrar={() => setAlquilerAReprogramar(null)}
+                titulo="Reprogramar / Extender Alquiler"
+            >
                 <div className="space-y-4">
-                    <p className="text-sm text-gray-600">Añadir horas adicionales al alquiler de <b>{alquilerAReprogramar?.cliente}</b>.</p>
+                    <p className="text-sm text-gray-600">
+                        Extender alquiler de <strong>{alquilerAReprogramar?.cliente}</strong>.
+                    </p>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Horas Adicionales</label>
-                        <input
-                            type="number"
-                            min="1"
-                            className="w-full p-2 border rounded-lg"
-                            value={horasReprogramacion}
-                            onChange={(e) => setHorasReprogramacion(e.target.value)}
-                        />
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={() => setHorasReprogramacion(Math.max(1, horasReprogramacion - 1))}
+                                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+                            >-</button>
+                            <span className="font-bold text-xl w-8 text-center">{horasReprogramacion}</span>
+                            <button
+                                onClick={() => setHorasReprogramacion(horasReprogramacion + 1)}
+                                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+                            >+</button>
+                        </div>
                     </div>
-                    <div className="bg-yellow-50 p-3 rounded text-xs text-yellow-800">
-                        Nota: Se calculará el costo extra automáticamente y se sumará al saldo pendiente.
-                    </div>
-                    <Boton onClick={confirmarReprogramacion} className="w-full">Confirmar Extensión</Boton>
+                    <Boton onClick={confirmarReprogramacion} className="w-full">
+                        Confirmar Extensión
+                    </Boton>
                 </div>
             </Modal>
         </div>

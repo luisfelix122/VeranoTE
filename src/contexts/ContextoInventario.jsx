@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerConfiguracion, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB } from '../services/db';
+import { obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerConfiguracion, crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB, gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB, aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB, buscarClientesDB, registrarUsuarioDB, calcularDescuentosDB } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 
 export const ContextoInventario = createContext();
@@ -31,9 +31,17 @@ export const ProveedorInventario = ({ children }) => {
             }));
 
             setInventario(inventarioFormateado);
+
             setSedes(sedesData);
             setHorarios(horariosData);
             setConfiguracion(configData);
+
+            // AUTO-FIX: Set default sede ID if string 'costa' is used
+            if (sedesData.length > 0) {
+                const sedeDefault = sedesData.find(s => s.nombre.toLowerCase().includes('costa')) || sedesData[0];
+                setSedeActual(sedeDefault.id);
+            }
+
             setAlquileres(alquileresData.map(a => ({
                 ...a,
                 fechaInicio: a.fecha_inicio,
@@ -233,8 +241,8 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const entregarAlquiler = async (idAlquiler) => {
-        const resultado = await entregarAlquilerDB(idAlquiler);
+    const entregarAlquiler = async (idAlquiler, vendedorId) => {
+        const resultado = await entregarAlquilerDB(idAlquiler, vendedorId);
         if (resultado.success) {
             setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_uso', fechaEntrega: new Date() } : a));
             return true;
@@ -278,8 +286,8 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const devolverAlquiler = async (idAlquiler) => {
-        const resultado = await registrarDevolucionDB(idAlquiler);
+    const devolverAlquiler = async (idAlquiler, vendedorId) => {
+        const resultado = await registrarDevolucionDB(idAlquiler, vendedorId);
         if (resultado.success) {
             setAlquileres(prev => prev.map(a => {
                 if (a.id === idAlquiler) {
@@ -298,6 +306,14 @@ export const ProveedorInventario = ({ children }) => {
             alert(resultado.error || "Error al registrar devolución");
             return false;
         }
+    };
+
+    const buscarClientes = async (busqueda) => {
+        return await buscarClientesDB(busqueda);
+    };
+
+    const registrarCliente = async (datos) => {
+        return await registrarUsuarioDB(datos);
     };
 
     const marcarFueraDeServicio = async (idRecurso) => {
@@ -329,9 +345,12 @@ export const ProveedorInventario = ({ children }) => {
             marcarNoShow,
             aplicarDescuentoMantenimiento,
             registrarPagoSaldo,
-            registrarPagoSaldo,
             estaAbierto,
-            configuracion
+            estaAbierto,
+            configuracion,
+            buscarClientes,
+            registrarCliente,
+            cotizarReserva: calcularDescuentosDB
         }}>
             {children}
         </ContextoInventario.Provider>
