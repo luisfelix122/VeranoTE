@@ -115,9 +115,12 @@ const Reportes = ({ rol: rolProp }) => {
     console.log('DEBUG REPORTES:', {
         rol,
         cargando,
-        misGastosLength: misGastos?.length,
-        alquileresFiltradosLength: alquileresFiltrados?.length,
-        datosParaTablaLength: datosParaTabla?.length
+        totalAlquileresContext: alquileres.length,
+        misAlquileresLength: misAlquileres.length,
+        alquileresFiltradosLength: alquileresFiltrados.length,
+        datosParaTablaLength: datosParaTabla.length,
+        sample: alquileres[0], // Ver estructura del primer item
+        allStates: alquileres.map(a => a.estado) // Ver estados disponibles
     });
 
     // Tickets (Soporte)
@@ -370,12 +373,13 @@ const Reportes = ({ rol: rolProp }) => {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 text-gray-700">
                             <tr>
-                                <th className="p-3">Fecha</th>
-                                <th className="p-3">Cliente</th>
-                                {(rol === 'admin' || rol === 'dueno') && <th className="p-3">Vendedor</th>}
-                                <th className="p-3">Monto</th>
-                                <th className="p-3">Estado</th>
-                                <th className="p-3">Acciones</th>
+                                <th className="p-3 w-40">Fecha</th>
+                                <th className="p-3 w-48">Cliente</th>
+                                {(rol === 'admin' || rol === 'dueno') && <th className="p-3 w-40">Atendido por</th>}
+                                {rol === 'dueno' && <th className="p-3 w-32 text-center">Sede</th>}
+                                <th className="p-3 w-32 text-right">Monto</th>
+                                <th className="p-3 w-32 text-center">Estado</th>
+                                <th className="p-3 w-auto text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -385,20 +389,27 @@ const Reportes = ({ rol: rolProp }) => {
                                         {formatearFecha(a.fechaInicio)}
                                         <div className="text-xs text-gray-400">{a.id.toString().slice(0, 8)}...</div>
                                     </td>
-                                    <td className="p-3 font-medium">{a.cliente}</td>
-                                    {(rol === 'admin' || rol === 'dueno') && <td className="p-3 text-gray-500">{a.vendedorId || 'WEB'}</td>}
-                                    <td className="p-3">
+                                    <td className="p-3 font-medium truncate max-w-xs" title={a.cliente}>{a.cliente}</td>
+                                    {(rol === 'admin' || rol === 'dueno') && <td className="p-3 text-gray-500">{a.vendedor || 'WEB'}</td>}
+                                    {rol === 'dueno' && (
+                                        <td className="p-3 text-center">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${a.sedeId === 'costa' ? 'bg-cyan-50 text-cyan-700' : 'bg-green-50 text-green-700'}`}>
+                                                {a.sedeId || 'N/A'}
+                                            </span>
+                                        </td>
+                                    )}
+                                    <td className="p-3 text-right">
                                         <div className="font-medium">S/ {(a.totalFinal || a.total).toFixed(2)}</div>
                                         {a.descuentoMantenimiento > 0 && (
-                                            <div className="text-xs text-orange-600 flex items-center gap-1">
+                                            <div className="text-xs text-orange-600 flex items-center gap-1 justify-end">
                                                 <Wrench size={10} /> -S/ {a.descuentoMantenimiento.toFixed(2)}
                                             </div>
                                         )}
                                     </td>
-                                    <td className="p-3"><BadgeEstado estado={a.estado} /></td>
-                                    <td className="p-3">
+                                    <td className="p-3 text-center"><BadgeEstado estado={a.estado} /></td>
+                                    <td className="p-3 text-center">
                                         {(rol === 'admin' || rol === 'vendedor' || rol === 'dueno') && (
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-1 items-center">
                                                 {a.estado === 'pendiente' && new Date() > new Date(new Date(a.fechaInicio).getTime() + 10 * 60000) && (
                                                     <button
                                                         className="text-red-600 hover:text-red-800 text-xs font-medium flex items-center gap-1"

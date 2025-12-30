@@ -34,7 +34,7 @@ const BarraLateralPanel = () => {
 
     const enlacesAdmin = [
         { to: '/admin/inventario', icon: Package, label: 'Inventario' },
-        { to: '/admin/reservas', icon: Calendar, label: 'Reservas' },
+        { to: '/admin/cobros', icon: Calendar, label: 'Cobros' },
         { to: '/admin/usuarios', icon: Users, label: 'Usuarios' },
         { to: '/admin/promociones', icon: Tag, label: 'Promociones' },
         { to: '/admin/punto-venta', icon: ShoppingCart, label: 'Punto de Venta', adminOnly: true },

@@ -62,6 +62,9 @@ const BarraNavegacionPanel = () => {
                         </span>
                         <span className="ml-2 text-sm text-gray-500 font-normal">
                             Panel {usuario?.rol === 'admin' || usuario?.rol === 'dueno' ? 'Administrativo' : usuario?.rol === 'vendedor' ? 'de Vendedor' : 'de Mecánico'}
+                            {usuario?.sede && (usuario.rol === 'admin' || usuario.rol === 'vendedor') && (
+                                <span className="ml-1 text-blue-600 font-medium">- Sede {usuario.sede.charAt(0).toUpperCase() + usuario.sede.slice(1)}</span>
+                            )}
                         </span>
                     </div>
 

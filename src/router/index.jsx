@@ -99,7 +99,7 @@ export const crearRouterApp = () => {
                     element: <PanelAdmin />
                 },
                 {
-                    path: 'reservas',
+                    path: 'cobros',
                     element: <RutaProtegida rolesPermitidos={['admin', 'vendedor']}><GestionReservas /></RutaProtegida>
                 },
                 {
