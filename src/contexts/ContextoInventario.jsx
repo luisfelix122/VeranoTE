@@ -1,11 +1,12 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
-import { obtenerDisponibilidadRecursoDB } from '../services/db';
 import {
-    obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerContenidoWeb,
+    obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerContenidoWeb, obtenerConfiguracion,
     crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB,
     gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
-    aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB
+    aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB,
+    obtenerDisponibilidadRecursoDB, buscarClientesDB, registrarUsuarioDB,
+    calcularDescuentosDB
 } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 
@@ -17,6 +18,7 @@ export const ProveedorInventario = ({ children }) => {
     const [sedes, setSedes] = useState([]);
     const [horarios, setHorarios] = useState([]);
     const [contenido, setContenido] = useState({});
+    const [configuracion, setConfiguracion] = useState({});
     const [sedeActual, setSedeActual] = useState('costa'); // Default ID
     const [fechaSeleccionada, setFechaSeleccionada] = useState(new Date().toISOString().split('T')[0]); // Global Date
 
@@ -50,12 +52,13 @@ export const ProveedorInventario = ({ children }) => {
     // Cargar datos iniciales
     const recargarDatos = async () => {
         try {
-            const [recursosData, sedesData, alquileresData, horariosData, contenidoData] = await Promise.all([
+            const [recursosData, sedesData, alquileresData, horariosData, contenidoData, configData] = await Promise.all([
                 obtenerRecursos(),
                 obtenerSedes(),
                 obtenerAlquileres(),
                 obtenerHorarios(),
-                obtenerContenidoWeb()
+                obtenerContenidoWeb(),
+                obtenerConfiguracion()
             ]);
 
             // Enriquecer inventario con disponibilidad real del backend
@@ -89,6 +92,14 @@ export const ProveedorInventario = ({ children }) => {
             setSedes(sedesData);
             setHorarios(horariosData);
             setContenido(contenidoData);
+            setConfiguracion(configData);
+            // setConfiguracion(configData); // Assuming configData needs to be added to Promise.all above!
+
+            // AUTO-FIX: Set default sede ID if string 'costa' is used
+            if (sedesData.length > 0) {
+                const sedeDefault = sedesData.find(s => s.nombre.toLowerCase().includes('costa')) || sedesData[0];
+                setSedeActual(sedeDefault.id);
+            }
             setAlquileres(alquileresData.map(a => ({
                 ...a,
                 fechaInicio: a.fecha_inicio,
@@ -323,8 +334,8 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const entregarAlquiler = async (idAlquiler) => {
-        const resultado = await entregarAlquilerDB(idAlquiler);
+    const entregarAlquiler = async (idAlquiler, vendedorId) => {
+        const resultado = await entregarAlquilerDB(idAlquiler, vendedorId);
         if (resultado.success) {
             setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_uso', fechaEntrega: new Date() } : a));
             return true;
@@ -368,8 +379,8 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const devolverAlquiler = async (idAlquiler) => {
-        const resultado = await registrarDevolucionDB(idAlquiler);
+    const devolverAlquiler = async (idAlquiler, vendedorId) => {
+        const resultado = await registrarDevolucionDB(idAlquiler, vendedorId);
         if (resultado.success) {
             setAlquileres(prev => prev.map(a => {
                 if (a.id === idAlquiler) {
@@ -388,6 +399,14 @@ export const ProveedorInventario = ({ children }) => {
             alert(resultado.error || "Error al registrar devolución");
             return false;
         }
+    };
+
+    const buscarClientes = async (busqueda) => {
+        return await buscarClientesDB(busqueda);
+    };
+
+    const registrarCliente = async (datos) => {
+        return await registrarUsuarioDB(datos);
     };
 
     const marcarFueraDeServicio = async (idRecurso) => {
@@ -425,7 +444,12 @@ export const ProveedorInventario = ({ children }) => {
             aplicarDescuentoMantenimiento,
             registrarPagoSaldo,
             estaAbierto,
-            contenido
+            contenido,
+            configuracion,
+            buscarClientes,
+            registrarCliente,
+            cotizarReserva: calcularDescuentosDB
+
         }}>
             {children}
         </ContextoInventario.Provider>

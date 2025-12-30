@@ -6,29 +6,116 @@ import Boton from '../components/ui/Boton';
 import Modal from '../components/ui/Modal';
 
 const PuntoVenta = () => {
-    const { inventario, registrarAlquiler } = useContext(ContextoInventario);
+    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
     const [carritoVenta, setCarritoVenta] = useState([]);
     const [clienteNombre, setClienteNombre] = useState('');
     const [busqueda, setBusqueda] = useState('');
 
+    // Estados para búsqueda de clientes
+    const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
+    const [mostrandoResultados, setMostrandoResultados] = useState(false);
+    const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+    const [modalCrearClienteAbierto, setModalCrearClienteAbierto] = useState(false);
+    const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', email: '', password: '123', numeroDocumento: '' });
+
+    // Estado para modal de configuración de alquiler
     // Estado para modal de configuración de alquiler
     const [productoAAnadir, setProductoAAnadir] = useState(null);
     const [configuracionAlquiler, setConfiguracionAlquiler] = useState({
         horas: 1,
-        fechaInicio: new Date().toISOString().slice(0, 16) // Formato datetime-local
+        fechaInicio: new Date().toISOString().slice(0, 16), // Formato datetime-local
+        tipoReserva: 'inmediata' // 'inmediata' | 'anticipada'
     });
+
+    // Estado contrato
+    const [contratoAceptado, setContratoAceptado] = useState(false);
 
     // Nuevos estados para pagos
     const [metodoPago, setMetodoPago] = useState('efectivo');
     const [tipoComprobante, setTipoComprobante] = useState('boleta');
     const [datosFactura, setDatosFactura] = useState({ ruc: '', razonSocial: '', direccion: '' });
 
+    // Estado para totales calculados por backend
+    const [totales, setTotales] = useState({
+        totalServicio: 0,
+        garantia: 0,
+        totalFinal: 0,
+        descuento: 0
+    });
+
+    // Efecto para cotizar cada vez que cambia el carrito
+    React.useEffect(() => {
+        const actualizarCotizacion = async () => {
+            if (carritoVenta.length === 0) {
+                setTotales({ totalServicio: 0, garantia: 0, totalFinal: 0, descuento: 0 });
+                return;
+            }
+
+            // Llamar al backend para calcular
+            const resultado = await cotizarReserva(carritoVenta, new Date()); // Usar fecha actual o la del primer item
+
+            if (resultado) {
+                setTotales({
+                    totalServicio: resultado.total_servicio || 0,
+                    garantia: resultado.garantia || 0,
+                    totalFinal: resultado.total_a_pagar || 0,
+                    descuento: resultado.descuento_total || 0
+                });
+            }
+        };
+
+        actualizarCotizacion();
+    }, [carritoVenta, cotizarReserva]);
+
+    const manejarBusquedaCliente = async (texto) => {
+        setClienteNombre(texto);
+        if (clienteSeleccionado && texto !== clienteSeleccionado.nombre) {
+            setClienteSeleccionado(null);
+        }
+
+        if (texto.length > 2) {
+            const res = await buscarClientes(texto);
+            setResultadosBusqueda(res || []);
+            setMostrandoResultados(true);
+        } else {
+            setResultadosBusqueda([]);
+            setMostrandoResultados(false);
+        }
+    };
+
+    const seleccionarCliente = (cliente) => {
+        setClienteSeleccionado(cliente);
+        setClienteNombre(cliente.nombre);
+        setMostrandoResultados(false);
+    };
+
+    const guardarNuevoCliente = async () => {
+        if (!nuevoCliente.nombre || !nuevoCliente.email || !nuevoCliente.numeroDocumento) {
+            return alert("Complete todos los campos obligatorios");
+        }
+
+        const res = await registrarCliente(nuevoCliente);
+        if (res.success) {
+            alert("Cliente creado correctamente");
+            setModalCrearClienteAbierto(false);
+            setNuevoCliente({ nombre: '', email: '', password: '123', numeroDocumento: '' });
+            // Auto-seleccionar
+            seleccionarCliente({ ...res.data, nombre: nuevoCliente.nombre }); // Optimista o usar respuesta
+        } else {
+            alert(res.error?.message || "Error al crear cliente");
+        }
+    };
+
     const abrirModalProducto = (producto) => {
+        if (!clienteSeleccionado) {
+            return alert("⚠️ Por favor, seleccione un cliente primero antes de agregar productos.");
+        }
         setProductoAAnadir(producto);
         setConfiguracionAlquiler({
             horas: 1,
-            fechaInicio: new Date().toISOString().slice(0, 16)
+            fechaInicio: new Date().toISOString().slice(0, 16),
+            tipoReserva: 'inmediata'
         });
     };
 
@@ -39,7 +126,8 @@ const PuntoVenta = () => {
             ...productoAAnadir,
             cantidad: 1,
             horas: Number(configuracionAlquiler.horas),
-            fechaInicio: new Date(configuracionAlquiler.fechaInicio)
+            fechaInicio: configuracionAlquiler.tipoReserva === 'inmediata' ? new Date() : new Date(configuracionAlquiler.fechaInicio),
+            tipoReserva: configuracionAlquiler.tipoReserva // Guardar preferencia por item
         };
 
         setCarritoVenta(prev => {
@@ -51,35 +139,53 @@ const PuntoVenta = () => {
         setProductoAAnadir(null);
     };
 
-    const totalVenta = carritoVenta.reduce((acc, item) => acc + (item.precioPorHora * item.horas * item.cantidad), 0);
-    const garantiaVenta = totalVenta * 0.20;
-    const totalFinalVenta = totalVenta + garantiaVenta;
+    // Cálculos locales eliminados, ahora usamos 'totales' del backend
+    // const totalVenta = carritoVenta.reduce((acc, item) => acc + (item.precioPorHora * item.horas * item.cantidad), 0);
+    // const garantiaVenta = totalVenta * 0.20;
+    // const totalFinalVenta = totalVenta + garantiaVenta;
 
     const procesarVenta = () => {
         if (carritoVenta.length === 0) return alert('Carrito vacío');
-        if (!clienteNombre.trim()) return alert('Ingrese nombre del cliente');
+        if (!clienteSeleccionado) return alert('Por favor seleccione un cliente de la lista o registre uno nuevo.');
+        if (!contratoAceptado) return alert('Debe aceptar los Términos y Condiciones del Contrato Digital.');
 
         if (tipoComprobante === 'factura' && (!datosFactura.ruc || !datosFactura.razonSocial)) {
             return alert("Por favor complete los datos de facturación (RUC y Razón Social)");
         }
 
+        // Determinar si es mixta o predominante (simplificación: si hay al menos una anticipada, todo el cart se trata como anticipado? 
+        // Mejor: Si todos son inmediata -> Inmediata. Si hay mezclado -> Error o forzar anticipada?
+        // User request logic: "si decide anticipada... se clasifique como pendiente".
+        // ASUMPTION: El carrito entero se procesa junto. Si hay items anticipados, tratamos como 'confirmado' (pendiente entrega).
+        // Si TODOS son inmediata, entonces 'en_uso'.
+
+        const tieneAnticipada = carritoVenta.some(i => i.tipoReserva === 'anticipada');
+        const estadoFinal = tieneAnticipada ? 'confirmado' : 'en_uso';
+
+        // Calcular montos
+        const totalPagar = totales.totalFinal;
+        const adelanto = tieneAnticipada ? totalPagar * 0.60 : totalPagar;
+        const saldo = totalPagar - adelanto;
+
         const nuevoAlquiler = {
             id: crypto.randomUUID(),
             cliente: clienteNombre,
-            clienteId: 'GUEST-' + Date.now(),
-            vendedorId: usuario ? usuario.nombre : 'POS-LOCAL', // Usar nombre real del vendedor
+            clienteId: clienteSeleccionado.id,
+            vendedorId: usuario ? usuario.id : null,
             items: carritoVenta,
-            total: totalVenta,
-            garantia: garantiaVenta,
-            totalFinal: totalFinalVenta,
-            montoPagado: totalFinalVenta,
-            saldoPendiente: 0,
-            fechaInicio: new Date(), // Fecha de registro de la venta
-            tipoReserva: 'inmediata',
+            total: totales.totalServicio,
+            garantia: totales.garantia,
+            totalFinal: totales.totalFinal,
+
+            montoPagado: adelanto,
+            saldoPendiente: saldo,
+
+            fechaInicio: tieneAnticipada ? carritoVenta[0].fechaInicio : new Date(), // Usar fecha del primero si es anticipada
+            tipoReserva: tieneAnticipada ? 'anticipada' : 'inmediata',
             metodoPago,
             tipoComprobante,
             datosFactura: tipoComprobante === 'factura' ? datosFactura : null,
-            estado: 'pendiente',
+            estado: estadoFinal,
             penalizacion: 0
         };
 
@@ -87,7 +193,13 @@ const PuntoVenta = () => {
         setCarritoVenta([]);
         setClienteNombre('');
         setDatosFactura({ ruc: '', razonSocial: '', direccion: '' });
-        alert(`Venta registrada correctamente.\n\nAtendido por: ${usuario?.nombre}\nTotal Servicio: S/ ${totalVenta.toFixed(2)}\nGarantía: S/ ${garantiaVenta.toFixed(2)}\nTotal Cobrado: S/ ${totalFinalVenta.toFixed(2)}`);
+        setContratoAceptado(false);
+
+        const mensaje = tieneAnticipada
+            ? `Reserva Anticipada Registrada.\n\nAdelanto (60%): S/ ${adelanto.toFixed(2)}\nSaldo Pendiente: S/ ${saldo.toFixed(2)}`
+            : `Venta Inmediata Registrada.\n\nTotal Cobrado: S/ ${totalPagar.toFixed(2)}`;
+
+        alert(mensaje);
     };
 
     const productosFiltrados = inventario.filter(p =>
@@ -114,7 +226,7 @@ const PuntoVenta = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto pr-2">
                     {productosFiltrados.map(prod => (
-                        <div key={prod.id} onClick={() => prod.stock > 0 && abrirModalProducto(prod)} className={`bg-white p-3 rounded-lg border cursor-pointer hover:border-blue-500 transition-all ${prod.stock === 0 ? 'opacity-50 grayscale' : 'hover:shadow-md'}`}>
+                        <div key={prod.id} onClick={() => prod.stock > 0 && abrirModalProducto(prod)} className={`bg-white p-3 rounded-lg border cursor-pointer hover:border-blue-500 transition-all ${prod.stock === 0 ? 'opacity-50 grayscale' : 'hover:shadow-md'} ${!clienteSeleccionado ? 'opacity-70' : ''}`}>
                             <div className="aspect-video bg-gray-100 rounded mb-2 flex items-center justify-center overflow-hidden">
                                 <img src={prod.imagen} alt={prod.nombre} className="object-cover w-full h-full" onError={(e) => e.target.src = 'https://via.placeholder.com/150'} />
                             </div>
@@ -135,9 +247,49 @@ const PuntoVenta = () => {
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><CreditCard size={20} /> Ticket de Venta</h2>
 
                 <div className="space-y-3 mb-4 flex-shrink-0">
-                    <div className="flex gap-2">
-                        <input placeholder="Nombre del Cliente" className="w-full p-2 border rounded text-sm" value={clienteNombre} onChange={e => setClienteNombre(e.target.value)} />
-                        <Boton variante="secundario" className="!px-2" onClick={() => { const n = prompt("Nombre:"); if (n) setClienteNombre(n); }}><UserPlus size={18} /></Boton>
+                    <div className="relative">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Cliente</label>
+                        <div className="flex gap-2">
+                            <input
+                                placeholder="Ingrese DNI del cliente..."
+                                className={`w-full p-2 border rounded text-sm ${clienteSeleccionado ? 'border-green-500 bg-green-50' : ''}`}
+                                value={clienteNombre}
+                                onChange={e => manejarBusquedaCliente(e.target.value)}
+                                onFocus={() => clienteNombre.length > 2 && setMostrandoResultados(true)}
+                            />
+                            <Boton
+                                variante="secundario"
+                                className="!px-2"
+                                onClick={() => {
+                                    setNuevoCliente(prev => ({ ...prev, numeroDocumento: clienteNombre.replace(/\D/g, '') }));
+                                    setModalCrearClienteAbierto(true);
+                                }}
+                                title="Nuevo Cliente"
+                            >
+                                <UserPlus size={18} />
+                            </Boton>
+                        </div>
+                        {mostrandoResultados && (
+                            <div className="absolute z-10 w-full bg-white border rounded shadow-lg mt-1 max-h-48 overflow-y-auto">
+                                {resultadosBusqueda.length > 0 ? (
+                                    resultadosBusqueda.map(c => (
+                                        <div key={c.id} className="p-2 hover:bg-gray-100 cursor-pointer text-sm border-b last:border-0" onClick={() => seleccionarCliente(c)}>
+                                            <p className="font-bold">{c.nombre}</p>
+                                            <p className="text-xs text-gray-500">DNI: {c.numero_documento}</p>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-3 text-sm text-gray-400 text-center flex flex-col items-end">
+                                        <p className="w-full text-center mb-1">No se encontraron resultados</p>
+                                        <div className="flex items-center gap-1 text-blue-500 font-medium animate-pulse">
+                                            <span>Crear nuevo</span>
+                                            <span className="text-lg">↗</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {clienteSeleccionado && <p className="text-xs text-green-600 mt-1">✓ Cliente seleccionado: {clienteSeleccionado.nombre}</p>}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -165,51 +317,116 @@ const PuntoVenta = () => {
                     )}
                 </div>
 
-                <div className="flex-grow overflow-y-auto border-t border-b py-2 space-y-2">
-                    {carritoVenta.length === 0 ? (
-                        <p className="text-center text-gray-400 text-sm py-4">Carrito vacío</p>
-                    ) : (
-                        carritoVenta.map(item => (
-                            <div key={item.idTemp} className="flex justify-between text-sm pb-2 border-b border-dashed last:border-0">
-                                <div>
-                                    <p className="font-medium">{item.nombre}</p>
-                                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                                        <Clock size={10} /> {item.horas}h x S/ {item.precioPorHora}
-                                    </p>
-                                    <p className="text-xs text-gray-400">Inicio: {new Date(item.fechaInicio).toLocaleString()}</p>
-                                </div>
-                                <div className="text-right flex flex-col items-end justify-between">
-                                    <p className="font-bold">S/ {(item.precioPorHora * item.horas * item.cantidad).toFixed(2)}</p>
-                                    <button onClick={() => setCarritoVenta(prev => prev.filter(p => p.idTemp !== item.idTemp))} className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1">
-                                        <X size={12} /> Quitar
-                                    </button>
-                                </div>
-                            </div>
-                        ))
-                    )}
+                {/* Contrato Digital */}
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4 flex-shrink-0">
+                    <div className="flex items-center gap-2 mb-2 text-blue-800 font-bold text-sm">
+                        <span className="p-1 bg-blue-100 rounded">📄</span> Contrato Digital
+                    </div>
+                    <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={contratoAceptado}
+                            onChange={(e) => setContratoAceptado(e.target.checked)}
+                        />
+                        <span className="text-xs">
+                            He leído y acepto los <span className="text-blue-600 underline">Términos y Condiciones</span>,
+                            incluyendo la responsabilidad por daños y el depósito de garantía reembolsable.
+                        </span>
+                    </label>
                 </div>
 
-                <div className="flex-shrink-0 pt-4 space-y-2">
-                    <div className="flex justify-between items-center text-sm text-gray-600"><span className="">Subtotal</span><span>S/ {totalVenta.toFixed(2)}</span></div>
-                    <div className="flex justify-between items-center text-sm text-green-600"><span className="">Garantía (20%)</span><span>S/ {garantiaVenta.toFixed(2)}</span></div>
-                    <div className="flex justify-between items-center border-t pt-2 mt-2"><span className="font-bold text-lg">Total a Cobrar</span><span className="text-2xl font-bold text-blue-600">S/ {totalFinalVenta.toFixed(2)}</span></div>
-                    <Boton className="w-full mt-4 py-3 text-lg" onClick={procesarVenta} disabled={carritoVenta.length === 0}>
-                        Cobrar S/ {totalFinalVenta.toFixed(2)}
-                    </Boton>
+                <div className="flex-1 overflow-y-auto min-h-0">
+                    <div className="border-t border-b py-2 space-y-2">
+                        {carritoVenta.length === 0 ? (
+                            <p className="text-center text-gray-400 text-sm py-4">Carrito vacío</p>
+                        ) : (
+                            carritoVenta.map(item => (
+                                <div key={item.idTemp} className="flex justify-between text-sm pb-2 border-b border-dashed last:border-0 p-2">
+                                    <div>
+                                        <p className="font-medium">{item.nombre}</p>
+                                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                                            <Clock size={10} /> {item.horas}h x S/ {item.precioPorHora}
+                                        </p>
+                                        <p className="text-xs text-gray-400">Inicio: {new Date(item.fechaInicio).toLocaleString()}</p>
+                                    </div>
+                                    <div className="text-right flex flex-col items-end justify-between">
+                                        <p className="font-bold">S/ {(item.precioPorHora * item.horas * item.cantidad).toFixed(2)}</p>
+                                        <button onClick={() => setCarritoVenta(prev => prev.filter(p => p.idTemp !== item.idTemp))} className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1">
+                                            <X size={12} /> Quitar
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    <div className="flex-shrink-0 pt-4 space-y-2 px-2 pb-4">
+                        <div className="flex justify-between items-center text-sm text-gray-600"><span className="">Subtotal</span><span>S/ {totales.totalServicio.toFixed(2)}</span></div>
+                        <div className="flex justify-between items-center text-sm text-gray-600"><span className="">Total Servicio</span><span>S/ {totales.totalServicio.toFixed(2)}</span></div>
+                        {totales.descuento > 0 && <div className="flex justify-between items-center text-sm text-green-600"><span className="">Descuento</span><span>- S/ {totales.descuento.toFixed(2)}</span></div>}
+                        <div className="flex justify-between items-center text-sm text-green-600"><span className="">Garantía (20% Reembolsable)</span><span>S/ {totales.garantia.toFixed(2)}</span></div>
+
+                        <div className="flex justify-between items-center border-t border-dashed pt-2 mt-2">
+                            <span className="font-bold text-lg">Total a Pagar</span>
+                            <div className="text-right">
+                                <span className="text-2xl font-bold text-blue-600">S/ {totales.totalFinal.toFixed(2)}</span>
+                                <p className="text-xs text-gray-400">approx. $ {(totales.totalFinal / 3.8).toFixed(2)}</p>
+                            </div>
+                        </div>
+
+                        {/* Desglose para Anticipada */}
+                        {carritoVenta.some(i => i.tipoReserva === 'anticipada') && (
+                            <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 space-y-1 mt-2">
+                                <div className="flex justify-between text-sm font-bold text-blue-800">
+                                    <span>Adelanto a Pagar (60%)</span>
+                                    <span>S/ {(totales.totalFinal * 0.60).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm font-bold text-orange-800">
+                                    <span>Saldo Pendiente (40%)</span>
+                                    <span>S/ {(totales.totalFinal * 0.40).toFixed(2)}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        <Boton className="w-full mt-4 py-3 text-lg" onClick={procesarVenta} disabled={carritoVenta.length === 0}>
+                            {carritoVenta.some(i => i.tipoReserva === 'anticipada')
+                                ? `Pagar Adelanto S/ ${(totales.totalFinal * 0.60).toFixed(2)}`
+                                : `Cobrar S/ ${totales.totalFinal.toFixed(2)}`
+                            }
+                        </Boton>
+                    </div>
                 </div>
             </div>
 
-            {/* Modal para configurar producto */}
             <Modal titulo={`Agregar ${productoAAnadir?.nombre || ''}`} abierto={!!productoAAnadir} alCerrar={() => setProductoAAnadir(null)}>
                 <div className="space-y-4">
+                    {/* Selector Tipo Reserva */}
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
+                        <button
+                            className={`p-2 rounded text-sm font-medium transition-colors ${configuracionAlquiler.tipoReserva === 'inmediata' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}
+                            onClick={() => setConfiguracionAlquiler({ ...configuracionAlquiler, tipoReserva: 'inmediata' })}
+                        >
+                            ⚡ Inmediata
+                        </button>
+                        <button
+                            className={`p-2 rounded text-sm font-medium transition-colors ${configuracionAlquiler.tipoReserva === 'anticipada' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}
+                            onClick={() => setConfiguracionAlquiler({ ...configuracionAlquiler, tipoReserva: 'anticipada' })}
+                        >
+                            📅 Anticipada
+                        </button>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Fecha y Hora de Inicio</label>
                         <input
                             type="datetime-local"
-                            className="w-full p-2 border rounded-lg"
-                            value={configuracionAlquiler.fechaInicio}
+                            className={`w-full p-2 border rounded-lg ${configuracionAlquiler.tipoReserva === 'inmediata' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                            value={configuracionAlquiler.tipoReserva === 'inmediata' ? new Date().toISOString().slice(0, 16) : configuracionAlquiler.fechaInicio}
                             onChange={e => setConfiguracionAlquiler({ ...configuracionAlquiler, fechaInicio: e.target.value })}
+                            disabled={configuracionAlquiler.tipoReserva === 'inmediata'}
                         />
+                        {configuracionAlquiler.tipoReserva === 'inmediata' && <p className="text-xs text-green-600 mt-1">Se registrará con fecha actual</p>}
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Duración (Horas)</label>
@@ -234,6 +451,25 @@ const PuntoVenta = () => {
                     <Boton className="w-full" onClick={confirmarAgregarProducto}>
                         Agregar al Ticket
                     </Boton>
+                </div>
+            </Modal>
+
+            {/* Modal Crear Cliente */}
+            <Modal titulo="Registrar Nuevo Cliente" abierto={modalCrearClienteAbierto} alCerrar={() => setModalCrearClienteAbierto(false)}>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Nombre Completo</label>
+                        <input className="w-full p-2 border rounded" value={nuevoCliente.nombre} onChange={e => setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })} />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Email</label>
+                        <input type="email" className="w-full p-2 border rounded" value={nuevoCliente.email} onChange={e => setNuevoCliente({ ...nuevoCliente, email: e.target.value })} />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">DNI / Documento</label>
+                        <input className="w-full p-2 border rounded" value={nuevoCliente.numeroDocumento} onChange={e => setNuevoCliente({ ...nuevoCliente, numeroDocumento: e.target.value })} />
+                    </div>
+                    <Boton className="w-full" onClick={guardarNuevoCliente}>Guardar Cliente</Boton>
                 </div>
             </Modal>
         </div>

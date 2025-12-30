@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Package, LogOut, Bell, User, ChevronDown } from 'lucide-react';
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
 import { ContextoSoporte } from '../../contexts/ContextoSoporte';
+import { ContextoInventario } from '../../contexts/ContextoInventario';
 import Boton from '../ui/Boton';
 import BandejaEntrada from '../../pages/BandejaEntrada';
 
@@ -10,6 +11,7 @@ const BarraNavegacionPanel = () => {
     const navigate = useNavigate();
     const { usuario, cerrarSesion } = useContext(ContextoAutenticacion);
     const { tickets } = useContext(ContextoSoporte);
+    const { sedes, sedeActual } = useContext(ContextoInventario);
     const [mostrarMenuUsuario, setMostrarMenuUsuario] = useState(false);
     const [mostrarBandeja, setMostrarBandeja] = useState(false);
     const menuRef = useRef(null);
@@ -62,6 +64,14 @@ const BarraNavegacionPanel = () => {
                         </span>
                         <span className="ml-2 text-sm text-gray-500 font-normal">
                             Panel {usuario?.rol === 'admin' || usuario?.rol === 'dueno' ? 'Administrativo' : usuario?.rol === 'vendedor' ? 'de Vendedor' : 'de Mecánico'}
+                            {usuario?.rol === 'vendedor' && (
+                                <>
+                                    <span className="mx-1 text-blue-600">-</span>
+                                    <span className="ml-1 text-blue-600 font-medium">
+                                        {sedes.find(s => s.id === (usuario?.sede || sedeActual))?.nombre || usuario?.sede || 'Sede no asignada'}
+                                    </span>
+                                </>
+                            )}
                         </span>
                     </div>
 
