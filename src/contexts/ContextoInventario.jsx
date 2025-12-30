@@ -131,7 +131,7 @@ export const ProveedorInventario = ({ children }) => {
                 { event: '*', schema: 'public', table: 'alquiler_detalles' },
                 (payload) => {
                     console.log('Cambio detectado en alquileres (Realtime):', payload);
-                    recargarDatos();
+                    setTimeout(() => recargarDatos(), 500);
                 }
             )
             .on(
@@ -139,7 +139,7 @@ export const ProveedorInventario = ({ children }) => {
                 { event: '*', schema: 'public', table: 'alquileres' },
                 (payload) => {
                     // También escuchar cambios de estado (cancelaciones, entregas)
-                    recargarDatos();
+                    setTimeout(() => recargarDatos(), 500);
                 }
             )
             .subscribe();
