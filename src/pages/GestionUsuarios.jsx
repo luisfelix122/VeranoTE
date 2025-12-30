@@ -32,18 +32,42 @@ const GestionUsuarios = () => {
     const [nuevoRol, setNuevoRol] = useState('');
     const [sedeRol, setSedeRol] = useState('costa'); // Default
 
+    // Estado para Verificación de Cambio de Rol
+    const [verificacionRol, setVerificacionRol] = useState(null); // { u, rol }
+
+    const [filtroSede, setFiltroSede] = useState('todos');
+
     const usuariosFiltrados = usuarios.filter(u => {
         const coincideBusqueda = u.nombre.toLowerCase().includes(busqueda.toLowerCase()) || u.email.toLowerCase().includes(busqueda.toLowerCase());
         const coincideRol = filtroRol === 'todos' || u.rol === filtroRol;
 
-        if (!coincideBusqueda || !coincideRol) return false;
+        // Filtro de Sede (Solo para roles que tienen sede: Admin, Vendedor, Mecánico)
+        let coincideSede = true;
+        if (filtroSede !== 'todos') {
+            if (u.rol === 'admin' || u.rol === 'vendedor' || u.rol === 'mecanico') {
+                coincideSede = u.sede === filtroSede;
+            } else {
+                // Si es Cliente o Dueño (sin sede específica asignable para filtro), 
+                // decidimos si mostrarlos u ocultarlos. 
+                // El usuario dijo "filtrarlos tambien por sede", implicando que quiere ver los de esa sede.
+                // Como clientes no tienen sede, los ocultamos si hay filtro activo.
+                coincideSede = false;
+            }
+        }
+
+        if (!coincideBusqueda || !coincideRol || !coincideSede) return false;
 
         // Restricción para Admin: No ver otros Admins ni Dueños
         if (usuario.rol === 'admin') {
             return u.rol === 'cliente' || u.rol === 'vendedor' || u.rol === 'mecanico';
         }
 
-        return true; // Dueño ve todo
+        // Restricción para Dueño: No verse a sí mismo ni a otros dueños
+        if (usuario.rol === 'dueno') {
+            return u.rol !== 'dueno';
+        }
+
+        return true;
     });
 
     const abrirModalContacto = (u, e) => {
@@ -123,10 +147,25 @@ const GestionUsuarios = () => {
     };
 
     // --- Lógica de Cambio de Rol ---
+
+    // 1. Iniciar: Pedir confirmación
     const iniciarCambioRol = (u, rol, e) => {
         if (e) e.stopPropagation();
+        setVerificacionRol({ u, rol });
+    };
 
-        if (rol === 'admin' || rol === 'vendedor') {
+    // 2. Confirmado: Proceder con la lógica original
+    const procederCambioRol = () => {
+        const { u, rol } = verificacionRol;
+        setVerificacionRol(null); // Cerrar modal de verificación
+
+        // Si es ADMIN y quiere crear un VENDEDOR o MECÁNICO, asignar SU sede automáticamente
+        if (usuario.rol === 'admin' && (rol === 'vendedor' || rol === 'mecanico')) {
+            cambiarRolUsuario(u.id, rol, usuario.sede);
+            return;
+        }
+
+        if (rol === 'admin' || rol === 'vendedor' || rol === 'mecanico') {
             setUsuarioARol(u);
             setNuevoRol(rol);
             setSedeRol('costa'); // Reset default
@@ -136,7 +175,17 @@ const GestionUsuarios = () => {
         }
     };
 
-    const confirmarCambioRol = () => {
+    // 3. Confirmar cambio con sede (si aplica)
+    const confirmarCambioRolConSede = () => {
+        // Validación: Solo 1 Admin por Sede
+        if (nuevoRol === 'admin') {
+            const adminExistente = usuarios.find(u => u.rol === 'admin' && u.sede === sedeRol);
+            if (adminExistente) {
+                alert(`No se puede designar ya que ya existe un administrador en la sede ${sedeRol}. Si quiere poner a este usuario como admin, debe degradar al administrador actual (${adminExistente.nombre}) para que este tome el cargo.`);
+                return;
+            }
+        }
+
         cambiarRolUsuario(usuarioARol.id, nuevoRol, sedeRol);
         setMostrarModalRol(false);
         setUsuarioARol(null);
@@ -146,63 +195,107 @@ const GestionUsuarios = () => {
         <div className="px-4 sm:px-6 lg:px-8 space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <h2 className="text-2xl font-bold flex items-center gap-2"><Users /> Gestión de Usuarios</h2>
-                <div className="flex gap-2 w-full sm:w-auto">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    {/* Filtro de Roles */}
                     <div className="relative w-full sm:w-48">
                         <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                         <select
                             className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm appearance-none bg-white"
                             value={filtroRol}
-                            onChange={(e) => setFiltroRol(e.target.value)}
+                            onChange={(e) => {
+                                setFiltroRol(e.target.value);
+                                if (e.target.value === 'cliente') setFiltroSede('todos');
+                            }}
                         >
                             <option value="todos">Todos los roles</option>
+                            <option value="admin">Administrador</option>
                             <option value="vendedor">Vendedor</option>
                             <option value="mecanico">Mecánico</option>
                             <option value="cliente">Cliente</option>
                         </select>
                     </div>
+
+                    {/* Filtro de Sede (Solo Dueño) */}
+                    {esDueno && (
+                        <div className="relative w-full sm:w-48">
+                            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                            <select
+                                className={`w-full pl-10 pr-4 py-2 border rounded-lg text-sm appearance-none ${filtroRol === 'cliente' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white'}`}
+                                value={filtroSede}
+                                onChange={(e) => setFiltroSede(e.target.value)}
+                                disabled={filtroRol === 'cliente'}
+                            >
+                                <option value="todos">Todas las sedes</option>
+                                <option value="costa">Sede Costa</option>
+                                <option value="rural">Sede Rural</option>
+                            </select>
+                        </div>
+                    )}
                 </div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 text-gray-600 text-sm">
-                            <tr><th className="p-4">Nombre</th><th className="p-4">Email</th><th className="p-4">Rol</th><th className="p-4">Acciones</th></tr>
+                            <tr>
+                                <th className="p-4 w-1/4">Nombre</th>
+                                <th className="p-4 w-1/4">Email</th>
+                                <th className="p-4 w-1/6">Rol</th>
+                                {esDueno && <th className="p-4 w-1/6">Sede</th>}
+                                <th className="p-4 w-auto">Acciones</th>
+                            </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {usuariosFiltrados.map(u => (
                                 <tr key={u.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => abrirModalDetalle(u)}>
                                     <td className="p-4 font-medium">
                                         {u.nombre}
-                                        {u.sede && (u.rol === 'admin' || u.rol === 'vendedor') && (
-                                            <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full capitalize">
-                                                {u.sede}
-                                            </span>
-                                        )}
+                                        {/* Badge de sede eliminado como solicitado */}
                                     </td>
                                     <td className="p-4 text-sm text-gray-600">{u.email}</td>
-                                    <td className="p-4 capitalize">{u.rol}</td>
-                                    <td className="p-4 flex gap-2 flex-wrap items-center" onClick={(e) => e.stopPropagation()}>
-                                        <Boton variante="fantasma" className="text-xs py-1 mr-2" onClick={(e) => abrirModalContacto(u, e)}>Contactar</Boton>
+                                    <td className="p-4 capitalize">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${u.rol === 'admin' ? 'bg-purple-100 text-purple-700' :
+                                            u.rol === 'dueno' ? 'bg-indigo-100 text-indigo-700' :
+                                                u.rol === 'vendedor' ? 'bg-blue-100 text-blue-700' :
+                                                    u.rol === 'mecanico' ? 'bg-orange-100 text-orange-700' :
+                                                        'bg-gray-100 text-gray-600'
+                                            }`}>
+                                            {u.rol === 'dueno' ? 'Dueño' : u.rol}
+                                        </span>
+                                    </td>
+                                    {esDueno && (
+                                        <td className="p-4">
+                                            {u.rol === 'dueno' ? (
+                                                <span className="font-medium text-gray-500">Global</span>
+                                            ) : (u.rol === 'admin' || u.rol === 'vendedor' || u.rol === 'mecanico') ? (
+                                                <span className="capitalize font-medium text-gray-700">{u.sede || 'Sin Asignar'}</span>
+                                            ) : (
+                                                <span className="text-gray-400 font-bold">-</span>
+                                            )}
+                                        </td>
+                                    )}
+                                    <td className="p-4 flex gap-2 flex-nowrap items-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                        <Boton variante="fantasma" className="text-xs py-1" onClick={(e) => abrirModalContacto(u, e)}>Contactar</Boton>
                                         {esDueno && u.rol !== 'dueno' && (
-                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'dueno', e)}>Hacer Dueño</Boton>
+                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'dueno', e)}>Dueño</Boton>
                                         )}
                                         {esDueno && u.rol !== 'admin' && (
-                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'admin', e)}>Hacer Admin</Boton>
+                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'admin', e)}>Admin</Boton>
                                         )}
                                         {u.rol !== 'vendedor' && (
-                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'vendedor', e)}>Hacer Vendedor</Boton>
+                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'vendedor', e)}>Vendedor</Boton>
                                         )}
                                         {u.rol !== 'mecanico' && (
-                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'mecanico', e)}>Hacer Mecánico</Boton>
+                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'mecanico', e)}>Mecánico</Boton>
                                         )}
                                         {u.rol !== 'cliente' && u.rol !== 'dueno' && (
-                                            <Boton variante="fantasma" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'cliente', e)}>Degradar</Boton>
+                                            <Boton variante="fantasma" className="text-xs py-1 text-red-600 hover:bg-red-50" onClick={(e) => iniciarCambioRol(u, 'cliente', e)}>Degradar</Boton>
                                         )}
                                         {/* Botón Eliminar */}
                                         {u.rol !== 'dueno' && (
                                             <button
                                                 onClick={(e) => iniciarEliminacion(u, e)}
-                                                className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors ml-2"
+                                                className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors"
                                                 title="Eliminar Usuario"
                                             >
                                                 <Trash2 size={16} />
@@ -263,7 +356,14 @@ const GestionUsuarios = () => {
                                 </div>
                                 <div>
                                     <h4 className="text-xl font-semibold">{usuarioSeleccionado.nombre}</h4>
-                                    <p className="text-gray-500 capitalize">{usuarioSeleccionado.rol}</p>
+                                    <p className="text-gray-500 capitalize flex items-center gap-2">
+                                        {usuarioSeleccionado.rol}
+                                        {(usuarioSeleccionado.rol === 'admin' || usuarioSeleccionado.rol === 'vendedor' || usuarioSeleccionado.rol === 'mecanico' || usuarioSeleccionado.rol === 'dueno') && (
+                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full border border-gray-200 uppercase font-bold">
+                                                {usuarioSeleccionado.sede || (usuarioSeleccionado.rol === 'dueno' ? 'Global' : 'Sin Asignar')}
+                                            </span>
+                                        )}
+                                    </p>
                                 </div>
                             </div>
 
@@ -350,6 +450,43 @@ const GestionUsuarios = () => {
                 </div>
             )}
 
+            {/* Nuevo Modal de Verificación de Rol */}
+            {verificacionRol && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+                        <div className="mb-6">
+                            <h3 className={`text-xl font-bold mb-2 ${verificacionRol.rol === 'cliente' ? 'text-red-600' : 'text-gray-900'}`}>
+                                {verificacionRol.rol === 'cliente' ? '¿Degradar Usuario?' : 'Confirmar Cambio de Rol'}
+                            </h3>
+                            <p className="text-gray-600">
+                                {verificacionRol.rol === 'cliente' ? (
+                                    <>
+                                        ¿Estás seguro que deseas quitarle el rol de <strong>{verificacionRol.u.rol.toUpperCase()}</strong> y dejarlo como <strong>CLIENTE</strong>?
+                                    </>
+                                ) : (
+                                    <>
+                                        ¿Estás seguro que deseas cambiar el rol actual del usuario a <strong>{verificacionRol.rol.toUpperCase()}</strong>?
+                                    </>
+                                )}
+                            </p>
+                            <div className="mt-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                                <p><strong>Nombre:</strong> {verificacionRol.u.nombre}</p>
+                                <p><strong>DNI:</strong> {verificacionRol.u.numeroDocumento || verificacionRol.u.numero_documento || 'No Registrado'}</p>
+                                <p className="text-sm text-gray-500 mt-1">Rol actual: {verificacionRol.u.rol}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-3">
+                            <Boton variante="secundario" onClick={() => setVerificacionRol(null)} className="flex-1">
+                                Cancelar
+                            </Boton>
+                            <Boton variante="primario" onClick={procederCambioRol} className="flex-1">
+                                Sí, Asignar Rol
+                            </Boton>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Modal de Asignación de Sede (Rol) */}
             {mostrarModalRol && usuarioARol && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -392,7 +529,7 @@ const GestionUsuarios = () => {
 
                         <div className="flex gap-3">
                             <Boton variante="secundario" onClick={() => setMostrarModalRol(false)} className="flex-1">Cancelar</Boton>
-                            <Boton variante="primario" onClick={confirmarCambioRol} className="flex-1">Confirmar</Boton>
+                            <Boton variante="primario" onClick={confirmarCambioRolConSede} className="flex-1">Confirmar</Boton>
                         </div>
                     </div>
                 </div>

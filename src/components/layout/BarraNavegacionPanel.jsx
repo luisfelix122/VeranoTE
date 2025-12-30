@@ -64,11 +64,11 @@ const BarraNavegacionPanel = () => {
                         </span>
                         <span className="ml-2 text-sm text-gray-500 font-normal">
                             Panel {usuario?.rol === 'admin' || usuario?.rol === 'dueno' ? 'Administrativo' : usuario?.rol === 'vendedor' ? 'de Vendedor' : 'de Mecánico'}
-                            {usuario?.rol === 'vendedor' && (
+                            {(usuario?.rol === 'vendedor' || usuario?.rol === 'admin') && usuario?.sede && (
                                 <>
                                     <span className="mx-1 text-blue-600">-</span>
                                     <span className="ml-1 text-blue-600 font-medium">
-                                        {sedes.find(s => s.id === (usuario?.sede || sedeActual))?.nombre || usuario?.sede || 'Sede no asignada'}
+                                        {sedes.find(s => s.id === usuario.sede)?.nombre || usuario.sede.charAt(0).toUpperCase() + usuario.sede.slice(1)}
                                     </span>
                                 </>
                             )}

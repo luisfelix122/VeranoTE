@@ -124,9 +124,12 @@ const Reportes = ({ rol: rolProp }) => {
     console.log('DEBUG REPORTES:', {
         rol,
         cargando,
-        misGastosLength: misGastos?.length,
-        alquileresFiltradosLength: alquileresFiltrados?.length,
-        datosParaTablaLength: datosParaTabla?.length
+        totalAlquileresContext: alquileres.length,
+        misAlquileresLength: misAlquileres.length,
+        alquileresFiltradosLength: alquileresFiltrados.length,
+        datosParaTablaLength: datosParaTabla.length,
+        sample: alquileres[0], // Ver estructura del primer item
+        allStates: alquileres.map(a => a.estado) // Ver estados disponibles
     });
 
     // Tickets (Soporte)
@@ -404,12 +407,13 @@ const Reportes = ({ rol: rolProp }) => {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 text-gray-700">
                             <tr>
-                                <th className="p-3">Fecha</th>
-                                <th className="p-3">Cliente</th>
-                                {(rol === 'admin' || rol === 'dueno') && <th className="p-3">Vendedor</th>}
-                                <th className="p-3">Monto</th>
-                                <th className="p-3">Estado</th>
-                                <th className="p-3">Acciones</th>
+                                <th className="p-3 w-40">Fecha</th>
+                                <th className="p-3 w-48">Cliente</th>
+                                {(rol === 'admin' || rol === 'dueno') && <th className="p-3 w-40">Atendido por</th>}
+                                {rol === 'dueno' && <th className="p-3 w-32 text-center">Sede</th>}
+                                <th className="p-3 w-32 text-right">Monto</th>
+                                <th className="p-3 w-32 text-center">Estado</th>
+                                <th className="p-3 w-auto text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -419,20 +423,27 @@ const Reportes = ({ rol: rolProp }) => {
                                         {formatearFecha(a.fechaInicio)}
                                         <div className="text-xs text-gray-400">{a.id.toString().slice(0, 8)}...</div>
                                     </td>
-                                    <td className="p-3 font-medium">{a.cliente}</td>
-                                    {(rol === 'admin' || rol === 'dueno') && <td className="p-3 text-gray-500">{a.vendedorId || 'WEB'}</td>}
-                                    <td className="p-3">
+                                    <td className="p-3 font-medium truncate max-w-xs" title={a.cliente}>{a.cliente}</td>
+                                    {(rol === 'admin' || rol === 'dueno') && <td className="p-3 text-gray-500">{a.vendedor || 'WEB'}</td>}
+                                    {rol === 'dueno' && (
+                                        <td className="p-3 text-center">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${a.sedeId === 'costa' ? 'bg-cyan-50 text-cyan-700' : 'bg-green-50 text-green-700'}`}>
+                                                {a.sedeId || 'N/A'}
+                                            </span>
+                                        </td>
+                                    )}
+                                    <td className="p-3 text-right">
                                         <div className="font-medium">S/ {(a.totalFinal || a.total).toFixed(2)}</div>
                                         {a.descuentoMantenimiento > 0 && (
-                                            <div className="text-xs text-orange-600 flex items-center gap-1">
+                                            <div className="text-xs text-orange-600 flex items-center gap-1 justify-end">
                                                 <Wrench size={10} /> -S/ {a.descuentoMantenimiento.toFixed(2)}
                                             </div>
                                         )}
                                     </td>
-                                    <td className="p-3"><BadgeEstado estado={a.estado} /></td>
-                                    <td className="p-3">
+                                    <td className="p-3 text-center"><BadgeEstado estado={a.estado} /></td>
+                                    <td className="p-3 text-center">
                                         {(rol === 'admin' || rol === 'vendedor' || rol === 'dueno') && (
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-1 items-center">
                                                 {/* Botón Cobrar Deuda */}
                                                 {(Number(a.saldoPendiente || a.saldo_pendiente || 0) > 0) && (
                                                     <button
@@ -446,7 +457,6 @@ const Reportes = ({ rol: rolProp }) => {
                                                         <DollarSign size={12} /> Cobrar S/ {Number(a.saldoPendiente || a.saldo_pendiente).toFixed(2)}
                                                     </button>
                                                 )}
-
                                                 {a.estado === 'pendiente' && new Date() > new Date(new Date(a.fechaInicio).getTime() + 10 * 60000) && (
                                                     <button
                                                         className="text-red-600 hover:text-red-800 text-xs font-medium flex items-center gap-1"
@@ -646,140 +656,140 @@ const Reportes = ({ rol: rolProp }) => {
         );
     };
 
-// --- Vista Principal ---
+    // --- Vista Principal ---
 
-return (
-    <div className="px-4 sm:px-6 lg:px-8 space-y-6 py-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
-                <BarChart3 className="text-blue-600" />
-                Reportes: {rol === 'dueno' ? 'Dueño' : rol.charAt(0).toUpperCase() + rol.slice(1)}
-            </h2>
+    return (
+        <div className="px-4 sm:px-6 lg:px-8 space-y-6 py-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
+                    <BarChart3 className="text-blue-600" />
+                    Reportes: {rol === 'dueno' ? 'Dueño' : rol.charAt(0).toUpperCase() + rol.slice(1)}
+                </h2>
 
-            <div className="flex gap-2 items-center">
-                {/* Tabs para Admin/Dueño/Cliente/Mecánico */}
-                {(rol === 'admin' || rol === 'dueno' || rol === 'cliente' || rol === 'mecanico') && (
-                    <div className="flex bg-gray-100 p-1 rounded-lg">
-                        {rol === 'mecanico' ? (
-                            <>
-                                <button
-                                    onClick={() => setPestanaActiva('trabajos_activos')}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'trabajos_activos' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                >
-                                    Trabajos Activos
-                                </button>
-                                <button
-                                    onClick={() => setPestanaActiva('historial_mantenimiento')}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'historial_mantenimiento' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                >
-                                    Historial
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                <button
-                                    onClick={() => setPestanaActiva('ventas')}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'ventas' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                >
-                                    {rol === 'cliente' ? 'Mis Reportes' : 'Ventas'}
-                                </button>
-                                <button
-                                    onClick={() => setPestanaActiva('soporte')}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'soporte' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                >
-                                    {rol === 'cliente' ? 'Mis Reclamos' : 'Soporte'}
-                                </button>
-                                {(rol === 'admin' || rol === 'dueno') && (
+                <div className="flex gap-2 items-center">
+                    {/* Tabs para Admin/Dueño/Cliente/Mecánico */}
+                    {(rol === 'admin' || rol === 'dueno' || rol === 'cliente' || rol === 'mecanico') && (
+                        <div className="flex bg-gray-100 p-1 rounded-lg">
+                            {rol === 'mecanico' ? (
+                                <>
                                     <button
-                                        onClick={() => setPestanaActiva('inventario')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'inventario' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                        onClick={() => setPestanaActiva('trabajos_activos')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'trabajos_activos' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
                                     >
-                                        Inventario
+                                        Trabajos Activos
                                     </button>
-                                )}
-                            </>
-                        )}
-                    </div>
-                )}
+                                    <button
+                                        onClick={() => setPestanaActiva('historial_mantenimiento')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'historial_mantenimiento' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                    >
+                                        Historial
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => setPestanaActiva('ventas')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'ventas' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                    >
+                                        {rol === 'cliente' ? 'Mis Reportes' : 'Ventas'}
+                                    </button>
+                                    <button
+                                        onClick={() => setPestanaActiva('soporte')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'soporte' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                    >
+                                        {rol === 'cliente' ? 'Mis Reclamos' : 'Soporte'}
+                                    </button>
+                                    {(rol === 'admin' || rol === 'dueno') && (
+                                        <button
+                                            onClick={() => setPestanaActiva('inventario')}
+                                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'inventario' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                        >
+                                            Inventario
+                                        </button>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
 
-        {/* Controles de Reporte Avanzado (Admin/Dueño) */}
-        {
-            (rol === 'admin' || rol === 'dueno') && (
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                    <div className="flex flex-col md:flex-row gap-4 items-end">
-                        <div className="w-full md:w-auto">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Reporte</label>
-                            <select
-                                className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
-                                value={modoReporte}
-                                onChange={(e) => setModoReporte(e.target.value)}
-                            >
-                                <option value="general">General</option>
-                                <option value="individual">Individual</option>
-                            </select>
-                        </div>
-
-                        <div className="w-full md:w-auto">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Rol</label>
-                            <select
-                                className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
-                                value={rolFiltro}
-                                onChange={(e) => {
-                                    setRolFiltro(e.target.value);
-                                    setUsuarioFiltroId(''); // Reset user selection when role changes
-                                }}
-                            >
-                                <option value="todos">Todos</option>
-                                <option value="cliente">Clientes</option>
-                                <option value="vendedor">Vendedores</option>
-                                <option value="mecanico">Mecánicos</option>
-                                {rol === 'dueno' && <option value="admin">Administradores</option>}
-                            </select>
-                        </div>
-
-                        {modoReporte === 'individual' && (
-                            <div className="w-full md:w-auto flex-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Usuario</label>
+            {/* Controles de Reporte Avanzado (Admin/Dueño) */}
+            {
+                (rol === 'admin' || rol === 'dueno') && (
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <div className="flex flex-col md:flex-row gap-4 items-end">
+                            <div className="w-full md:w-auto">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Reporte</label>
                                 <select
-                                    className="w-full p-2 border rounded-lg text-sm bg-gray-50"
-                                    value={usuarioFiltroId}
-                                    onChange={(e) => setUsuarioFiltroId(e.target.value)}
+                                    className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
+                                    value={modoReporte}
+                                    onChange={(e) => setModoReporte(e.target.value)}
                                 >
-                                    <option value="">-- Seleccione un usuario --</option>
-                                    {usuarios
-                                        .filter(u => rolFiltro === 'todos' ? true : u.rol === rolFiltro)
-                                        .map(u => (
-                                            <option key={u.id} value={u.id}>
-                                                {u.nombre} ({u.rol}) - {u.email}
-                                            </option>
-                                        ))
-                                    }
+                                    <option value="general">General</option>
+                                    <option value="individual">Individual</option>
                                 </select>
                             </div>
-                        )}
+
+                            <div className="w-full md:w-auto">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Rol</label>
+                                <select
+                                    className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
+                                    value={rolFiltro}
+                                    onChange={(e) => {
+                                        setRolFiltro(e.target.value);
+                                        setUsuarioFiltroId(''); // Reset user selection when role changes
+                                    }}
+                                >
+                                    <option value="todos">Todos</option>
+                                    <option value="cliente">Clientes</option>
+                                    <option value="vendedor">Vendedores</option>
+                                    <option value="mecanico">Mecánicos</option>
+                                    {rol === 'dueno' && <option value="admin">Administradores</option>}
+                                </select>
+                            </div>
+
+                            {modoReporte === 'individual' && (
+                                <div className="w-full md:w-auto flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Usuario</label>
+                                    <select
+                                        className="w-full p-2 border rounded-lg text-sm bg-gray-50"
+                                        value={usuarioFiltroId}
+                                        onChange={(e) => setUsuarioFiltroId(e.target.value)}
+                                    >
+                                        <option value="">-- Seleccione un usuario --</option>
+                                        {usuarios
+                                            .filter(u => rolFiltro === 'todos' ? true : u.rol === rolFiltro)
+                                            .map(u => (
+                                                <option key={u.id} value={u.id}>
+                                                    {u.nombre} ({u.rol}) - {u.email}
+                                                </option>
+                                            ))
+                                        }
+                                    </select>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            )
-        }
+                )
+            }
 
-        {renderKPIs()}
+            {renderKPIs()}
 
-        {/* Renderizado Condicional de Pestañas */}
-        {pestanaActiva === 'ventas' && renderTablaVentas()}
-        {pestanaActiva === 'soporte' && renderTablaSoporte()}
-        {pestanaActiva === 'inventario' && (rol === 'admin' || rol === 'dueno') && renderTablaInventario()}
+            {/* Renderizado Condicional de Pestañas */}
+            {pestanaActiva === 'ventas' && renderTablaVentas()}
+            {pestanaActiva === 'soporte' && renderTablaSoporte()}
+            {pestanaActiva === 'inventario' && (rol === 'admin' || rol === 'dueno') && renderTablaInventario()}
 
 
-        {/* Vistas de Mecánico */}
-        {(pestanaActiva === 'trabajos_activos' || pestanaActiva === 'historial_mantenimiento') && renderTablaVentas()}
+            {/* Vistas de Mecánico */}
+            {(pestanaActiva === 'trabajos_activos' || pestanaActiva === 'historial_mantenimiento') && renderTablaVentas()}
 
-        {/* Vendedor ve vista simplificada por defecto */}
-        {rol === 'vendedor' && pestanaActiva !== 'ventas' && renderTablaVentas()}
+            {/* Vendedor ve vista simplificada por defecto */}
+            {rol === 'vendedor' && pestanaActiva !== 'ventas' && renderTablaVentas()}
 
-    </div >
-);
+        </div >
+    );
 };
 
 export default Reportes;

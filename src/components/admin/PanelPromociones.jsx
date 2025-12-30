@@ -8,6 +8,7 @@ const PanelPromociones = () => {
     const { promociones, agregarPromocion, togglePromocion, eliminarPromocion, editarPromocion } = useContext(ContextoPromociones);
     const [mostrarForm, setMostrarForm] = useState(false);
     const [modoEdicion, setModoEdicion] = useState(false);
+    const [busqueda, setBusqueda] = useState('');
     const [idEdicion, setIdEdicion] = useState(null);
 
     const [nuevaPromo, setNuevaPromo] = useState({
@@ -50,15 +51,35 @@ const PanelPromociones = () => {
         setMostrarForm(true);
     };
 
+    const promocionesFiltradas = promociones.filter(p =>
+        p.nombre.toLowerCase().includes(busqueda.toLowerCase())
+    );
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mt-8">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+            <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                     <Tag size={20} className="text-blue-600" /> Promociones y Descuentos
                 </h2>
-                <Boton onClick={() => setMostrarForm(true)} variante="primario">
-                    <Plus size={18} /> Nueva Promoción
-                </Boton>
+
+                <div className="flex gap-4 w-full sm:w-auto items-center">
+                    <div className="relative flex-1 sm:w-64">
+                        <input
+                            type="text"
+                            placeholder="Buscar promoción..."
+                            className="w-full pl-4 pr-10 py-2 border rounded-lg text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            value={busqueda}
+                            onChange={(e) => setBusqueda(e.target.value)}
+                        />
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                            <Tag size={16} />
+                        </div>
+                    </div>
+
+                    <Boton onClick={() => setMostrarForm(true)} variante="primario" className="whitespace-nowrap">
+                        <Plus size={18} /> Nueva Promoción
+                    </Boton>
+                </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -74,34 +95,42 @@ const PanelPromociones = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {promociones.map(promo => (
-                            <tr key={promo.id} className="hover:bg-gray-50">
-                                <td className="p-4 font-medium">{promo.nombre}</td>
-                                <td className="p-4 text-sm text-gray-600">{promo.descripcion}</td>
-                                <td className="p-4">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit ${promo.tipo === 'regla_tiempo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                                        {promo.tipo === 'regla_tiempo' ? <Clock size={12} /> : <Package size={12} />}
-                                        {promo.tipo === 'regla_tiempo' ? 'Por Tiempo' : 'Por Cantidad'}
-                                    </span>
-                                </td>
-                                <td className="p-4 text-green-600 font-bold">
-                                    {promo.beneficio.tipo === 'porcentaje' ? `${promo.beneficio.valor}% OFF` : `- S/ ${promo.beneficio.valor}`}
-                                </td>
-                                <td className="p-4">
-                                    <button onClick={() => togglePromocion(promo.id)} className={`text-2xl ${promo.activo ? 'text-green-500' : 'text-gray-300'}`}>
-                                        {promo.activo ? <ToggleRight /> : <ToggleLeft />}
-                                    </button>
-                                </td>
-                                <td className="p-4 flex gap-2">
-                                    <button onClick={() => cargarDatosEdicion(promo)} className="text-blue-500 hover:text-blue-700">
-                                        <Pencil size={18} />
-                                    </button>
-                                    <button onClick={() => eliminarPromocion(promo.id)} className="text-red-500 hover:text-red-700">
-                                        <Trash2 size={18} />
-                                    </button>
+                        {promocionesFiltradas.length > 0 ? (
+                            promocionesFiltradas.map(promo => (
+                                <tr key={promo.id} className="hover:bg-gray-50">
+                                    <td className="p-4 font-medium">{promo.nombre}</td>
+                                    <td className="p-4 text-sm text-gray-600">{promo.descripcion}</td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit ${promo.tipo === 'regla_tiempo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                            {promo.tipo === 'regla_tiempo' ? <Clock size={12} /> : <Package size={12} />}
+                                            {promo.tipo === 'regla_tiempo' ? 'Por Tiempo' : 'Por Cantidad'}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-green-600 font-bold">
+                                        {promo.beneficio.tipo === 'porcentaje' ? `${promo.beneficio.valor}% OFF` : `- S/ ${promo.beneficio.valor}`}
+                                    </td>
+                                    <td className="p-4">
+                                        <button onClick={() => togglePromocion(promo.id)} className={`text-2xl ${promo.activo ? 'text-green-500' : 'text-gray-300'}`}>
+                                            {promo.activo ? <ToggleRight /> : <ToggleLeft />}
+                                        </button>
+                                    </td>
+                                    <td className="p-4 flex gap-2">
+                                        <button onClick={() => cargarDatosEdicion(promo)} className="text-blue-500 hover:text-blue-700">
+                                            <Pencil size={18} />
+                                        </button>
+                                        <button onClick={() => eliminarPromocion(promo.id)} className="text-red-500 hover:text-red-700">
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan="6" className="p-8 text-center text-gray-500">
+                                    No se encontraron promociones con ese nombre.
                                 </td>
                             </tr>
-                        ))}
+                        )}
                     </tbody>
                 </table>
             </div>

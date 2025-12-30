@@ -111,7 +111,7 @@ export const ProveedorInventario = ({ children }) => {
                 saldoPendiente: a.saldo_pendiente,
                 tipoReserva: a.tipo_reserva,
                 sedeId: a.sede_id,
-                cliente: a.usuarios?.nombre || 'Cliente Desconocido'
+                cliente: a.usuarios?.nombre || 'Cliente Desconocido' // Mapear nombre desde la relación
             })));
         } catch (error) {
             console.error("Error al recargar datos:", error);
@@ -424,7 +424,6 @@ export const ProveedorInventario = ({ children }) => {
             sedeActual,
             setSedeActual,
             fechaSeleccionada,
-            setFechaSeleccionada,
             setFechaSeleccionada,
             calcularStockDisponible,
             calcularDisponibilidadDetallada,

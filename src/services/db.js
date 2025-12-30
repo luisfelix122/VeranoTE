@@ -113,7 +113,14 @@ export const obtenerUsuarios = async () => {
     return data.map(u => {
         // Normalizar el nombre del rol para que coincida con los keys del frontend
         let rolNormalizado = 'cliente';
-        const nombreRolDB = u.roles?.nombre?.toLowerCase() || '';
+
+        let nombreRolDB = '';
+        if (Array.isArray(u.roles)) {
+            nombreRolDB = u.roles[0]?.nombre || '';
+        } else if (u.roles?.nombre) {
+            nombreRolDB = u.roles.nombre;
+        }
+        nombreRolDB = nombreRolDB.toLowerCase();
 
         if (nombreRolDB.includes('admin')) rolNormalizado = 'admin';
         else if (nombreRolDB.includes('vend')) rolNormalizado = 'vendedor';
@@ -145,7 +152,14 @@ export const obtenerUsuarioPorId = async (id) => {
 
     // Normalizar rol
     let rolNormalizado = 'cliente';
-    const nombreRolDB = data.roles?.nombre?.toLowerCase() || '';
+
+    let nombreRolDB = '';
+    if (Array.isArray(data.roles)) {
+        nombreRolDB = data.roles[0]?.nombre || '';
+    } else if (data.roles?.nombre) {
+        nombreRolDB = data.roles.nombre;
+    }
+    nombreRolDB = nombreRolDB.toLowerCase();
 
     if (nombreRolDB.includes('admin')) rolNormalizado = 'admin';
     else if (nombreRolDB.includes('vend')) rolNormalizado = 'vendedor';
@@ -277,7 +291,8 @@ export const obtenerAlquileres = async () => {
                 *,
                 recursos ( nombre, imagen )
             ),
-            usuarios!cliente_id ( nombre, email ),
+            cliente:usuarios!cliente_id ( nombre, email, numero_documento ),
+            vendedor:usuarios!vendedor_id ( nombre, roles ( nombre ) ),
             estados_alquiler ( nombre )
         `);
 
@@ -287,18 +302,38 @@ export const obtenerAlquileres = async () => {
     }
 
     // Transformar para que el frontend lo entienda fácil
-    return data.map(a => ({
-        ...a,
-        estado: a.estados_alquiler?.nombre || a.estado_id, // Usar nombre legible
-        items: a.alquiler_detalles.map(d => ({
-            id: d.recurso_id,
-            nombre: d.recursos?.nombre,
-            imagen: d.recursos?.imagen,
-            cantidad: d.cantidad,
-            horas: d.horas,
-            precioPorHora: d.precio_unitario
-        }))
-    }));
+    return data.map(a => {
+        let vendedorInfo = null;
+        if (a.vendedor) {
+            const nombre = a.vendedor.nombre;
+            const rolObj = a.vendedor.roles;
+            // Manejar si rol viene como array o objeto (supabase quirks)
+            let rolNombre = 'Vendedor';
+            if (Array.isArray(rolObj)) {
+                rolNombre = rolObj[0]?.nombre;
+            } else if (rolObj?.nombre) {
+                rolNombre = rolObj.nombre;
+            }
+            // Capitalizar
+            rolNombre = rolNombre ? rolNombre.charAt(0).toUpperCase() + rolNombre.slice(1) : 'Vendedor';
+            vendedorInfo = `${nombre} (${rolNombre})`;
+        }
+
+        return {
+            ...a,
+            estado: a.estados_alquiler?.nombre || a.estado_id, // Usar nombre legible
+            vendedor: vendedorInfo,
+            clienteDni: a.cliente?.numero_documento || 'Sin Documento', // Fixed access to standard response structure
+            items: a.alquiler_detalles.map(d => ({
+                id: d.recurso_id,
+                nombre: d.recursos?.nombre,
+                imagen: d.recursos?.imagen,
+                cantidad: d.cantidad,
+                horas: d.horas,
+                precioPorHora: d.precio_unitario
+            }))
+        };
+    });
 };
 
 export const obtenerPromociones = async () => {
@@ -311,6 +346,46 @@ export const obtenerPromociones = async () => {
         return [];
     }
     return data;
+};
+
+export const crearPromocionDB = async (promocion) => {
+    const { data, error } = await supabase
+        .from('promociones')
+        .insert([promocion])
+        .select();
+
+    if (error) {
+        console.error('Error al crear promoción:', error);
+        return { success: false, error };
+    }
+    return { success: true, data: data[0] };
+};
+
+export const editarPromocionDB = async (id, datos) => {
+    const { data, error } = await supabase
+        .from('promociones')
+        .update(datos)
+        .eq('id', id)
+        .select();
+
+    if (error) {
+        console.error('Error al editar promoción:', error);
+        return { success: false, error };
+    }
+    return { success: true, data: data[0] };
+};
+
+export const eliminarPromocionDB = async (id) => {
+    const { error } = await supabase
+        .from('promociones')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('Error al eliminar promoción:', error);
+        return { success: false, error };
+    }
+    return { success: true };
 };
 
 export const registrarUsuarioDB = async (datosUsuario) => {
