@@ -99,6 +99,14 @@ function AppContenido() {
     const [isRegistering, setIsRegistering] = useState(false);
     const [aceptaTerminosRegistro, setAceptaTerminosRegistro] = useState(false);
 
+    // Checkout State (Moved Up)
+    // const [fechaReserva, setFechaReserva] = useState(new Date().toISOString().split('T')[0]); // Moved to ContextoInventario
+    const [horaReserva, setHoraReserva] = useState(new Date().toTimeString().split(' ')[0].slice(0, 5));
+    const [tipoReserva, setTipoReserva] = useState('inmediata'); // inmediata, anticipada
+    const [metodoPago, setMetodoPago] = useState('transferencia');
+    const [tipoComprobante, setTipoComprobante] = useState('boleta');
+    const [datosFactura, setDatosFactura] = useState({ ruc: '', razonSocial: '', direccion: '' });
+
     // New UX State
     const [erroresRegistro, setErroresRegistro] = useState({});
     const [registroExitoso, setRegistroExitoso] = useState(false);
@@ -185,13 +193,7 @@ function AppContenido() {
         return v;
     };
 
-    // Checkout State
-    // const [fechaReserva, setFechaReserva] = useState(new Date().toISOString().split('T')[0]); // Moved to ContextoInventario
-    const [horaReserva, setHoraReserva] = useState(new Date().toTimeString().split(' ')[0].slice(0, 5));
-    const [tipoReserva, setTipoReserva] = useState('inmediata'); // inmediata, anticipada
-    const [metodoPago, setMetodoPago] = useState('transferencia');
-    const [tipoComprobante, setTipoComprobante] = useState('boleta');
-    const [datosFactura, setDatosFactura] = useState({ ruc: '', razonSocial: '', direccion: '' });
+
 
     // Estado para tarjetas en checkout
     const [tarjetasGuardadas, setTarjetasGuardadas] = useState([]);
