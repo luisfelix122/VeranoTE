@@ -460,11 +460,13 @@ export const actualizarUsuarioDB = async (id, datos) => {
         delete datosParaActualizar.licenciaConducir;
     }
     if ('numeroDocumento' in datosParaActualizar) {
-        datosParaActualizar.numero_documento = datosParaActualizar.numeroDocumento;
+        const val = datosParaActualizar.numeroDocumento;
+        datosParaActualizar.numero_documento = (!val || String(val).trim() === '') ? null : val;
         delete datosParaActualizar.numeroDocumento;
     }
     if ('fechaNacimiento' in datosParaActualizar) {
-        datosParaActualizar.fecha_nacimiento = datosParaActualizar.fechaNacimiento;
+        const val = datosParaActualizar.fechaNacimiento;
+        datosParaActualizar.fecha_nacimiento = (!val || String(val).trim() === '') ? null : val;
         delete datosParaActualizar.fechaNacimiento;
     }
     if ('tipoDocumento' in datosParaActualizar) {
@@ -472,11 +474,13 @@ export const actualizarUsuarioDB = async (id, datos) => {
         delete datosParaActualizar.tipoDocumento;
     }
     if ('contactoEmergencia' in datosParaActualizar) {
-        datosParaActualizar.contacto_emergencia = datosParaActualizar.contactoEmergencia;
+        const val = datosParaActualizar.contactoEmergencia;
+        datosParaActualizar.contacto_emergencia = (!val || String(val).trim() === '') ? null : val;
         delete datosParaActualizar.contactoEmergencia;
     }
     if ('codigoEmpleado' in datosParaActualizar) {
-        datosParaActualizar.codigo_empleado = datosParaActualizar.codigoEmpleado;
+        const val = datosParaActualizar.codigoEmpleado;
+        datosParaActualizar.codigo_empleado = (!val || String(val).trim() === '') ? null : val;
         delete datosParaActualizar.codigoEmpleado;
     }
     if ('preguntaSecreta' in datosParaActualizar) {
@@ -486,6 +490,15 @@ export const actualizarUsuarioDB = async (id, datos) => {
     if ('respuestaSecreta' in datosParaActualizar) {
         datosParaActualizar.respuesta_secreta = datosParaActualizar.respuestaSecreta;
         delete datosParaActualizar.respuestaSecreta;
+    }
+    if ('email' in datosParaActualizar) {
+        const val = datosParaActualizar.email;
+        // Si es string vacío lo ignoramos o null, pero email es unique y required?
+        // Mejor si viene vacío lo volvemos null para que falle constraint NOT NULL si aplica, o UNIQUE.
+        // Pero postgres dice: UNIQUE (email). NULL != NULL. 
+        // Sin embargo, usuario.email NO debería ser null.
+        // Mantengamos lógica original para email salvo que sea ''
+        if (!val || String(val).trim() === '') delete datosParaActualizar.email;
     }
 
     const { data, error } = await supabase
