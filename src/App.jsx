@@ -20,7 +20,8 @@ import ModalInfoGlobal from './components/ui/ModalInfoGlobal';
 import { crearRouterApp } from './router';
 
 // Services
-import { registrarUsuarioDB, obtenerConfiguracion, calcularCotizacion, actualizarTipoCambioReal, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion, actualizarUsuarioDB, registrarAlquiler, obtenerTarjetas, agregarTarjeta } from './services/db';
+import { registrarUsuarioDB, obtenerConfiguracion, calcularCotizacion, actualizarTipoCambioReal, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion, actualizarUsuarioDB, registrarAlquiler } from './services/db';
+import { obtenerTarjetas, agregarTarjeta } from './services/cardService';
 import { PREGUNTAS_SECRETAS } from './constants/preguntas';
 
 const router = crearRouterApp();

@@ -5,7 +5,8 @@ import {
     AlertTriangle, Lock, Eye, EyeOff, Calendar
 } from 'lucide-react';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
-import { obtenerTarjetas, agregarTarjeta, eliminarTarjeta, obtenerContactos, agregarContacto, eliminarContacto, obtenerPerfilAlquileres, obtenerPerfilSoporte, registrarPagoSaldoDB } from '../services/db';
+import { obtenerContactos, agregarContacto, eliminarContacto, obtenerPerfilAlquileres, obtenerPerfilSoporte, registrarPagoSaldoDB } from '../services/db';
+import { obtenerTarjetas, agregarTarjeta, eliminarTarjeta } from '../services/cardService';
 import Boton from '../components/ui/Boton';
 import { PAISES } from '../constants/paises';
 import { PREGUNTAS_SECRETAS } from '../constants/preguntas';
