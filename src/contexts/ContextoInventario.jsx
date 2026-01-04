@@ -5,7 +5,7 @@ import {
     crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB,
     gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
     aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB,
-    obtenerDisponibilidadRecursoDB, buscarClientesDB, registrarUsuarioDB,
+    obtenerDisponibilidadRecursoDB, buscarClientesDB,
     calcularDescuentosDB, verificarDisponibilidadDB
 } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';

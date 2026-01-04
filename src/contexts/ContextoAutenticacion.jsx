@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { obtenerUsuarios, registrarUsuarioDB, actualizarUsuarioDB, obtenerUsuarioPorId, cambiarPassword } from '../services/db';
+import { obtenerUsuarios, registrarUsuarioDB, actualizarUsuarioDB, obtenerUsuarioPorId, cambiarPassword, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion } from '../services/db';
 
 export const ContextoAutenticacion = createContext();
 
@@ -134,7 +134,10 @@ export const ProveedorAutenticacion = ({ children }) => {
             cambiarRolUsuario,
             eliminarUsuario,
             cargando,
-            actualizarPassword: actualizarPasswordWrapper
+            actualizarPassword: actualizarPasswordWrapper,
+            recuperarPregunta: obtenerPreguntaRecuperacion,
+            verificarRespuesta: verificarRespuestaRecuperacion,
+            restablecerPassword: actualizarUsuarioDB // Usar wrapper si se necesita mapeo, pero directo funciona para {password}
         }}>
             {children}
         </ContextoAutenticacion.Provider>

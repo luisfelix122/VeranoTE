@@ -20,7 +20,7 @@ import ModalInfoGlobal from './components/ui/ModalInfoGlobal';
 import { crearRouterApp } from './router';
 
 // Services
-import { obtenerConfiguracion, calcularCotizacion, actualizarTipoCambioReal, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion, actualizarUsuarioDB } from './services/db';
+// Services - db.js imports removed (moved to Contexts)
 import { obtenerTarjetas, agregarTarjeta } from './services/cardService';
 import { PREGUNTAS_SECRETAS } from './constants/preguntas';
 
@@ -46,7 +46,7 @@ function App() {
 }
 
 function AppContenido() {
-    const { usuario, iniciarSesion, registrarUsuario, cargando } = useContext(ContextoAutenticacion);
+    const { usuario, iniciarSesion, registrarUsuario, recuperarPregunta, verificarRespuesta, restablecerPassword } = useContext(ContextoAutenticacion);
     const { carrito, removerDelCarrito, esVisible, setEsVisible, total, limpiarCarrito } = useContext(ContextoCarrito);
     const { registrarAlquiler, verificarDisponibilidad, calcularStockDisponible, fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva } = useContext(ContextoInventario);
     const { calcularDescuentos } = useContext(ContextoPromociones);
@@ -919,7 +919,7 @@ function AppContenido() {
                                 e.preventDefault();
                                 setRecLoading(true);
                                 setRecError('');
-                                const res = await obtenerPreguntaRecuperacion(recEmail);
+                                const res = await recuperarPregunta(recEmail);
                                 setRecLoading(false);
                                 if (res.success) {
                                     // Buscar texto de la pregunta
@@ -948,7 +948,7 @@ function AppContenido() {
                                 e.preventDefault();
                                 setRecLoading(true);
                                 setRecError('');
-                                const res = await verificarRespuestaRecuperacion(recEmail, recRespuesta);
+                                const res = await verificarRespuesta(recEmail, recRespuesta);
                                 setRecLoading(false);
                                 if (res.success) {
                                     setRecIdUsuario(res.userId);
@@ -985,7 +985,7 @@ function AppContenido() {
                                     return;
                                 }
                                 setRecLoading(true);
-                                const res = await actualizarUsuarioDB(recIdUsuario, { password: recPass }); // Usamos actualizarUsuarioDB para la pass
+                                const res = await restablecerPassword(recIdUsuario, { password: recPass }); // Usamos wrapper desde context
                                 setRecLoading(false);
                                 if (res.success) {
                                     alert('¡Contraseña actualizada! Inicia sesión con tu nueva clave.');
