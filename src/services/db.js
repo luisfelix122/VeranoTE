@@ -183,24 +183,32 @@ export const crearReserva = async (datosReserva) => {
         categoria: item.categoria // Necesario para promociones
     }));
 
-    const { data, error } = await supabase
-        .rpc('crear_reserva_robusta', {
-            p_cliente_id: datosReserva.clienteId,
-            p_vendedor_id: datosReserva.vendedorId,
-            p_sede_id: datosReserva.sedeId || 'costa',
-            p_items: itemsRPC,
-            p_fecha_inicio: datosReserva.fechaInicio,
-            p_tipo_reserva: datosReserva.tipoReserva,
-            p_metodo_pago_id: datosReserva.metodoPago,
-            p_tipo_comprobante: datosReserva.tipoComprobante,
-            p_datos_factura: datosReserva.datosFactura
-        });
+    const payload = {
+        p_cliente_id: datosReserva.clienteId,
+        p_vendedor_id: datosReserva.vendedorId,
+        p_sede_id: datosReserva.sedeId || 'costa',
+        p_items: itemsRPC,
+        p_fecha_inicio: datosReserva.fechaInicio,
+        p_tipo_reserva: datosReserva.tipoReserva,
+        p_metodo_pago_id: datosReserva.metodoPago,
+        p_tipo_comprobante: datosReserva.tipoComprobante,
+        p_datos_factura: datosReserva.datosFactura
+    };
 
-    if (error) {
-        console.error('Error al crear reserva:', error);
-        return { success: false, error: error.message };
+    try {
+        const { data, error } = await supabase.rpc('crear_reserva_robusta', payload);
+
+        if (error) {
+            console.error('Error al crear reserva (RPC Error):', error);
+            console.error('Payload enviado:', payload);
+            return { success: false, error: error.message };
+        }
+        return data;
+    } catch (err) {
+        console.error('Error inesperado al crear reserva (Network/Client):', err);
+        console.error('Payload fallido:', payload);
+        return { success: false, error: "Error de conexión o datos inválidos." };
     }
-    return data;
 };
 
 export const verificarDisponibilidadDB = async (items, fechaInicio) => {
@@ -282,6 +290,43 @@ export const registrarDevolucionDB = async (alquilerId, vendedorId) => {
     return data;
 };
 
+// Helper para transformar alquiler crudo a formato frontend
+const transformarAlquiler = (a) => {
+    let vendedorInfo = null;
+    if (a.vendedor) {
+        const nombre = a.vendedor.nombre;
+        const rolObj = a.vendedor.roles;
+        let rolNombre = 'Vendedor';
+        if (Array.isArray(rolObj)) {
+            rolNombre = rolObj[0]?.nombre;
+        } else if (rolObj?.nombre) {
+            rolNombre = rolObj.nombre;
+        }
+        rolNombre = rolNombre ? rolNombre.charAt(0).toUpperCase() + rolNombre.slice(1) : 'Vendedor';
+        vendedorInfo = `${nombre} (${rolNombre})`;
+    }
+
+    return {
+        ...a,
+        estado: a.estados_alquiler?.nombre || a.estado_id,
+        vendedor: vendedorInfo,
+        clienteObj: a.cliente,
+        cliente: a.cliente?.nombre || 'Cliente',
+        clienteDni: a.cliente?.numero_documento || 'Sin Documento',
+        items: a.alquiler_detalles.map(d => ({
+            id: d.recurso_id,
+            nombre: d.recursos?.nombre,
+            imagen: d.recursos?.imagen,
+            cantidad: d.cantidad,
+            horas: d.horas,
+            precioPorHora: d.precio_unitario
+        })),
+        cantidad_items: a.alquiler_detalles.reduce((acc, d) => acc + d.cantidad, 0),
+        producto_principal: a.alquiler_detalles.map(d => `${d.cantidad}x ${d.recursos?.nombre}`).join(', '),
+        imagen_principal: a.alquiler_detalles[0]?.recursos?.imagen
+    };
+};
+
 export const obtenerAlquileres = async () => {
     const { data, error } = await supabase
         .from('alquileres')
@@ -301,39 +346,7 @@ export const obtenerAlquileres = async () => {
         return [];
     }
 
-    // Transformar para que el frontend lo entienda fácil
-    return data.map(a => {
-        let vendedorInfo = null;
-        if (a.vendedor) {
-            const nombre = a.vendedor.nombre;
-            const rolObj = a.vendedor.roles;
-            // Manejar si rol viene como array o objeto (supabase quirks)
-            let rolNombre = 'Vendedor';
-            if (Array.isArray(rolObj)) {
-                rolNombre = rolObj[0]?.nombre;
-            } else if (rolObj?.nombre) {
-                rolNombre = rolObj.nombre;
-            }
-            // Capitalizar
-            rolNombre = rolNombre ? rolNombre.charAt(0).toUpperCase() + rolNombre.slice(1) : 'Vendedor';
-            vendedorInfo = `${nombre} (${rolNombre})`;
-        }
-
-        return {
-            ...a,
-            estado: a.estados_alquiler?.nombre || a.estado_id, // Usar nombre legible
-            vendedor: vendedorInfo,
-            clienteDni: a.cliente?.numero_documento || 'Sin Documento', // Fixed access to standard response structure
-            items: a.alquiler_detalles.map(d => ({
-                id: d.recurso_id,
-                nombre: d.recursos?.nombre,
-                imagen: d.recursos?.imagen,
-                cantidad: d.cantidad,
-                horas: d.horas,
-                precioPorHora: d.precio_unitario
-            }))
-        };
-    });
+    return data.map(transformarAlquiler);
 };
 
 export const obtenerPromociones = async () => {
@@ -399,7 +412,10 @@ export const registrarUsuarioDB = async (datosUsuario) => {
         licencia_conducir: datosUsuario.licenciaConducir,
         tipo_documento: datosUsuario.tipoDocumento || 'DNI',
         nacionalidad: datosUsuario.nacionalidad || 'Nacional',
-        rol_id: 'cliente'
+        nacionalidad: datosUsuario.nacionalidad || 'Nacional',
+        rol_id: 'cliente',
+        pregunta_secreta: datosUsuario.preguntaSecreta,
+        respuesta_secreta: datosUsuario.respuestaSecreta
     };
 
     const { data, error } = await supabase
@@ -419,33 +435,41 @@ export const actualizarUsuarioDB = async (id, datos) => {
     const datosParaActualizar = { ...datos };
 
     // Mapeo manual de campos camelCase a snake_case
-    if (datosParaActualizar.rol) {
+    if ('rol' in datosParaActualizar) {
         datosParaActualizar.rol_id = datosParaActualizar.rol;
         delete datosParaActualizar.rol;
     }
-    if (datosParaActualizar.licenciaConducir !== undefined) {
+    if ('licenciaConducir' in datosParaActualizar) {
         datosParaActualizar.licencia_conducir = datosParaActualizar.licenciaConducir;
         delete datosParaActualizar.licenciaConducir;
     }
-    if (datosParaActualizar.numeroDocumento) {
+    if ('numeroDocumento' in datosParaActualizar) {
         datosParaActualizar.numero_documento = datosParaActualizar.numeroDocumento;
         delete datosParaActualizar.numeroDocumento;
     }
-    if (datosParaActualizar.fechaNacimiento) {
+    if ('fechaNacimiento' in datosParaActualizar) {
         datosParaActualizar.fecha_nacimiento = datosParaActualizar.fechaNacimiento;
         delete datosParaActualizar.fechaNacimiento;
     }
-    if (datosParaActualizar.tipoDocumento) {
+    if ('tipoDocumento' in datosParaActualizar) {
         datosParaActualizar.tipo_documento = datosParaActualizar.tipoDocumento;
         delete datosParaActualizar.tipoDocumento;
     }
-    if (datosParaActualizar.contactoEmergencia) {
+    if ('contactoEmergencia' in datosParaActualizar) {
         datosParaActualizar.contacto_emergencia = datosParaActualizar.contactoEmergencia;
         delete datosParaActualizar.contactoEmergencia;
     }
-    if (datosParaActualizar.codigoEmpleado) {
+    if ('codigoEmpleado' in datosParaActualizar) {
         datosParaActualizar.codigo_empleado = datosParaActualizar.codigoEmpleado;
         delete datosParaActualizar.codigoEmpleado;
+    }
+    if ('preguntaSecreta' in datosParaActualizar) {
+        datosParaActualizar.pregunta_secreta = datosParaActualizar.preguntaSecreta;
+        delete datosParaActualizar.preguntaSecreta;
+    }
+    if ('respuestaSecreta' in datosParaActualizar) {
+        datosParaActualizar.respuesta_secreta = datosParaActualizar.respuestaSecreta;
+        delete datosParaActualizar.respuestaSecreta;
     }
 
     const { data, error } = await supabase
@@ -459,6 +483,35 @@ export const actualizarUsuarioDB = async (id, datos) => {
         return { success: false, error };
     }
     return { success: true, data: data[0] };
+};
+
+export const obtenerPreguntaRecuperacion = async (email) => {
+    const { data, error } = await supabase
+        .from('usuarios')
+        .select('pregunta_secreta')
+        .eq('email', email)
+        .single();
+
+    if (error || !data) return { success: false, error: 'Usuario no encontrado' };
+    if (!data.pregunta_secreta) return { success: false, error: 'El usuario no ha configurado una pregunta de seguridad.' };
+
+    return { success: true, pregunta: data.pregunta_secreta };
+};
+
+export const verificarRespuestaRecuperacion = async (email, respuesta) => {
+    const { data, error } = await supabase
+        .from('usuarios')
+        .select('id, respuesta_secreta')
+        .eq('email', email)
+        .single();
+
+    if (error || !data) return { success: false, error: 'Error al verificar respuesta' };
+
+    // Comparación simple para demo (case-insensitive)
+    if (data.respuesta_secreta && data.respuesta_secreta.toLowerCase().trim() === respuesta.toLowerCase().trim()) {
+        return { success: true, userId: data.id };
+    }
+    return { success: false, error: 'Respuesta incorrecta' };
 };
 
 export const reprogramarAlquilerDB = async (alquilerId, horasAdicionales) => {
@@ -585,6 +638,8 @@ export const agregarTarjeta = async (usuarioId, tarjeta) => {
             token: 'tok_simulado_' + Date.now(),
             expiracion: tarjeta.exp,
             titular: tarjeta.nombre,
+            marca: tarjeta.marca || 'Desconocida', // Guardamos la marca
+            tipo: tarjeta.tipo || 'credito', // Guardamos el tipo (credito/debito)
             es_principal: tarjeta.principal
         }])
         .select();
@@ -604,6 +659,52 @@ export const eliminarTarjeta = async (id) => {
 
     if (error) {
         console.error('Error al eliminar tarjeta:', error);
+        return { success: false, error };
+    }
+    return { success: true };
+};
+
+// --- GESTIÓN DE CONTACTOS (NORMALIZADA) ---
+
+export const obtenerContactos = async (usuarioId) => {
+    const { data, error } = await supabase
+        .from('contactos_usuario')
+        .select('*')
+        .eq('usuario_id', usuarioId);
+
+    if (error) {
+        console.error('Error al obtener contactos:', error);
+        return [];
+    }
+    return data;
+};
+
+export const agregarContacto = async (usuarioId, contacto) => {
+    const { data, error } = await supabase
+        .from('contactos_usuario')
+        .insert([{
+            usuario_id: usuarioId,
+            nombre: contacto.nombre,
+            telefono: contacto.telefono,
+            relacion: contacto.relacion || 'Familiar'
+        }])
+        .select();
+
+    if (error) {
+        console.error('Error al agregar contacto:', error);
+        return { success: false, error };
+    }
+    return { success: true, data: data[0] };
+};
+
+export const eliminarContacto = async (id) => {
+    const { error } = await supabase
+        .from('contactos_usuario')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('Error al eliminar contacto:', error);
         return { success: false, error };
     }
     return { success: true };
@@ -694,8 +795,17 @@ export const obtenerMensajes = async (usuarioId) => {
 
 export const obtenerMisGastos = async (usuarioId) => {
     const { data, error } = await supabase
-        .from('v_mis_gastos')
-        .select('*')
+        .from('alquileres')
+        .select(`
+            *,
+            alquiler_detalles (
+                *,
+                recursos ( nombre, imagen )
+            ),
+            cliente:usuarios!cliente_id ( nombre, email, numero_documento ),
+            vendedor:usuarios!vendedor_id ( nombre, roles ( nombre ) ),
+            estados_alquiler ( nombre )
+        `)
         .eq('cliente_id', usuarioId)
         .order('created_at', { ascending: false });
 
@@ -703,7 +813,7 @@ export const obtenerMisGastos = async (usuarioId) => {
         console.error('Error al obtener mis gastos:', error);
         return [];
     }
-    return data;
+    return data.map(transformarAlquiler);
 };
 
 

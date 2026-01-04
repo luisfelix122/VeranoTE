@@ -6,7 +6,7 @@ import {
     gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
     aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB,
     obtenerDisponibilidadRecursoDB, buscarClientesDB, registrarUsuarioDB,
-    calcularDescuentosDB
+    calcularDescuentosDB, verificarDisponibilidadDB
 } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 
@@ -253,27 +253,108 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const reprogramarAlquiler = async (idAlquiler, horasAdicionales) => {
-        const resultado = await reprogramarAlquilerDB(idAlquiler, horasAdicionales);
-        if (resultado.success) {
-            // Recargar alquileres para obtener los cálculos exactos del backend
-            const alquileresActualizados = await obtenerAlquileres();
-            // Mapear de nuevo (duplicación de lógica de carga inicial, idealmente refactorizar en una función cargarAlquileres)
-            setAlquileres(alquileresActualizados.map(a => ({
-                ...a,
-                fechaInicio: a.fecha_inicio,
-                clienteId: a.cliente_id,
-                vendedorId: a.vendedor_id,
-                totalServicio: a.total_servicio,
-                totalFinal: a.total_final,
-                montoPagado: a.monto_pagado,
-                saldoPendiente: a.saldo_pendiente,
-                tipoReserva: a.tipo_reserva,
-                sedeId: a.sede_id
-            })));
-            return true;
-        } else {
-            alert(resultado.error);
+    const reprogramarAlquiler = async (alquilerId, param) => {
+        try {
+            // Caso 1: Reprogramación de Fecha/Hora (Nuevo flujo)
+            if (typeof param === 'object' && param.nuevaFecha && param.nuevaHora) {
+                const { nuevaFecha, nuevaHora } = param;
+
+                // 1. Obtener alquiler actual para calcular duración y items
+                const { data: alquilerActual, error: errorFetch } = await supabase
+                    .from('alquileres')
+                    .select('*, alquiler_detalles(*)')
+                    .eq('id', alquilerId)
+                    .single();
+
+                if (errorFetch || !alquilerActual) throw new Error("No se pudo obtener el alquiler original.");
+
+                // 2. Calcular nuevas fechas (Soporte snake_case y camelCase)
+                // Nota: DB usa 'fecha_fin_estimada' en lugar de 'fecha_fin'
+                const fechaInicioStr = alquilerActual.fecha_inicio || alquilerActual.fechaInicio;
+                const fechaFinStr = alquilerActual.fecha_fin_estimada || alquilerActual.fecha_fin || alquilerActual.fechaFin;
+
+                if (!fechaInicioStr || !fechaFinStr) throw new Error("Fechas originales corruptas en base de datos.");
+
+                const inicioOriginal = new Date(fechaInicioStr);
+                const finOriginal = new Date(fechaFinStr);
+
+                if (isNaN(inicioOriginal.getTime()) || isNaN(finOriginal.getTime())) {
+                    throw new Error("Formato de fecha inválido en base de datos.");
+                }
+
+                const duracionMs = finOriginal.getTime() - inicioOriginal.getTime();
+
+                const nuevoInicio = new Date(`${nuevaFecha}T${nuevaHora}`);
+                if (isNaN(nuevoInicio.getTime())) {
+                    throw new Error("Fecha/Hora seleccionada inválida.");
+                }
+
+                const nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
+
+                // 3. Verificar Disponibilidad
+                if (!alquilerActual.alquiler_detalles || alquilerActual.alquiler_detalles.length === 0) {
+                    // Si no hay detalles, asumimos que es solo reserva de tiempo o error
+                    console.warn("Alquiler sin detalles de recursos.");
+                }
+
+                const itemsParaVerificar = alquilerActual.alquiler_detalles?.map(d => ({
+                    id: d.recurso_id,
+                    cantidad: d.cantidad
+                })) || [];
+
+                if (itemsParaVerificar.length > 0) {
+                    const disponible = await verificarDisponibilidadDB(itemsParaVerificar, nuevoInicio);
+                    if (!disponible) {
+                        alert("No hay disponibilidad suficiente para los recursos en la nueva fecha/hora seleccionada.");
+                        return false;
+                    }
+                }
+
+                // 4. Actualizar Fechas en DB
+                const { error: errorUpdate } = await supabase
+                    .from('alquileres')
+                    .update({
+                        fecha_inicio: nuevoInicio.toISOString(),
+                        fecha_fin_estimada: nuevoFin.toISOString()
+                    })
+                    .eq('id', alquilerId);
+
+                if (errorUpdate) throw errorUpdate;
+
+                // 5. Aplicar Penalidad (S/ 10)
+                if (alquilerActual.total_servicio > 0) {
+                    const penalidad = 10;
+                    // Asegurar que total_servicio sea número
+                    const totalServicio = Number(alquilerActual.total_servicio);
+                    const porcentajeNegativo = -((penalidad / totalServicio) * 100);
+                    await aplicarDescuentoManualDB(alquilerId, porcentajeNegativo, "Penalidad por Reprogramación");
+                }
+
+                await recargarDatos();
+                return true;
+
+            }
+
+            // Caso 2: Legacy (Solo agregar horas, param es número)
+            else if (typeof param === 'number') {
+                const horasAdicionales = param;
+                const { success, data: alquilerActualizado, error } = await reprogramarAlquilerDB(alquilerId, horasAdicionales);
+
+                if (success) {
+                    if (alquilerActualizado && alquilerActualizado.total_servicio > 0) {
+                        const penalidad = 10;
+                        const porcentajeNegativo = -((penalidad / alquilerActualizado.total_servicio) * 100);
+                        await aplicarDescuentoManualDB(alquilerId, porcentajeNegativo, "Penalidad por Reprogramación");
+                    }
+                    await recargarDatos();
+                    return true;
+                } else {
+                    throw error;
+                }
+            }
+        } catch (err) {
+            console.error("Error en reprogramarAlquiler:", err);
+            alert("Error al reprogramar: " + (err.message || "Error desconocido"));
             return false;
         }
     };

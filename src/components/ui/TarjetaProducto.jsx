@@ -18,9 +18,26 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
 
     const formatearHora = (dateObj) => {
         if (!dateObj) return '';
-        // Asegurarse de que sea objeto Date
         const d = new Date(dateObj.hora || dateObj);
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const hoy = new Date();
+        const manana = new Date(hoy);
+        manana.setDate(manana.getDate() + 1);
+
+        const horaStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Verificar si es hoy
+        if (d.getDate() === hoy.getDate() && d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear()) {
+            return `las ${horaStr}`;
+        }
+
+        // Verificar si es mañana
+        if (d.getDate() === manana.getDate() && d.getMonth() === manana.getMonth() && d.getFullYear() === manana.getFullYear()) {
+            return `Mañana a las ${horaStr}`;
+        }
+
+        // Otra fecha
+        const fechaStr = d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+        return `el ${fechaStr} a las ${horaStr}`;
     };
 
     return (
@@ -48,8 +65,8 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
                 {siguienteLiberacion && (
                     <p className="text-xs text-orange-600 mb-2 font-medium bg-orange-50 px-2 py-1 rounded-lg">
                         {producto.stock === 0
-                            ? `Próximo disponible a las ${formatearHora(siguienteLiberacion)}`
-                            : `+${siguienteLiberacion.cantidad} disponible(s) a las ${formatearHora(siguienteLiberacion)}`
+                            ? `Próximo disponible ${formatearHora(siguienteLiberacion)}`
+                            : `+${siguienteLiberacion.cantidad} disponible(s) ${formatearHora(siguienteLiberacion)}`
                         }
                     </p>
                 )}

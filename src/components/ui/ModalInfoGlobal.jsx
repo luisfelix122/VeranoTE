@@ -13,7 +13,23 @@ const ModalInfoGlobal = () => {
             setCargando(true);
             obtenerPagina(modalInfo.slug)
                 .then(data => {
-                    setContenido(data?.contenido || '<p class="text-center text-gray-500 my-8">Información no disponible.</p>');
+                    let htmlContent = data?.contenido || '<p class="text-center text-gray-500 my-8">Información no disponible.</p>';
+
+                    // Inyección de Cláusula de "No Devolución por falta de pago"
+                    if (modalInfo.slug.includes('terminos')) {
+                        htmlContent += `
+                            <div class="mt-6 p-4 bg-red-50 border border-red-100 rounded-xl">
+                                <h4 class="text-red-700 font-bold mb-2 flex items-center gap-2">⚠️ Política de Pagos y Recojo</h4>
+                                <p class="text-red-600 text-sm font-medium">
+                                    Si al momento del recojo no ha completado el pago total de la reserva, 
+                                    <strong>se perderá la reserva automáticamente sin lugar a devoluciones</strong>. 
+                                    El pago completo es requisito indispensable para la entrega de los equipos.
+                                </p>
+                            </div>
+                        `;
+                    }
+
+                    setContenido(htmlContent);
                     setCargando(false);
                 })
                 .catch(err => {

@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { BarChart3, AlertCircle, Search, Wrench, DollarSign, MessageSquare, FileText, CheckCircle, XCircle, Activity, PieChart, Calendar, Image as ImageIcon, CreditCard } from 'lucide-react';
+import { BarChart3, AlertCircle, Search, Wrench, DollarSign, MessageSquare, FileText, CheckCircle, XCircle, Activity, PieChart, Calendar, Image as ImageIcon, CreditCard, Info, Clock } from 'lucide-react';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import { ContextoSoporte } from '../contexts/ContextoSoporte';
@@ -38,6 +38,11 @@ const Reportes = ({ rol: rolProp }) => {
     const [cargando, setCargando] = useState(false);
     const [modalTicketAbierto, setModalTicketAbierto] = useState(false);
     const { crearTicket } = useContext(ContextoSoporte);
+    const [alquilerSeleccionado, setAlquilerSeleccionado] = useState(null);
+    const [modalReprogramacion, setModalReprogramacion] = useState({ abierto: false, alquiler: null }); // Store full object
+    const [nuevaFecha, setNuevaFecha] = useState('');
+    const [nuevaHora, setNuevaHora] = useState('');
+    const [cargandoReprogramacion, setCargandoReprogramacion] = useState(false);
 
     useEffect(() => {
         if (rol === 'cliente' && usuario?.id) {
@@ -181,11 +186,51 @@ const Reportes = ({ rol: rolProp }) => {
 
     // --- Handlers ---
 
-    const manejarReprogramacion = (id) => {
-        const horas = prompt("¿Cuántas horas adicionales desea agregar?");
-        if (horas && !isNaN(horas) && parseInt(horas) > 0) {
-            reprogramarAlquiler(id, parseInt(horas));
-            alert("Alquiler reprogramado con éxito.");
+    const manejarReprogramacion = (alquiler) => {
+        setModalReprogramacion({ abierto: true, alquiler }); // Save full object
+        setNuevaFecha('');
+        setNuevaHora('');
+    };
+
+    const confirmarReprogramacion = async () => {
+        if (!nuevaFecha || !nuevaHora) {
+            alert("Por favor selecciona nueva fecha y hora.");
+            return;
+        }
+
+        const fechaHoraInicio = new Date(`${nuevaFecha}T${nuevaHora}`);
+        const ahora = new Date();
+
+        if (fechaHoraInicio < ahora) {
+            alert("La nueva fecha debe ser futura.");
+            return;
+        }
+
+        // Validación de Horario de Cierre
+        if (modalReprogramacion.alquiler) {
+            const a = modalReprogramacion.alquiler;
+            const inicioOriginal = new Date(a.fecha_inicio);
+            const finOriginal = new Date(a.fecha_fin);
+            const duracionMs = finOriginal - inicioOriginal;
+
+            const fechaHoraFin = new Date(fechaHoraInicio.getTime() + duracionMs);
+            const horaFin = fechaHoraFin.getHours();
+            const minutoFin = fechaHoraFin.getMinutes();
+
+            // Asumimos cierre a las 18:00 (6 PM) - Configurable idealmente
+            if (horaFin > 18 || (horaFin === 18 && minutoFin > 0)) {
+                alert(`La reserva terminaría a las ${fechaHoraFin.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, pero el local cierra a las 18:00. Por favor elige una hora más temprana.`);
+                return;
+            }
+        }
+
+        setCargandoReprogramacion(true);
+        const exito = await reprogramarAlquiler(modalReprogramacion.alquiler.id, { nuevaFecha, nuevaHora });
+        setCargandoReprogramacion(false);
+
+        if (exito) {
+            alert("Reserva reprogramada con éxito. Se ha aplicado el cargo por reprogramación.");
+            setModalReprogramacion({ abierto: false, alquiler: null });
         }
     };
 
@@ -244,6 +289,216 @@ const Reportes = ({ rol: rolProp }) => {
         </div>
     );
 
+    const renderModalReprogramacion = () => {
+        if (!modalReprogramacion.abierto) return null;
+
+        return (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md animate-in fade-in zoom-in duration-200">
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                        <h3 className="text-xl font-bold text-gray-900">Reprogramar Reserva</h3>
+                        <button
+                            onClick={() => setModalReprogramacion({ abierto: false, alquiler: null })}
+                            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        >
+                            <XCircle className="text-gray-400 hover:text-gray-600" />
+                        </button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex gap-3">
+                            <Info className="text-blue-600 shrink-0" size={20} />
+                            <p className="text-sm text-blue-800">
+                                La reprogramación tiene un costo administrativo de <strong>S/ 10.00</strong>, el cual se sumará a su deuda pendiente.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Fecha</label>
+                            <input
+                                type="date"
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={nuevaFecha}
+                                onChange={(e) => setNuevaFecha(e.target.value)}
+                                min={new Date().toISOString().split('T')[0]}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Hora Inicio</label>
+                            <input
+                                type="time"
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={nuevaHora}
+                                onChange={(e) => setNuevaHora(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="pt-4 flex gap-3">
+                            <button
+                                onClick={() => setModalReprogramacion({ abierto: false, alquiler: null })}
+                                className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmarReprogramacion}
+                                disabled={cargandoReprogramacion}
+                                className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                            >
+                                {cargandoReprogramacion ? 'Procesando...' : 'Confirmar Reprogramación'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderModalDetalle = () => {
+        if (!alquilerSeleccionado) return null;
+        const a = alquilerSeleccionado;
+        const igv = a.datos_factura?.igv_calculado || (a.total_servicio - (a.total_bruto - (a.descuento_promociones || 0)));
+
+        return (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) setAlquilerSeleccionado(null); }}>
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                        <div>
+                            <h3 className="text-xl font-bold text-gray-900">Detalle de Reserva</h3>
+                            <p className="text-sm text-gray-500">ID: {a.id}</p>
+                            <div className="flex gap-4 mt-2 mb-1">
+                                <div className="bg-blue-50 px-3 py-1 rounded-lg text-xs font-semibold text-blue-700 border border-blue-100 flex items-center gap-1">
+                                    <Clock size={12} />
+                                    {new Date(a.fecha_inicio || a.fechaInicio).toLocaleDateString()} {new Date(a.fecha_inicio || a.fechaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                                <div className="bg-gray-100 px-3 py-1 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200">
+                                    Hasta: {new Date(a.fecha_fin_estimada || a.fecha_fin || a.fechaFin).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setAlquilerSeleccionado(null)}
+                            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        >
+                            <XCircle className="text-gray-400 hover:text-gray-600" />
+                        </button>
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                        <div>
+                            <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                <Activity size={16} className="text-blue-600" /> Recursos Alquilados
+                            </h4>
+                            <div className="bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-gray-100 text-gray-600 font-medium">
+                                        <tr>
+                                            <th className="p-3">Recurso</th>
+                                            <th className="p-3 text-center">Cant.</th>
+                                            <th className="p-3 text-center">Horas</th>
+                                            <th className="p-3 text-right">Precio/h</th>
+                                            <th className="p-3 text-right">Subtotal</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {a.items?.map((item, idx) => (
+                                            <tr key={idx}>
+                                                <td className="p-3 font-medium text-gray-800">
+                                                    <div className="flex items-center gap-2">
+                                                        {item.imagen && <img src={item.imagen} className="w-8 h-8 rounded bg-white object-cover border" alt="" />}
+                                                        {item.nombre}
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 text-center">{item.cantidad}</td>
+                                                <td className="p-3 text-center">{item.horas}h</td>
+                                                <td className="p-3 text-right">S/ {Number(item.precioPorHora).toFixed(2)}</td>
+                                                <td className="p-3 text-right font-medium">S/ {(item.cantidad * item.horas * item.precioPorHora).toFixed(2)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <div className="w-full max-w-xs space-y-2">
+                                <div className="flex justify-between text-sm text-gray-600">
+                                    <span>Subtotal Base:</span>
+                                    <span>S/ {Number(a.total_bruto).toFixed(2)}</span>
+                                </div>
+                                {Number(a.descuento_promociones) > 0 && (
+                                    <div className="flex justify-between text-sm text-green-600">
+                                        <span>Descuento:</span>
+                                        <span>- S/ {Number(a.descuento_promociones).toFixed(2)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between text-sm text-gray-600">
+                                    <span>IGV (18%):</span>
+                                    <span>S/ {Number(igv).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm font-bold text-gray-800 pt-2 border-t border-dashed">
+                                    <span>Total Servicio:</span>
+                                    <span>S/ {Number(a.total_servicio).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm text-blue-600">
+                                    <span>Garantía (Reembolsable):</span>
+                                    <span>S/ {Number(a.garantia).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t border-gray-200">
+                                    <span>Total Final:</span>
+                                    <span>S/ {Number(a.total_final).toFixed(2)}</span>
+                                </div>
+                                {/* Lógica robusta para detectar Recargos/Descuentos ocultos o explícitos */}
+                                {(() => {
+                                    const totalServicio = Number(a.total_servicio || 0);
+                                    const garantia = Number(a.garantia || 0);
+                                    const totalFinal = Number(a.total_final || 0);
+
+                                    // Calculamos la diferencia matemática
+                                    // Si TotalFinal > (Servicio + Garantia), hay un Recargo extra.
+                                    // Si TotalFinal < (Servicio + Garantia), hay un Descuento extra.
+                                    const diferencia = totalFinal - (totalServicio + garantia);
+
+                                    // Tolerancia para errores de punto flotante
+                                    const esDiferenciaSignificativa = Math.abs(diferencia) > 0.05;
+
+                                    if (!esDiferenciaSignificativa) return null;
+
+                                    const esRecargo = diferencia > 0;
+
+                                    return (
+                                        <div className={`mt-3 p-2 rounded text-xs font-semibold ${esRecargo ? 'bg-orange-50 text-orange-700 border border-orange-100' : 'bg-green-50 text-green-700'}`}>
+                                            <div className="flex justify-between items-center">
+                                                <span>{esRecargo ? '⚠️ Recargos / Penalidades' : 'Descuento Manual'}:</span>
+                                                <span>{esRecargo ? '' : '- '}S/ {Math.abs(diferencia).toFixed(2)}</span>
+                                            </div>
+                                            {(a.notas || a.motivo_descuento) && (
+                                                <p className="mt-1 font-normal opacity-75 italic">"{a.motivo_descuento || a.notas || (esRecargo ? 'Ajuste administrativo' : '')}"</p>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+
+                        <div className="bg-blue-50 p-4 rounded-xl flex justify-between items-center text-sm">
+                            <div className="flex items-center gap-2">
+                                <DollarSign className="text-blue-600" size={18} />
+                                <span className="font-medium text-blue-800">Estado del Pago:</span>
+                            </div>
+                            <div className="font-bold">
+                                {Number(a.saldo_pendiente) > 0 ? (
+                                    <span className="text-red-600">Pendiente (Debe S/ {Number(a.saldo_pendiente).toFixed(2)})</span>
+                                ) : (
+                                    <span className="text-green-600 flex items-center gap-1"><CheckCircle size={14} /> Pagado Completo</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderTablaVentas = () => {
         if (rol === 'cliente') {
             return (
@@ -298,7 +553,7 @@ const Reportes = ({ rol: rolProp }) => {
                                                             )}
                                                         </div>
                                                         <div>
-                                                            <div className="font-medium text-gray-900 line-clamp-1" title={a.producto_principal}>
+                                                            <div className="font-medium text-gray-900 line-clamp-2 leading-tight" title={a.producto_principal}>
                                                                 {a.producto_principal || 'Alquiler General'}
                                                             </div>
                                                             <div className="text-xs text-gray-500">
@@ -341,36 +596,48 @@ const Reportes = ({ rol: rolProp }) => {
                                                     S/ {Number(a.total_final || 0).toFixed(2)}
                                                 </td>
                                                 <td className="p-4 text-center">
-                                                    {(a.estado_nombre === 'pendiente' || a.estado === 'pendiente') && (
+                                                    <div className="flex flex-col gap-2 w-full">
+                                                        {/* Botón Ver Detalle - SIEMPRE VISIBLE */}
                                                         <button
-                                                            onClick={() => manejarReprogramacion(a.id)}
-                                                            className="text-blue-600 hover:text-blue-800 text-xs font-medium hover:underline block w-full mb-2"
+                                                            onClick={() => setAlquilerSeleccionado(a)}
+                                                            className="text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-200 text-xs font-medium flex items-center justify-center gap-2 py-2 px-3 rounded-lg transition-all w-full"
                                                         >
-                                                            Reprogramar
+                                                            <Info size={14} /> Ver Detalle
                                                         </button>
-                                                    )}
 
-                                                    {Number(a.saldo_pendiente || 0) > 0 && (
-                                                        <button
-                                                            onClick={async () => {
-                                                                if (window.confirm(`¿Deseas pagar la deuda de S/ ${a.saldo_pendiente} usando tu tarjeta predeterminada?`)) {
-                                                                    const res = await registrarPagoSaldoDB(a.id);
-                                                                    if (res) {
-                                                                        alert("¡Pago registrado con éxito! Tu deuda ha quedado saldada.");
-                                                                        // Actualizar estado local para reflejar el cambio inmediato
-                                                                        setMisGastos(prev => prev.map(item =>
-                                                                            item.id === a.id ? { ...item, saldo_pendiente: 0, monto_pagado: Number(item.total_final) } : item
-                                                                        ));
-                                                                    } else {
-                                                                        alert("Error al procesar el pago. Inténtalo nuevamente.");
+                                                        {/* Botón Reprogramar - Pendientes y Confirmados y NO Pasados */}
+                                                        {((a.estado_nombre || a.estado || '').toLowerCase().includes('pendiente') || (a.estado_nombre || a.estado || '').toLowerCase() === 'confirmado') &&
+                                                            (new Date(a.fecha_inicio || a.fechaInicio) > new Date()) && (
+                                                                <button
+                                                                    onClick={() => manejarReprogramacion(a)}
+                                                                    className="text-blue-600 hover:text-blue-800 text-xs font-medium hover:underline text-center w-full"
+                                                                >
+                                                                    Reprogramar
+                                                                </button>
+                                                            )}
+
+                                                        {/* Botón Pagar - Solo con deuda */}
+                                                        {Number(a.saldo_pendiente || 0) > 0 && (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (window.confirm(`¿Deseas pagar la deuda de S/ ${a.saldo_pendiente} usando tu tarjeta predeterminada?`)) {
+                                                                        const res = await registrarPagoSaldoDB(a.id);
+                                                                        if (res) {
+                                                                            alert("¡Pago registrado con éxito! Tu deuda ha quedado saldada.");
+                                                                            setMisGastos(prev => prev.map(item =>
+                                                                                item.id === a.id ? { ...item, saldo_pendiente: 0, monto_pagado: Number(item.total_final) } : item
+                                                                            ));
+                                                                        } else {
+                                                                            alert("Error al procesar el pago. Inténtalo nuevamente.");
+                                                                        }
                                                                     }
-                                                                }
-                                                            }}
-                                                            className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-blue-700 transition-all animate-pulse w-full sm:w-auto"
-                                                        >
-                                                            <CreditCard size={12} /> Pagar S/ {Number(a.saldo_pendiente || 0).toFixed(2)}
-                                                        </button>
-                                                    )}
+                                                                }}
+                                                                className="flex items-center justify-center gap-2 py-2 px-3 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-blue-700 transition-all animate-pulse w-full"
+                                                            >
+                                                                <CreditCard size={14} /> Pagar S/ {Number(a.saldo_pendiente || 0).toFixed(2)}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -379,6 +646,8 @@ const Reportes = ({ rol: rolProp }) => {
                             </div>
                         </div>
                     )}
+                    {renderModalReprogramacion()}
+                    {renderModalDetalle()}
                 </div>
             );
         }
@@ -787,6 +1056,9 @@ const Reportes = ({ rol: rolProp }) => {
 
             {/* Vendedor ve vista simplificada por defecto */}
             {rol === 'vendedor' && pestanaActiva !== 'ventas' && renderTablaVentas()}
+
+            {/* Modal Detalle */}
+            {alquilerSeleccionado && renderModalDetalle()}
 
         </div >
     );

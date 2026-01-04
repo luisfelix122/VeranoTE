@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { RouterProvider } from 'react-router-dom';
-import { AlertTriangle, Package, ShoppingCart, FileText, CheckCircle, X } from 'lucide-react';
+import { AlertTriangle, Package, ShoppingCart, FileText, CheckCircle, X, Eye, EyeOff } from 'lucide-react';
 
 // Contexts
 import { ProveedorAutenticacion, ContextoAutenticacion } from './contexts/ContextoAutenticacion';
@@ -20,7 +20,8 @@ import ModalInfoGlobal from './components/ui/ModalInfoGlobal';
 import { crearRouterApp } from './router';
 
 // Services
-import { registrarUsuarioDB, obtenerConfiguracion, calcularCotizacion, actualizarTipoCambioReal } from './services/db';
+import { registrarUsuarioDB, obtenerConfiguracion, calcularCotizacion, actualizarTipoCambioReal, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion, actualizarUsuarioDB, registrarAlquiler, obtenerTarjetas, agregarTarjeta } from './services/db';
+import { PREGUNTAS_SECRETAS } from './constants/preguntas';
 
 const router = crearRouterApp();
 
@@ -89,6 +90,10 @@ function AppContenido() {
     const [regDoc, setRegDoc] = useState('');
     const [regNacimiento, setRegNacimiento] = useState('');
     const [regLicencia, setRegLicencia] = useState(false);
+
+    // UI Helpers
+    const [showRegPass, setShowRegPass] = useState(false);
+
     const [errorDni, setErrorDni] = useState('');
     const [isRegistering, setIsRegistering] = useState(false);
     const [aceptaTerminosRegistro, setAceptaTerminosRegistro] = useState(false);
@@ -96,6 +101,22 @@ function AppContenido() {
     // New UX State
     const [erroresRegistro, setErroresRegistro] = useState({});
     const [registroExitoso, setRegistroExitoso] = useState(false);
+
+    // Registro Pregunta Secreta
+    const [regPregunta, setRegPregunta] = useState('mascota');
+    const [regRespuesta, setRegRespuesta] = useState('');
+
+    // Recovery State
+    const [recoveryMode, setRecoveryMode] = useState(false);
+    const [recStep, setRecStep] = useState(1); // 1: Email, 2: Pregunta, 3: Nueva Pass
+    const [recEmail, setRecEmail] = useState('');
+    const [recPregunta, setRecPregunta] = useState('');
+    const [recRespuesta, setRecRespuesta] = useState('');
+    const [recIdUsuario, setRecIdUsuario] = useState(null);
+    const [recPass, setRecPass] = useState('');
+    const [recConfirm, setRecConfirm] = useState('');
+    const [recError, setRecError] = useState('');
+    const [recLoading, setRecLoading] = useState(false);
 
     // Calcular si es menor de edad
     const esMenorDeEdad = React.useMemo(() => {
@@ -117,6 +138,51 @@ function AppContenido() {
         }
     }, [esMenorDeEdad]);
 
+    // Efecto para cargar tarjetas si el usuario está logueado y el modal está abierto
+    React.useEffect(() => {
+        if (usuario && esVisible && metodoPago === 'tarjeta') {
+            obtenerTarjetas(usuario.id).then(tarjetas => {
+                setTarjetasGuardadas(tarjetas);
+                if (tarjetas.length > 0) {
+                    setTarjetaSeleccionada(tarjetas[0].id);
+                    setUsarNuevaTarjeta(false);
+                } else {
+                    setUsarNuevaTarjeta(true);
+                }
+            });
+        }
+    }, [usuario, esVisible, metodoPago]);
+
+    // Helpers Tarjeta
+    const detectarMarca = (numero) => {
+        const n = numero.replace(/\D/g, '');
+        if (/^4/.test(n)) return 'Visa';
+        if (/^5[1-5]/.test(n)) return 'Mastercard';
+        return '';
+    };
+
+    const formatearTarjeta = (valor) => {
+        const v = valor.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+        const matches = v.match(/\d{4,16}/g);
+        const match = matches && matches[0] || '';
+        const parts = [];
+        for (let i = 0, len = match.length; i < len; i += 4) {
+            parts.push(match.substring(i, i + 4));
+        }
+        if (parts.length) {
+            return parts.join(' ');
+        }
+        return v;
+    };
+
+    const formatearExpiracion = (valor) => {
+        const v = valor.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+        if (v.length >= 2) {
+            return v.substring(0, 2) + '/' + v.substring(2, 4);
+        }
+        return v;
+    };
+
     // Checkout State
     // const [fechaReserva, setFechaReserva] = useState(new Date().toISOString().split('T')[0]); // Moved to ContextoInventario
     const [horaReserva, setHoraReserva] = useState(new Date().toTimeString().split(' ')[0].slice(0, 5));
@@ -124,10 +190,18 @@ function AppContenido() {
     const [metodoPago, setMetodoPago] = useState('transferencia');
     const [tipoComprobante, setTipoComprobante] = useState('boleta');
     const [datosFactura, setDatosFactura] = useState({ ruc: '', razonSocial: '', direccion: '' });
+
+    // Estado para tarjetas en checkout
+    const [tarjetasGuardadas, setTarjetasGuardadas] = useState([]);
+    const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(''); // ID o 'nueva'
+    const [usarNuevaTarjeta, setUsarNuevaTarjeta] = useState(false);
+    const [guardarNuevaTarjeta, setGuardarNuevaTarjeta] = useState(false);
+    const [nuevaTarjeta, setNuevaTarjeta] = useState({ numero: '', exp: '', cvv: '', nombre: '', tipo: 'credito', marca: '' });
+
     const [aceptaTerminos, setAceptaTerminos] = useState(false);
     const [errorHora, setErrorHora] = useState('');
     const [erroresCheckout, setErroresCheckout] = useState({});
-    const [compraExitosa, setCompraExitosa] = useState(false);
+    const [compraExitoso, setCompraExitosa] = useState(false);
 
     // Estados para descuentos y promociones en el carrito
     // const [descuentoTotal, setDescuentoTotal] = useState(0); // REMOVED to avoid conflict with calculated const
@@ -279,9 +353,54 @@ function AppContenido() {
             return;
         }
 
-        if (tipoComprobante === 'factura' && (!datosFactura.ruc || !datosFactura.razonSocial)) {
-            setErroresCheckout(prev => ({ ...prev, factura: "Por favor completa los datos de facturación." }));
+        // Validar Hora Pasada (No permitir reservas retroactivas hoy)
+        const hoyStr = new Date().toISOString().split('T')[0];
+        if (fechaReserva === hoyStr) {
+            const ahora = new Date();
+            const [hReserva, mReserva] = horaReserva.split(':').map(Number);
+            const minutosReserva = hReserva * 60 + mReserva;
+            const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
+
+            if (minutosReserva < minutosAhora) {
+                setErrorHora("No puedes reservar en una hora que ya pasó.");
+                return;
+            }
+        }
+
+        // Validar Cierre (Duración del alquiler debe caber antes del cierre)
+        const [hCierre, mCierre] = horaCierre.split(':').map(Number);
+        const minutosCierre = hCierre * 60 + mCierre;
+        const [hInicio, mInicio] = horaReserva.split(':').map(Number);
+        const minutosInicio = hInicio * 60 + mInicio;
+
+        // Buscar la duración máxima en el carrito para asegurar que todo cabe
+        const maxDuracion = Math.max(...carrito.map(i => i.horas));
+        const minutosDuracion = maxDuracion * 60;
+
+        if (minutosInicio + minutosDuracion > minutosCierre) {
+            setErrorHora(`La reserva excede el horario de cierre (${horaCierre}). Reduce las horas o elige un horario más temprano.`);
             return;
+        }
+
+        // Validar al menos 1 hora antes del cierre (Redundante pero explícito por seguridad)
+        if (minutosInicio > minutosCierre - 60) {
+            setErrorHora(`Debes reservar al menos 1 hora antes del cierre.`);
+            return;
+        }
+
+        if (tipoComprobante === 'factura') {
+            if (!datosFactura.ruc || datosFactura.ruc.length !== 11) {
+                setErroresCheckout(prev => ({ ...prev, factura: "El RUC debe tener 11 dígitos.", ruc: "Faltan dígitos" }));
+                return;
+            }
+            if (!datosFactura.razonSocial) {
+                setErroresCheckout(prev => ({ ...prev, factura: "Por favor completa la Razón Social.", razonSocial: "Requerido" }));
+                return;
+            }
+            if (!datosFactura.direccion) {
+                setErroresCheckout(prev => ({ ...prev, factura: "Por favor completa la Dirección Fiscal.", direccion: "Requerido" }));
+                return;
+            }
         } else {
             setErroresCheckout(prev => ({ ...prev, factura: null }));
         }
@@ -295,37 +414,87 @@ function AppContenido() {
             }
         }
 
-        const fechaInicio = new Date(`${fechaReserva}T${horaReserva}`);
+        // Lógica de Pago con Tarjeta
+        const completarReserva = async (tokenTarjeta = null) => {
+            const fechaInicio = new Date(`${fechaReserva}T${horaReserva}`);
 
-        // Preparar datos para la reserva con saneamiento
-        const datosReserva = {
-            clienteId: usuario.id,
-            vendedorId: null, // Si es online, va null
-            sedeId: sedeActual || 'costa',
-            items: carrito.map(i => ({
-                id: Number(i.id),
-                cantidad: Number(i.cantidad),
-                horas: Number(i.horas),
-                precioPorHora: Number(i.precioPorHora),
-                categoria: i.categoria
-            })),
-            fechaInicio: fechaInicio.toISOString(), // Asegurar formato ISO
-            tipoReserva: tipoReserva || 'inmediata',
-            metodoPago: metodoPago || 'transferencia',
-            tipoComprobante: tipoComprobante || 'boleta',
-            datosFactura: tipoComprobante === 'factura' ? datosFactura : null
+            // Preparar datos para la reserva con saneamiento
+            const datosReserva = {
+                clienteId: usuario.id,
+                vendedorId: null, // Si es online, va null
+                sedeId: sedeActual || 'costa',
+                items: carrito.map(i => ({
+                    id: Number(i.id),
+                    cantidad: Number(i.cantidad),
+                    horas: Number(i.horas),
+                    precioPorHora: Number(i.precioPorHora),
+                    categoria: i.categoria
+                })),
+                fechaInicio: fechaInicio.toISOString(), // Asegurar formato ISO
+                tipoReserva: tipoReserva || 'inmediata',
+                metodoPago: metodoPago || 'transferencia',
+                tipoComprobante: tipoComprobante || 'boleta',
+                datosFactura: tipoComprobante === 'factura' ? datosFactura : null,
+                tokenTarjeta: tokenTarjeta // Nuevo: token o ID de tarjeta si aplica
+            };
+
+            setAceptaTerminos(false); // UI Loader
+
+            try {
+                const exito = await registrarAlquiler(datosReserva);
+                if (exito) {
+                    setCompraExitosa(true);
+                } else {
+                    setAceptaTerminos(true);
+                }
+            } catch (err) {
+                console.error("Error crítico en checkout:", err);
+                alert("Ocurrió un error al procesar tu reserva.");
+                setAceptaTerminos(true);
+            }
         };
 
-        // Loading UI simulación (opcional)
-        setAceptaTerminos(false); // Deshabilitar doble click
+        if (metodoPago === 'tarjeta') {
+            if (usarNuevaTarjeta) {
+                // Validar campos de tarjeta nueva
+                let erroresTarjeta = {};
+                if (!nuevaTarjeta.numero || nuevaTarjeta.numero.length < 15) erroresTarjeta.tarjetaNumero = "Número incompleto o inválido";
+                if (!nuevaTarjeta.exp || nuevaTarjeta.exp.length < 4) erroresTarjeta.tarjetaExp = "Inválido";
+                if (!nuevaTarjeta.cvv || nuevaTarjeta.cvv.length < 3) erroresTarjeta.tarjetaCvv = "Inválido";
+                if (!nuevaTarjeta.nombre) erroresTarjeta.tarjetaNombre = "Requerido";
 
-        registrarAlquiler(datosReserva).then(exito => {
-            if (exito) {
-                setCompraExitosa(true);
+                if (Object.keys(erroresTarjeta).length > 0) {
+                    setErroresCheckout(prev => ({ ...prev, ...erroresTarjeta }));
+                    return;
+                }
+
+                // Guardar tarjeta si seleccionó checkbox
+                if (guardarNuevaTarjeta) {
+                    agregarTarjeta(usuario.id, { ...nuevaTarjeta, principal: tarjetasGuardadas.length === 0 })
+                        .then(res => {
+                            if (res.success) {
+                                completarReserva(res.data.id); // Usar ID de la tarjeta guardada
+                            } else {
+                                alert("Error al guardar tarjeta, pero intentaremos procesar el pago.");
+                                completarReserva(); // Token simulado
+                            }
+                        });
+                } else {
+                    // Pago con tarjeta simulación (sin guardar)
+                    completarReserva('token_temporal_' + Date.now());
+                }
             } else {
-                setAceptaTerminos(true); // Permitir reintentar
+                // Usar tarjeta seleccionada
+                if (!tarjetaSeleccionada) {
+                    alert("Por favor selecciona una tarjeta o agrega una nueva.");
+                    return;
+                }
+                completarReserva(tarjetaSeleccionada);
             }
-        });
+        } else {
+            // Otros métodos de pago
+            completarReserva();
+        }
     };
 
     // Helper para calcular edad en registro
@@ -477,16 +646,119 @@ function AppContenido() {
                                     {fechaReserva !== new Date().toISOString().split('T')[0] && (
                                         <p className="text-xs text-orange-600 mt-1">Reservas para fechas futuras son automáticamente anticipadas.</p>
                                     )}
+                                    <p className="text-[10px] text-gray-500 italic mt-1">* Este tipo de reserva aplica a todos los items de la orden actual.</p>
                                 </div>
 
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Método de Pago</label>
-                                    <select className="w-full p-2 border rounded text-sm" value={metodoPago} onChange={e => setMetodoPago(e.target.value)}>
+                                    <select className="w-full p-2 border rounded text-sm mb-2" value={metodoPago} onChange={e => setMetodoPago(e.target.value)}>
                                         <option value="transferencia">Transferencia Bancaria</option>
                                         <option value="yape">Yape / Plin</option>
                                         <option value="tarjeta">Tarjeta de Crédito/Débito</option>
                                         <option value="efectivo">Efectivo (En tienda)</option>
                                     </select>
+
+                                    {/* Selección de Tarjeta */}
+                                    {metodoPago === 'tarjeta' && (
+                                        <div className="bg-gray-50 p-3 rounded border border-gray-200 mt-2">
+                                            {tarjetasGuardadas.length > 0 && (
+                                                <div className="mb-3">
+                                                    <label className="block text-xs font-medium text-gray-700 mb-1">Seleccionar Tarjeta</label>
+                                                    <select
+                                                        className="w-full p-2 border rounded text-sm"
+                                                        value={usarNuevaTarjeta ? 'nueva' : tarjetaSeleccionada}
+                                                        onChange={e => {
+                                                            if (e.target.value === 'nueva') {
+                                                                setUsarNuevaTarjeta(true);
+                                                            } else {
+                                                                setUsarNuevaTarjeta(false);
+                                                                setTarjetaSeleccionada(e.target.value);
+                                                            }
+                                                        }}
+                                                    >
+                                                        {tarjetasGuardadas.map(t => (
+                                                            <option key={t.id} value={t.id}>
+                                                                {t.marca || 'Tarjeta'} terminada en {t.numero_oculto ? t.numero_oculto.slice(-4) : '****'}
+                                                            </option>
+                                                        ))}
+                                                        <option value="nueva">+ Usar una nueva tarjeta</option>
+                                                    </select>
+                                                </div>
+                                            )}
+
+                                            {/* Formulario Nueva Tarjeta */}
+                                            {(usarNuevaTarjeta || tarjetasGuardadas.length === 0) && (
+                                                <div className="space-y-2 animate-fadeIn">
+                                                    <div className="relative">
+                                                        <input
+                                                            placeholder="Número de Tarjeta"
+                                                            className={`w-full p-2 pl-2 border rounded text-sm ${erroresCheckout.tarjetaNumero ? 'border-red-500' : ''}`}
+                                                            value={formatearTarjeta(nuevaTarjeta.numero)}
+                                                            maxLength={19}
+                                                            onChange={e => {
+                                                                const val = e.target.value.replace(/\s+/g, '').replace(/\D/g, '');
+                                                                setNuevaTarjeta({ ...nuevaTarjeta, numero: val, marca: detectarMarca(val) });
+                                                                setErroresCheckout(prev => ({ ...prev, tarjetaNumero: null }));
+                                                            }}
+                                                        />
+                                                        {nuevaTarjeta.marca && (
+                                                            <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                                                                {nuevaTarjeta.marca}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {erroresCheckout.tarjetaNumero && <p className="text-xs text-red-500">{erroresCheckout.tarjetaNumero}</p>}
+
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <input
+                                                            placeholder="MM/YY"
+                                                            className={`w-full p-2 border rounded text-sm ${erroresCheckout.tarjetaExp ? 'border-red-500' : ''}`}
+                                                            value={formatearExpiracion(nuevaTarjeta.exp)}
+                                                            maxLength={5}
+                                                            onChange={e => {
+                                                                setNuevaTarjeta({ ...nuevaTarjeta, exp: e.target.value });
+                                                                setErroresCheckout(prev => ({ ...prev, tarjetaExp: null }));
+                                                            }}
+                                                        />
+                                                        <input
+                                                            placeholder="CVV"
+                                                            type="password"
+                                                            className={`w-full p-2 border rounded text-sm ${erroresCheckout.tarjetaCvv ? 'border-red-500' : ''}`}
+                                                            value={nuevaTarjeta.cvv}
+                                                            maxLength={4}
+                                                            onChange={e => {
+                                                                setNuevaTarjeta({ ...nuevaTarjeta, cvv: e.target.value.replace(/\D/g, '') });
+                                                                setErroresCheckout(prev => ({ ...prev, tarjetaCvv: null }));
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <input
+                                                        placeholder="Nombre del Titular"
+                                                        className={`w-full p-2 border rounded text-sm ${erroresCheckout.tarjetaNombre ? 'border-red-500' : ''}`}
+                                                        value={nuevaTarjeta.nombre}
+                                                        onChange={e => {
+                                                            setNuevaTarjeta({ ...nuevaTarjeta, nombre: e.target.value.toUpperCase() });
+                                                            setErroresCheckout(prev => ({ ...prev, tarjetaNombre: null }));
+                                                        }}
+                                                    />
+
+                                                    {/* Opción Guardar Tarjeta */}
+                                                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="guardarTarjeta"
+                                                            className="w-4 h-4 text-blue-600 rounded"
+                                                            checked={guardarNuevaTarjeta}
+                                                            onChange={e => setGuardarNuevaTarjeta(e.target.checked)}
+                                                        />
+                                                        <label htmlFor="guardarTarjeta" className="text-xs text-gray-600 cursor-pointer select-none">
+                                                            Guardar esta tarjeta para futuras compras
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div>
@@ -502,11 +774,42 @@ function AppContenido() {
                                         </label>
                                     </div>
                                     {tipoComprobante === 'factura' && (
-                                        <div className="grid grid-cols-1 gap-2 bg-gray-50 p-2 rounded">
-                                            <input placeholder="RUC" className="w-full p-2 border rounded text-sm" value={datosFactura.ruc} onChange={e => setDatosFactura({ ...datosFactura, ruc: e.target.value })} />
-                                            <input placeholder="Razón Social" className="w-full p-2 border rounded text-sm" value={datosFactura.razonSocial} onChange={e => setDatosFactura({ ...datosFactura, razonSocial: e.target.value })} />
-                                            <input placeholder="Dirección Fiscal" className="w-full p-2 border rounded text-sm" value={datosFactura.direccion} onChange={e => setDatosFactura({ ...datosFactura, direccion: e.target.value })} />
-
+                                        <div className="grid grid-cols-1 gap-2 bg-gray-50 p-3 rounded border border-gray-200">
+                                            <div>
+                                                <input
+                                                    placeholder="RUC (11 dígitos)"
+                                                    className={`w-full p-2 border rounded text-sm ${erroresCheckout.ruc ? 'border-red-500 bg-red-50' : ''}`}
+                                                    value={datosFactura.ruc}
+                                                    maxLength={11}
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(/\D/g, ''); // Solo números
+                                                        setDatosFactura({ ...datosFactura, ruc: val });
+                                                        // Limpiar error si ya tiene 11
+                                                        if (val.length === 11 && erroresCheckout.ruc) {
+                                                            setErroresCheckout(prev => ({ ...prev, ruc: null }));
+                                                        }
+                                                    }}
+                                                />
+                                                {erroresCheckout.ruc && <p className="text-xs text-red-500 mt-1">{erroresCheckout.ruc}</p>}
+                                            </div>
+                                            <input
+                                                placeholder="Razón Social"
+                                                className={`w-full p-2 border rounded text-sm ${erroresCheckout.razonSocial ? 'border-red-500 bg-red-50' : ''}`}
+                                                value={datosFactura.razonSocial}
+                                                onChange={e => {
+                                                    setDatosFactura({ ...datosFactura, razonSocial: e.target.value });
+                                                    setErroresCheckout(prev => ({ ...prev, razonSocial: null }));
+                                                }}
+                                            />
+                                            <input
+                                                placeholder="Dirección Fiscal"
+                                                className={`w-full p-2 border rounded text-sm ${erroresCheckout.direccion ? 'border-red-500 bg-red-50' : ''}`}
+                                                value={datosFactura.direccion}
+                                                onChange={e => {
+                                                    setDatosFactura({ ...datosFactura, direccion: e.target.value });
+                                                    setErroresCheckout(prev => ({ ...prev, direccion: null }));
+                                                }}
+                                            />
                                         </div>
                                     )}
                                     {erroresCheckout.factura && <p className="text-xs font-bold text-red-600 mt-1 animate-pulse">{erroresCheckout.factura}</p>}
@@ -598,287 +901,448 @@ function AppContenido() {
 
 
 
-            {/* Modal Login/Registro */}
-            <Modal titulo={modoRegistro ? "Crear Cuenta" : "Bienvenido"} abierto={mostrarLogin} alCerrar={() => { setMostrarLogin(false); setRegistroExitoso(false); setErroresRegistro({}); }} zIndex={60}>
-                {modoRegistro ? (
-                    registroExitoso ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-center animate-fade-in-up">
-                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
-                                <CheckCircle size={32} />
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">¡Cuenta Creada!</h3>
-                            <p className="text-gray-600 mb-6 max-w-xs">Tu cuenta ha sido registrada y ya has iniciado sesión.</p>
-                            <Boton variante="primario" onClick={() => { setModoRegistro(false); setRegistroExitoso(false); setMostrarLogin(false); }} className="w-full">
-                                Continuar
-                            </Boton>
-                        </div>
-                    ) : (
-                        <form onSubmit={async (e) => {
-                            e.preventDefault();
-
-                            // 1. Limpiar errores previos
-                            const nuevosErrores = {};
-                            setErroresRegistro({});
-
-                            // 2. Validaciones Manuales
-                            if (!regNombre.trim()) nuevosErrores.nombre = "El nombre es obligatorio.";
-                            if (!regEmail.trim()) nuevosErrores.email = "El email es obligatorio.";
-                            if (!regPass.trim()) nuevosErrores.password = "La contraseña es obligatoria.";
-                            if (!regDoc.trim()) {
-                                nuevosErrores.doc = "El documento es obligatorio.";
-                            } else if (regTipoDocumento === 'DNI' && !/^\d{8}$/.test(regDoc)) {
-                                nuevosErrores.doc = "El DNI debe tener 8 dígitos.";
-                            }
-                            if (!regNacimiento) nuevosErrores.nacimiento = "La fecha de nacimiento es obligatoria.";
-
-                            if (!aceptaTerminosRegistro) {
-                                nuevosErrores.terminos = "Debes aceptar los términos y condiciones.";
-                            }
-
-                            // Si hay errores, detener y mostrar
-                            if (Object.keys(nuevosErrores).length > 0) {
-                                setErroresRegistro(nuevosErrores);
-                                return;
-                            }
-
-                            setIsRegistering(true);
-
-                            const resultado = await registrarUsuario({
-                                nombre: regNombre,
-                                email: regEmail,
-                                password: regPass,
-                                numeroDocumento: regDoc,
-                                fechaNacimiento: regNacimiento,
-                                licenciaConducir: regLicencia,
-                                tipoDocumento: regTipoDocumento,
-                                nacionalidad: regNacionalidad
-                            });
-
-                            setIsRegistering(false);
-
-                            if (resultado === true) {
-                                setRegistroExitoso(true);
-                                setAceptaTerminosRegistro(false);
-                            } else {
-                                // Mapeo de errores de backend a campos
-                                const errorStr = resultado?.toString() || '';
-                                if (errorStr.includes('usuarios_email_unique') || errorStr.includes('usuarios_email_key')) {
-                                    setErroresRegistro({ email: "Este correo ya está registrado." });
-                                } else if (errorStr.includes('usuarios_dni_unique_idx')) {
-                                    setErroresRegistro({ doc: "Este documento ya está registrado." });
-                                } else if (errorStr.includes('usuarios_dni_check')) {
-                                    setErroresRegistro({ doc: "Formato de documento inválido." });
+            {/* Modal Login/Registro/Recuperación */}
+            <Modal titulo={recoveryMode ? "Recuperar Contraseña" : (modoRegistro ? "Crear Cuenta" : "Bienvenido")} abierto={mostrarLogin} alCerrar={() => {
+                setMostrarLogin(false);
+                setRegistroExitoso(false);
+                setErroresRegistro({});
+                setRecoveryMode(false);
+                setRecStep(1);
+                setRecError('');
+            }} zIndex={60}>
+                {recoveryMode ? (
+                    <div className="space-y-6 py-2">
+                        {recStep === 1 && (
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                setRecLoading(true);
+                                setRecError('');
+                                const res = await obtenerPreguntaRecuperacion(recEmail);
+                                setRecLoading(false);
+                                if (res.success) {
+                                    // Buscar texto de la pregunta
+                                    const pregObj = PREGUNTAS_SECRETAS.find(p => p.id === res.pregunta);
+                                    setRecPregunta(pregObj ? pregObj.texto : res.pregunta);
+                                    setRecStep(2);
                                 } else {
-                                    setErroresRegistro({ general: "Error al crear cuenta. Inténtalo de nuevo." });
+                                    setRecError(res.error);
                                 }
-                            }
-                        }} className="space-y-4">
-                            {erroresRegistro.general && (
-                                <div className="bg-red-50 text-red-600 p-3 rounded text-sm flex items-center gap-2">
-                                    <AlertTriangle size={16} /> {erroresRegistro.general}
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
-                                <input
-                                    className={`w-full p-2 border rounded ${erroresRegistro.nombre ? 'border-red-500 bg-red-50' : ''}`}
-                                    value={regNombre}
-                                    onChange={e => setRegNombre(e.target.value)}
-                                    placeholder="Ej. Juan Pérez"
-                                />
-                                {erroresRegistro.nombre && <p className="text-xs text-red-500 mt-1">{erroresRegistro.nombre}</p>}
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                <input
-                                    type="email"
-                                    className={`w-full p-2 border rounded ${erroresRegistro.email ? 'border-red-500 bg-red-50' : ''}`}
-                                    value={regEmail}
-                                    onChange={e => setRegEmail(e.target.value)}
-                                    placeholder="ejemplo@correo.com"
-                                />
-                                {erroresRegistro.email && <p className="text-xs text-red-500 mt-1">{erroresRegistro.email}</p>}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                            }} className="space-y-4">
+                                <p className="text-sm text-gray-600">Ingresa tu correo electrónico para buscar tu pregunta de seguridad.</p>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1"> Condición</label>
-                                    <select
-                                        className="w-full p-2 border rounded bg-white"
-                                        value={regNacionalidad}
-                                        onChange={e => {
-                                            const val = e.target.value;
-                                            setRegNacionalidad(val);
-                                            // Auto-switch Logic
-                                            if (val === 'Nacional') {
-                                                setRegPaisOrigen('Perú');
-                                                setRegTipoDocumento('DNI');
-                                            } else {
-                                                setRegPaisOrigen('Argentina');
-                                                setRegTipoDocumento('Pasaporte');
-                                            }
-                                            setErroresRegistro(prev => ({ ...prev, doc: '' }));
-                                        }}
-                                    >
-                                        <option value="Nacional">Peruana</option>
-                                        <option value="Extranjero">Extranjera</option>
-                                    </select>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Email Registrado</label>
+                                    <input type="email" className="w-full p-3 border rounded-xl" value={recEmail} onChange={e => setRecEmail(e.target.value)} required />
+                                </div>
+                                {recError && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertTriangle size={16} /> {recError}</div>}
+                                <div className="flex gap-3">
+                                    <Boton type="button" variante="secundario" onClick={() => setRecoveryMode(false)} className="flex-1">Cancelar</Boton>
+                                    <Boton type="submit" variante="primario" className="flex-1" disabled={recLoading}>{recLoading ? 'Buscando...' : 'Continuar'}</Boton>
+                                </div>
+                            </form>
+                        )}
+
+                        {recStep === 2 && (
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                setRecLoading(true);
+                                setRecError('');
+                                const res = await verificarRespuestaRecuperacion(recEmail, recRespuesta);
+                                setRecLoading(false);
+                                if (res.success) {
+                                    setRecIdUsuario(res.userId);
+                                    setRecStep(3);
+                                } else {
+                                    setRecError(res.error);
+                                }
+                            }} className="space-y-4">
+                                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
+                                    <p className="text-xs text-blue-600 font-bold uppercase mb-1">Pregunta de Seguridad</p>
+                                    <p className="text-lg text-gray-800 font-medium">{recPregunta}</p>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">País Origen</label>
-                                    {regNacionalidad === 'Nacional' ? (
-                                        <input disabled className="w-full p-2 border rounded bg-gray-100 text-gray-500 font-medium" value="Perú" />
-                                    ) : (
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Tu Respuesta</label>
+                                    <input type="text" className="w-full p-3 border rounded-xl" value={recRespuesta} onChange={e => setRecRespuesta(e.target.value)} required placeholder="Escribe tu respuesta..." />
+                                </div>
+                                {recError && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertTriangle size={16} /> {recError}</div>}
+                                <div className="flex gap-3">
+                                    <Boton type="button" variante="secundario" onClick={() => setRecStep(1)} className="flex-1">Atrás</Boton>
+                                    <Boton type="submit" variante="primario" className="flex-1" disabled={recLoading}>{recLoading ? 'Verificar' : 'Siguiente'}</Boton>
+                                </div>
+                            </form>
+                        )}
+
+                        {recStep === 3 && (
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (recPass !== recConfirm) {
+                                    setRecError('Las contraseñas no coinciden');
+                                    return;
+                                }
+                                if (recPass.length < 6) {
+                                    setRecError('La contraseña debe tener 6 caracteres o más');
+                                    return;
+                                }
+                                setRecLoading(true);
+                                const res = await actualizarUsuarioDB(recIdUsuario, { password: recPass }); // Usamos actualizarUsuarioDB para la pass
+                                setRecLoading(false);
+                                if (res.success) {
+                                    alert('¡Contraseña actualizada! Inicia sesión con tu nueva clave.');
+                                    setRecoveryMode(false);
+                                    setRecStep(1);
+                                    setRecPass('');
+                                    setRecConfirm('');
+                                    setRecEmail('');
+                                } else {
+                                    setRecError('Error al actualizar contraseña. Intente nuevamente.');
+                                }
+                            }} className="space-y-4">
+                                <div className="bg-green-50 p-3 rounded-lg text-green-700 text-sm flex items-center gap-2 justify-center">
+                                    <CheckCircle size={16} /> Respuesta correcta. Establece tu nueva clave.
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Nueva Contraseña</label>
+                                    <input type="password" className="w-full p-3 border rounded-xl" value={recPass} onChange={e => setRecPass(e.target.value)} required />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Confirmar Contraseña</label>
+                                    <input type="password" className="w-full p-3 border rounded-xl" value={recConfirm} onChange={e => setRecConfirm(e.target.value)} required />
+                                </div>
+                                {recError && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertTriangle size={16} /> {recError}</div>}
+                                <Boton type="submit" variante="primario" className="w-full" disabled={recLoading}>{recLoading ? 'Guardando...' : 'Finalizar'}</Boton>
+                            </form>
+                        )}
+                    </div>
+                ) : (
+                    modoRegistro ? (
+                        registroExitoso ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-center animate-fade-in-up">
+                                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                                    <CheckCircle size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">¡Cuenta Creada!</h3>
+                                <p className="text-gray-600 mb-6 max-w-xs">Tu cuenta ha sido registrada y ya has iniciado sesión.</p>
+                                <Boton variante="primario" onClick={() => { setModoRegistro(false); setRegistroExitoso(false); setMostrarLogin(false); }} className="w-full">
+                                    Continuar
+                                </Boton>
+                            </div>
+                        ) : (
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+
+                                // 1. Limpiar errores previos
+                                const nuevosErrores = {};
+                                setErroresRegistro({});
+
+                                // 2. Validaciones Manuales
+                                if (!regNombre.trim()) nuevosErrores.nombre = "El nombre es obligatorio.";
+                                if (!regEmail.trim()) nuevosErrores.email = "El email es obligatorio.";
+                                if (!regPass.trim()) nuevosErrores.password = "La contraseña es obligatoria.";
+                                if (!regDoc.trim()) {
+                                    nuevosErrores.doc = "El documento es obligatorio.";
+                                } else if (regTipoDocumento === 'DNI' && !/^\d{8}$/.test(regDoc)) {
+                                    nuevosErrores.doc = "El DNI debe tener 8 dígitos.";
+                                }
+                                if (!regNacimiento) nuevosErrores.nacimiento = "La fecha de nacimiento es obligatoria.";
+
+                                if (!aceptaTerminosRegistro) {
+                                    nuevosErrores.terminos = "Debes aceptar los términos y condiciones.";
+                                }
+
+                                // Validar Respuesta Secreta
+                                if (!regRespuesta.trim()) nuevosErrores.respuesta = "La respuesta secreta es obligatoria.";
+
+                                // Si hay errores, detener y mostrar
+                                if (Object.keys(nuevosErrores).length > 0) {
+                                    setErroresRegistro(nuevosErrores);
+                                    return;
+                                }
+
+                                setIsRegistering(true);
+
+                                const resultado = await registrarUsuario({
+                                    nombre: regNombre,
+                                    email: regEmail,
+                                    password: regPass,
+                                    numeroDocumento: regDoc,
+                                    fechaNacimiento: regNacimiento,
+                                    licenciaConducir: regLicencia,
+                                    tipoDocumento: regTipoDocumento,
+                                    nacionalidad: regNacionalidad,
+                                    preguntaSecreta: regPregunta,
+                                    respuestaSecreta: regRespuesta
+                                });
+
+                                setIsRegistering(false);
+
+                                if (resultado === true) {
+                                    setRegistroExitoso(true);
+                                    setAceptaTerminosRegistro(false);
+                                } else {
+                                    // Mapeo de errores de backend a campos
+                                    const errorStr = resultado?.toString() || '';
+                                    if (errorStr.includes('usuarios_email_unique') || errorStr.includes('usuarios_email_key')) {
+                                        setErroresRegistro({ email: "Este correo ya está registrado." });
+                                    } else if (errorStr.includes('usuarios_dni_unique_idx')) {
+                                        setErroresRegistro({ doc: "Este documento ya está registrado." });
+                                    } else if (errorStr.includes('usuarios_dni_check')) {
+                                        setErroresRegistro({ doc: "Formato de documento inválido." });
+                                    } else {
+                                        setErroresRegistro({ general: "Error al crear cuenta. Inténtalo de nuevo." });
+                                    }
+                                }
+                            }} className="space-y-4">
+                                {erroresRegistro.general && (
+                                    <div className="bg-red-50 text-red-600 p-3 rounded text-sm flex items-center gap-2">
+                                        <AlertTriangle size={16} /> {erroresRegistro.general}
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+                                    <input
+                                        className={`w-full p-2 border rounded ${erroresRegistro.nombre ? 'border-red-500 bg-red-50' : ''}`}
+                                        value={regNombre}
+                                        onChange={e => setRegNombre(e.target.value)}
+                                        placeholder="Ej. Juan Pérez"
+                                    />
+                                    {erroresRegistro.nombre && <p className="text-xs text-red-500 mt-1">{erroresRegistro.nombre}</p>}
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                    <input
+                                        type="email"
+                                        className={`w-full p-2 border rounded ${erroresRegistro.email ? 'border-red-500 bg-red-50' : ''}`}
+                                        value={regEmail}
+                                        onChange={e => setRegEmail(e.target.value)}
+                                        placeholder="ejemplo@correo.com"
+                                    />
+                                    {erroresRegistro.email && <p className="text-xs text-red-500 mt-1">{erroresRegistro.email}</p>}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1"> Condición</label>
                                         <select
                                             className="w-full p-2 border rounded bg-white"
-                                            value={regPaisOrigen}
-                                            onChange={e => setRegPaisOrigen(e.target.value)}
+                                            value={regNacionalidad}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                setRegNacionalidad(val);
+                                                // Auto-switch Logic
+                                                if (val === 'Nacional') {
+                                                    setRegPaisOrigen('Perú');
+                                                    setRegTipoDocumento('DNI');
+                                                } else {
+                                                    setRegPaisOrigen('Argentina');
+                                                    setRegTipoDocumento('Pasaporte');
+                                                }
+                                                setErroresRegistro(prev => ({ ...prev, doc: '' }));
+                                            }}
                                         >
-                                            <option value="Argentina">Argentina</option>
-                                            <option value="Bolivia">Bolivia</option>
-                                            <option value="Brasil">Brasil</option>
-                                            <option value="Canadá">Canadá</option>
-                                            <option value="Chile">Chile</option>
-                                            <option value="China">China</option>
-                                            <option value="Colombia">Colombia</option>
-                                            <option value="Ecuador">Ecuador</option>
-                                            <option value="España">España</option>
-                                            <option value="Estados Unidos">Estados Unidos</option>
-                                            <option value="Francia">Francia</option>
-                                            <option value="Italia">Italia</option>
-                                            <option value="Japón">Japón</option>
-                                            <option value="México">México</option>
-                                            <option value="Paraguay">Paraguay</option>
-                                            <option value="Reino Unido">Reino Unido</option>
-                                            <option value="Uruguay">Uruguay</option>
-                                            <option value="Venezuela">Venezuela</option>
-                                            <option value="Otro">Otro</option>
+                                            <option value="Nacional">Peruana</option>
+                                            <option value="Extranjero">Extranjera</option>
                                         </select>
-                                    )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">País Origen</label>
+                                        {regNacionalidad === 'Nacional' ? (
+                                            <input disabled className="w-full p-2 border rounded bg-gray-100 text-gray-500 font-medium" value="Perú" />
+                                        ) : (
+                                            <select
+                                                className="w-full p-2 border rounded bg-white"
+                                                value={regPaisOrigen}
+                                                onChange={e => setRegPaisOrigen(e.target.value)}
+                                            >
+                                                <option value="Argentina">Argentina</option>
+                                                <option value="Bolivia">Bolivia</option>
+                                                <option value="Brasil">Brasil</option>
+                                                <option value="Canadá">Canadá</option>
+                                                <option value="Chile">Chile</option>
+                                                <option value="China">China</option>
+                                                <option value="Colombia">Colombia</option>
+                                                <option value="Ecuador">Ecuador</option>
+                                                <option value="España">España</option>
+                                                <option value="Estados Unidos">Estados Unidos</option>
+                                                <option value="Francia">Francia</option>
+                                                <option value="Italia">Italia</option>
+                                                <option value="Japón">Japón</option>
+                                                <option value="México">México</option>
+                                                <option value="Paraguay">Paraguay</option>
+                                                <option value="Reino Unido">Reino Unido</option>
+                                                <option value="Uruguay">Uruguay</option>
+                                                <option value="Venezuela">Venezuela</option>
+                                                <option value="Otro">Otro</option>
+                                            </select>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Doc.</label>
+                                        <select
+                                            className="w-full p-2 border rounded bg-gray-50 disabled:bg-gray-100"
+                                            value={regTipoDocumento}
+                                            onChange={e => setRegTipoDocumento(e.target.value)}
+                                            disabled={regNacionalidad === 'Nacional'}
+                                        >
+                                            <option value="DNI">DNI</option>
+                                            <option value="Pasaporte">Pasaporte</option>
+                                            <option value="CE">C.E.</option>
+                                            <option value="PTP">PTP</option>
+                                        </select>
+                                    </div>
+
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            {regTipoDocumento === 'DNI' ? 'Número DNI' : 'N° Documento'}
+                                        </label>
+                                        <input
+                                            className={`w-full p-2 border rounded ${erroresRegistro.doc ? 'border-red-500 bg-red-50' : ''}`}
+                                            value={regDoc}
+                                            maxLength={regTipoDocumento === 'DNI' ? 8 : 20}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                if (regTipoDocumento === 'DNI' && !/^\d*$/.test(val)) return;
+                                                setRegDoc(val);
+                                                setErroresRegistro(prev => ({ ...prev, doc: '' }));
+                                            }}
+                                            placeholder={regTipoDocumento === 'DNI' ? '8 dígitos' : ''}
+                                        />
+                                        {erroresRegistro.doc && <p className="text-xs text-red-500 mt-1">{erroresRegistro.doc}</p>}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Nacimiento</label>
+                                        <input
+                                            type="date"
+                                            className={`w-full p-2 border rounded ${erroresRegistro.nacimiento ? 'border-red-500 bg-red-50' : ''}`}
+                                            value={regNacimiento}
+                                            onChange={e => {
+                                                setRegNacimiento(e.target.value);
+                                                setErroresRegistro(prev => ({ ...prev, nacimiento: '' }));
+                                                if (calcularEdadRegistro(e.target.value) < 18) {
+                                                    setRegLicencia(false);
+                                                }
+                                            }}
+                                        />
+                                        {erroresRegistro.nacimiento && <p className="text-xs text-red-500 mt-1">{erroresRegistro.nacimiento}</p>}
+                                    </div>
+                                </div>
+
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Doc.</label>
-                                    <select
-                                        className="w-full p-2 border rounded bg-gray-50 disabled:bg-gray-100"
-                                        value={regTipoDocumento}
-                                        onChange={e => setRegTipoDocumento(e.target.value)}
-                                        disabled={regNacionalidad === 'Nacional'}
-                                    >
-                                        <option value="DNI">DNI</option>
-                                        <option value="Pasaporte">Pasaporte</option>
-                                        <option value="CE">C.E.</option>
-                                        <option value="PTP">PTP</option>
-                                    </select>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showRegPass ? "text" : "password"}
+                                            className={`w-full p-2 pr-10 border rounded ${erroresRegistro.password ? 'border-red-500 bg-red-50' : ''}`}
+                                            value={regPass}
+                                            onChange={e => setRegPass(e.target.value)}
+                                            placeholder="********"
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                            onClick={() => setShowRegPass(!showRegPass)}
+                                        >
+                                            {showRegPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+                                    {erroresRegistro.password && <p className="text-xs text-red-500 mt-1">{erroresRegistro.password}</p>}
                                 </div>
 
+                                {/* Pregunta Secreta */}
+                                <div className="grid md:grid-cols-2 gap-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                    <div className="md:col-span-2">
+                                        <h4 className="text-xs font-bold text-blue-800 mb-2 uppercase tracking-wide flex items-center gap-1">
+                                            <CheckCircle size={12} /> Recuperación de Cuenta
+                                        </h4>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">Pregunta Secreta</label>
+                                        <select
+                                            className="w-full p-2 border rounded text-sm bg-white"
+                                            value={regPregunta}
+                                            onChange={e => setRegPregunta(e.target.value)}
+                                        >
+                                            {PREGUNTAS_SECRETAS.map(p => (
+                                                <option key={p.id} value={p.id}>{p.texto}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">Respuesta</label>
+                                        <input
+                                            className={`w-full p-2 border rounded text-sm ${erroresRegistro.respuesta ? 'border-red-500 bg-red-50' : ''}`}
+                                            value={regRespuesta}
+                                            onChange={e => {
+                                                setRegRespuesta(e.target.value);
+                                                setErroresRegistro(prev => ({ ...prev, respuesta: '' }));
+                                            }}
+                                            placeholder="Ej. Fido"
+                                        />
+                                        {erroresRegistro.respuesta && <p className="text-xs text-red-500 mt-1">{erroresRegistro.respuesta}</p>}
+                                    </div>
+                                </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        {regTipoDocumento === 'DNI' ? 'Número DNI' : 'N° Documento'}
-                                    </label>
-                                    <input
-                                        className={`w-full p-2 border rounded ${erroresRegistro.doc ? 'border-red-500 bg-red-50' : ''}`}
-                                        value={regDoc}
-                                        maxLength={regTipoDocumento === 'DNI' ? 8 : 20}
-                                        onChange={e => {
-                                            const val = e.target.value;
-                                            if (regTipoDocumento === 'DNI' && !/^\d*$/.test(val)) return;
-                                            setRegDoc(val);
-                                            setErroresRegistro(prev => ({ ...prev, doc: '' }));
-                                        }}
-                                        placeholder={regTipoDocumento === 'DNI' ? '8 dígitos' : ''}
-                                    />
-                                    {erroresRegistro.doc && <p className="text-xs text-red-500 mt-1">{erroresRegistro.doc}</p>}
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            id="regLicencia"
+                                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                                            checked={regLicencia}
+                                            onChange={(e) => setRegLicencia(e.target.checked)}
+                                            disabled={esMenorDeEdad}
+                                        />
+                                        <label htmlFor="regLicencia" className={`text-sm ${esMenorDeEdad ? 'text-gray-400' : 'text-gray-700'}`}>
+                                            Tengo Licencia de Conducir {esMenorDeEdad && '(Requiere ser mayor de edad)'}
+                                        </label>
+                                    </div>
+
+                                    <div className={`flex items-start gap-2 p-3 rounded border ${erroresRegistro.terminos ? 'border-red-200 bg-red-50' : 'bg-gray-50'}`}>
+                                        <input
+                                            type="checkbox"
+                                            id="regTerminos"
+                                            className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                            checked={aceptaTerminosRegistro}
+                                            onChange={e => {
+                                                setAceptaTerminosRegistro(e.target.checked);
+                                                setErroresRegistro(prev => ({ ...prev, terminos: '' }));
+                                            }}
+                                        />
+                                        <label htmlFor="regTerminos" className="text-sm text-gray-700 cursor-pointer select-none">
+                                            He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos-registro', 'Términos de Registro')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>
+                                        </label>
+                                    </div>
+                                    {erroresRegistro.terminos && <p className="text-sm font-medium text-red-600 ml-6 animate-pulse">{erroresRegistro.terminos}</p>}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Nacimiento</label>
-                                    <input
-                                        type="date"
-                                        className={`w-full p-2 border rounded ${erroresRegistro.nacimiento ? 'border-red-500 bg-red-50' : ''}`}
-                                        value={regNacimiento}
-                                        onChange={e => {
-                                            setRegNacimiento(e.target.value);
-                                            setErroresRegistro(prev => ({ ...prev, nacimiento: '' }));
-                                            if (calcularEdadRegistro(e.target.value) < 18) {
-                                                setRegLicencia(false);
-                                            }
-                                        }}
-                                    />
-                                    {erroresRegistro.nacimiento && <p className="text-xs text-red-500 mt-1">{erroresRegistro.nacimiento}</p>}
-                                </div>
+
+                                <Boton
+                                    variante="primario"
+                                    className={`w-full py-3 ${!aceptaTerminosRegistro ? 'opacity-50' : ''}`}
+                                    type="submit"
+                                    disabled={isRegistering}
+                                >
+                                    {isRegistering ? 'Registrando...' : 'Registrarse'}
+                                </Boton>
+                                <p className="text-center text-sm text-gray-600">¿Ya tienes cuenta? <button type="button" onClick={() => setModoRegistro(false)} className="text-blue-600 font-bold">Inicia Sesión</button></p>
+                            </form>
+                        )
+                    ) : (
+                        <form onSubmit={manejarLogin} className="space-y-4">
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label><input type="password" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+                            <div className="text-right">
+                                <button type="button" onClick={() => setRecoveryMode(true)} className="text-xs text-blue-600 hover:underline">¿Olvidaste tu contraseña?</button>
                             </div>
+                            {errorLogin && <div className="text-red-500 text-sm bg-red-50 p-2 rounded flex items-center gap-2"><AlertTriangle size={16} />{errorLogin}</div>}
+                            <Boton type="submit" variante="primario" className="w-full">Iniciar Sesión</Boton>
+                            <p className="text-center text-sm text-gray-600">¿No tienes cuenta? <button type="button" onClick={() => setModoRegistro(true)} className="text-blue-600 font-bold">Regístrate</button></p>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-                                <input
-                                    type="password"
-                                    className={`w-full p-2 border rounded ${erroresRegistro.password ? 'border-red-500 bg-red-50' : ''}`}
-                                    value={regPass}
-                                    onChange={e => setRegPass(e.target.value)}
-                                    placeholder="********"
-                                />
-                                {erroresRegistro.password && <p className="text-xs text-red-500 mt-1">{erroresRegistro.password}</p>}
-                            </div>
-
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
-                                        id="regLicencia"
-                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
-                                        checked={regLicencia}
-                                        onChange={(e) => setRegLicencia(e.target.checked)}
-                                        disabled={esMenorDeEdad}
-                                    />
-                                    <label htmlFor="regLicencia" className={`text-sm ${esMenorDeEdad ? 'text-gray-400' : 'text-gray-700'}`}>
-                                        Tengo Licencia de Conducir {esMenorDeEdad && '(Requiere ser mayor de edad)'}
-                                    </label>
-                                </div>
-
-                                <div className={`flex items-start gap-2 p-3 rounded border ${erroresRegistro.terminos ? 'border-red-200 bg-red-50' : 'bg-gray-50'}`}>
-                                    <input
-                                        type="checkbox"
-                                        id="regTerminos"
-                                        className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                        checked={aceptaTerminosRegistro}
-                                        onChange={e => {
-                                            setAceptaTerminosRegistro(e.target.checked);
-                                            setErroresRegistro(prev => ({ ...prev, terminos: '' }));
-                                        }}
-                                    />
-                                    <label htmlFor="regTerminos" className="text-sm text-gray-700 cursor-pointer select-none">
-                                        He leído y acepto los <button type="button" onClick={() => abrirModalInfo('terminos-registro', 'Términos de Registro')} className="text-blue-600 underline font-bold hover:text-blue-800">Términos y Condiciones</button>
-                                    </label>
-                                </div>
-                                {erroresRegistro.terminos && <p className="text-sm font-medium text-red-600 ml-6 animate-pulse">{erroresRegistro.terminos}</p>}
-                            </div>
-
-                            <Boton
-                                variante="primario"
-                                className={`w-full py-3 ${!aceptaTerminosRegistro ? 'opacity-50' : ''}`}
-                                type="submit"
-                                disabled={isRegistering}
-                            >
-                                {isRegistering ? 'Registrando...' : 'Registrarse'}
-                            </Boton>
-                            <p className="text-center text-sm text-gray-600">¿Ya tienes cuenta? <button type="button" onClick={() => setModoRegistro(false)} className="text-blue-600 font-bold">Inicia Sesión</button></p>
                         </form>
-                    )
-                ) : (
-                    <form onSubmit={manejarLogin} className="space-y-4">
-                        <div><label className="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                        <div><label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label><input type="password" className="w-full px-4 py-2 rounded-lg border border-gray-300" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
-                        {errorLogin && <div className="text-red-500 text-sm bg-red-50 p-2 rounded flex items-center gap-2"><AlertTriangle size={16} />{errorLogin}</div>}
-                        <Boton type="submit" variante="primario" className="w-full">Iniciar Sesión</Boton>
-                        <p className="text-center text-sm text-gray-600">¿No tienes cuenta? <button type="button" onClick={() => setModoRegistro(true)} className="text-blue-600 font-bold">Regístrate</button></p>
-                        <div className="mt-4 text-xs text-gray-500 bg-gray-100 p-3 rounded"><p className="font-bold mb-1">Cuentas de prueba:</p><p>Cliente: cliente@demo.com / 123</p><p>Vendedor: vendedor@demo.com / 123</p><p>Admin: admin@demo.com / 123</p><p>Dueño: dueno@demo.com / 123</p><p>Mecánico: mecanico@demo.com / 123</p></div>
-                    </form>
-                )}
+                    ))}
             </Modal >
         </>
     );

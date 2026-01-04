@@ -48,3 +48,19 @@ body {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* Ocultar iconos de contraseña nativos en Edge/IE */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+/* Ocultar iconos de contraseña nativos en Chrome/Edge */
+input[type="password"]::-webkit-password-toggle {
+    display: none; /* Safari/Chrome (older) */
+}
+input[type="password"]::-webkit-credentials-auto-fill-button {
+    visibility: hidden;
+    position: absolute;
+    right: 0;
+}
