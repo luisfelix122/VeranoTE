@@ -20,7 +20,7 @@ import ModalInfoGlobal from './components/ui/ModalInfoGlobal';
 import { crearRouterApp } from './router';
 
 // Services
-import { registrarUsuarioDB, obtenerConfiguracion, calcularCotizacion, actualizarTipoCambioReal, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion, actualizarUsuarioDB, registrarAlquiler, obtenerTarjetas, agregarTarjeta } from './services/db';
+import { registrarUsuarioDB, obtenerConfiguracion, calcularCotizacion, actualizarTipoCambioReal, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion, actualizarUsuarioDB, registrarAlquiler } from './services/db';
 import { PREGUNTAS_SECRETAS } from './constants/preguntas';
 
 const router = crearRouterApp();
@@ -139,6 +139,7 @@ function AppContenido() {
     }, [esMenorDeEdad]);
 
     // Efecto para cargar tarjetas si el usuario está logueado y el modal está abierto
+    /*
     React.useEffect(() => {
         if (usuario && esVisible && metodoPago === 'tarjeta') {
             obtenerTarjetas(usuario.id).then(tarjetas => {
@@ -152,6 +153,7 @@ function AppContenido() {
             });
         }
     }, [usuario, esVisible, metodoPago]);
+    */
 
     // Helpers Tarjeta
     const detectarMarca = (numero) => {
@@ -468,6 +470,8 @@ function AppContenido() {
                     return;
                 }
 
+
+                /*
                 // Guardar tarjeta si seleccionó checkbox
                 if (guardarNuevaTarjeta) {
                     agregarTarjeta(usuario.id, { ...nuevaTarjeta, principal: tarjetasGuardadas.length === 0 })
@@ -483,6 +487,9 @@ function AppContenido() {
                     // Pago con tarjeta simulación (sin guardar)
                     completarReserva('token_temporal_' + Date.now());
                 }
+                */
+                // Fallback temporal mientras debuggeamos
+                completarReserva('token_temporal_' + Date.now());
             } else {
                 // Usar tarjeta seleccionada
                 if (!tarjetaSeleccionada) {
