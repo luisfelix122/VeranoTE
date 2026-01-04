@@ -1,9 +1,10 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { BarChart3, AlertCircle, Search, Wrench, DollarSign, MessageSquare, FileText, CheckCircle, XCircle, Activity, PieChart, Calendar, Image as ImageIcon, CreditCard, Info, Clock } from 'lucide-react';
+import { BarChart3, AlertCircle, Search, Wrench, DollarSign, MessageSquare, FileText, CheckCircle, XCircle, Activity, PieChart, Calendar, Image as ImageIcon, CreditCard, Info, Clock, Smartphone } from 'lucide-react';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import { ContextoSoporte } from '../contexts/ContextoSoporte';
 import { obtenerMisGastos, obtenerMisReclamos, registrarPagoSaldoDB } from '../services/db';
+import { obtenerTarjetas, agregarTarjeta } from '../services/cardService';
 import Boton from '../components/ui/Boton';
 import BadgeEstado from '../components/ui/BadgeEstado';
 import { formatearFecha } from '../utils/formatters';
@@ -43,6 +44,36 @@ const Reportes = ({ rol: rolProp }) => {
     const [nuevaFecha, setNuevaFecha] = useState('');
     const [nuevaHora, setNuevaHora] = useState('');
     const [cargandoReprogramacion, setCargandoReprogramacion] = useState(false);
+    const [exitoReprogramacion, setExitoReprogramacion] = useState(false);
+
+    // Estados para Pago de Saldo
+    const [modalPago, setModalPago] = useState({ abierto: false, alquiler: null });
+    const [metodoPagoSeleccionado, setMetodoPagoSeleccionado] = useState('tarjeta');
+    const [cargandoPago, setCargandoPago] = useState(false);
+    const [pagoExitoso, setPagoExitoso] = useState(false);
+
+    // --- Estado para Gestión de Tarjetas ---
+    const [tarjetasGuardadas, setTarjetasGuardadas] = useState([]);
+    const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState(null);
+    const [usarNuevaTarjeta, setUsarNuevaTarjeta] = useState(false);
+    const [nuevaTarjeta, setNuevaTarjeta] = useState({ numero: '', exp: '', cvv: '', nombre: '' });
+    const [guardarNuevaTarjeta, setGuardarNuevaTarjeta] = useState(true);
+    const [erroresTarjeta, setErroresTarjeta] = useState({});
+
+    useEffect(() => {
+        if (modalPago.abierto && usuario?.id && metodoPagoSeleccionado === 'tarjeta') {
+            obtenerTarjetas(usuario.id).then(cards => {
+                setTarjetasGuardadas(cards);
+                if (cards.length > 0) {
+                    const principal = cards.find(c => c.es_principal) || cards[0];
+                    setTarjetaSeleccionada(principal.id);
+                    setUsarNuevaTarjeta(false);
+                } else {
+                    setUsarNuevaTarjeta(true);
+                }
+            });
+        }
+    }, [modalPago.abierto, usuario, metodoPagoSeleccionado]);
 
     useEffect(() => {
         if (rol === 'cliente' && usuario?.id) {
@@ -70,23 +101,29 @@ const Reportes = ({ rol: rolProp }) => {
     // Alquileres
     let misAlquileres = rol === 'cliente' ? misGastos : alquileres;
 
+    const [sedeFiltro, setSedeFiltro] = useState('todas'); // Para el dueño
+
     // 1. Filtrado Base por Rol del Usuario Logueado
     if (rol === 'cliente') {
         // Ya asignado arriba desde misGastos (Vista SQL)
     } else if (rol === 'vendedor') {
-        // Vendedor ve todo lo de su sede para poder cobrar a cualquiera
+        // Vendedor ve SOLO sus ventas, independientemente de la sede (aunque por lógica es su sede)
+        misAlquileres = alquileres.filter(a => a.vendedorId === usuario?.id);
+    } else if (rol === 'admin') {
+        // Admin ve TODO de su sede (sus vendedores, sus clientes, sus ventas)
         if (usuario?.sede) {
             misAlquileres = alquileres.filter(a => a.sedeId === usuario.sede);
-        } else {
-            misAlquileres = alquileres.filter(a => a.vendedorId === usuario?.id);
         }
-    } else if (rol === 'admin' && usuario?.sede) {
-        // Admin ve todo lo de su sede asignada
-        misAlquileres = alquileres.filter(a => a.sedeId === usuario.sede);
+    } else if (rol === 'dueno') {
+        // Dueño ve todo, con filtro opcional de sede
+        if (sedeFiltro !== 'todas') {
+            misAlquileres = alquileres.filter(a => a.sedeId === sedeFiltro);
+        } else {
+            misAlquileres = alquileres;
+        }
     }
-    // Dueño/Mecánico ven todo inicialmente (Mecánico filtra después por estado)
 
-    // 2. Filtrado Avanzado (Solo Admin/Dueño)
+    // 2. Filtrado Avanzado (Solo Admin/Dueño - Individual vs General)
     if (rol === 'admin' || rol === 'dueno') {
         if (modoReporte === 'individual' && usuarioFiltroId) {
             // Reporte de un usuario específico
@@ -95,12 +132,11 @@ const Reportes = ({ rol: rolProp }) => {
                 a.vendedorId === Number(usuarioFiltroId)
             );
         } else if (modoReporte === 'general' && rolFiltro !== 'todos') {
-            // Reporte General por Rol (ej. "Ver ventas de todos los vendedores")
+            // Reporte General por Rol
             if (rolFiltro === 'vendedor') {
-                misAlquileres = misAlquileres.filter(a => a.vendedorId !== null); // Solo ventas con vendedor
+                misAlquileres = misAlquileres.filter(a => a.vendedorId !== null);
             } else if (rolFiltro === 'cliente') {
-                // No filtramos nada específico porque todos los alquileres tienen cliente, 
-                // pero conceptualmente son "todos los alquileres de clientes"
+                // Todos los alquileres
             }
         }
     }
@@ -121,6 +157,7 @@ const Reportes = ({ rol: rolProp }) => {
 
     const alquileresFiltrados = datosParaTabla.filter(a =>
         (a.cliente && a.cliente.toLowerCase().includes(filtro.toLowerCase())) ||
+        (a.clienteDni && a.clienteDni.includes(filtro)) || // Búsqueda por DNI
         (a.vendedorId && a.vendedorId.toString().includes(filtro)) ||
         (a.id && String(a.id).toLowerCase().includes(filtro.toLowerCase())) ||
         (a.producto_principal && a.producto_principal.toLowerCase().includes(filtro.toLowerCase()))
@@ -173,16 +210,25 @@ const Reportes = ({ rol: rolProp }) => {
     const totalPenalizaciones = misAlquileres.reduce((acc, curr) => acc + (curr.penalizacion || 0), 0);
     const costosMantenimiento = misAlquileres.reduce((acc, curr) => acc + (curr.descuentoMantenimiento || 0), 0);
 
-    // Inventario Stats (Admin/Dueño)
-    const totalProductos = inventario.length;
-    const productosEnUso = inventario.reduce((acc, curr) => acc + (curr.stockTotal - curr.stock), 0);
+    // Estadísticas de Inventario (Filtrado por sede para Admin/Vendedor)
+    const misProductos = (rol === 'admin' || rol === 'vendedor') && usuario?.sede
+        ? inventario.filter(i => i.sedeId === usuario.sede)
+        : inventario;
+
+    const totalProductos = misProductos.length;
+    const productosEnUso = misProductos.reduce((acc, curr) => acc + (curr.stockTotal - curr.stock), 0);
 
     // Soporte Stats
     const ticketsPendientes = misTickets.filter(t => t.estado === 'pendiente').length;
 
-    // Mecánico Stats
-    const trabajosActivos = trabajosMecanico.filter(a => ['en_mantenimiento', 'limpieza', 'reparacion'].includes(a.estado)).length;
-    const trabajosCompletados = trabajosMecanico.filter(a => a.estado === 'finalizado').length;
+    // Mecánico Stats (Si fuera admin filtrando por sede, ya debería venir filtrado arriba?)
+    // Pero trabajosMecanico se derivó de 'alquileres' (global). Vamos a filtrarlo también.
+    const misTrabajosMecanico = (rol === 'admin' || rol === 'vendedor') && usuario?.sede
+        ? trabajosMecanico.filter(a => a.sedeId === usuario.sede)
+        : trabajosMecanico;
+
+    const trabajosActivos = misTrabajosMecanico.filter(a => ['en_mantenimiento', 'limpieza', 'reparacion'].includes(a.estado)).length;
+    const trabajosCompletados = misTrabajosMecanico.filter(a => a.estado === 'finalizado').length;
 
     // --- Handlers ---
 
@@ -190,6 +236,7 @@ const Reportes = ({ rol: rolProp }) => {
         setModalReprogramacion({ abierto: true, alquiler }); // Save full object
         setNuevaFecha('');
         setNuevaHora('');
+        setExitoReprogramacion(false);
     };
 
     const confirmarReprogramacion = async () => {
@@ -225,12 +272,82 @@ const Reportes = ({ rol: rolProp }) => {
         }
 
         setCargandoReprogramacion(true);
-        const exito = await reprogramarAlquiler(modalReprogramacion.alquiler.id, { nuevaFecha, nuevaHora });
-        setCargandoReprogramacion(false);
+        try {
+            const success = await reprogramarAlquiler(modalReprogramacion.alquiler.id, { nuevaFecha, nuevaHora });
+            if (success) {
+                setExitoReprogramacion(true);
+                // Si la reprogramación es exitosa, refrescamos la lista de gastos
+                if (usuario?.id) {
+                    obtenerMisGastos(usuario.id).then(setMisGastos);
+                }
+            } else {
+                alert("No hay disponibilidad suficiente para los recursos en la nueva fecha/hora o surgió un problema con la penalidad. Por favor intenta con otro horario.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error de conexión al reprogramar.");
+        } finally {
+            setCargandoReprogramacion(false);
+        }
+    };
 
-        if (exito) {
-            alert("Reserva reprogramada con éxito. Se ha aplicado el cargo por reprogramación.");
-            setModalReprogramacion({ abierto: false, alquiler: null });
+    const confirmarPagoSaldo = async () => {
+        if (!modalPago.alquiler) return;
+        setCargandoPago(true);
+        setErroresTarjeta({});
+
+        try {
+            let finalTarjetaId = tarjetaSeleccionada;
+
+            if (metodoPagoSeleccionado === 'tarjeta') {
+                if (usarNuevaTarjeta) {
+                    // Validar campos de tarjeta nueva
+                    let errores = {};
+                    if (!nuevaTarjeta.numero || nuevaTarjeta.numero.length < 15) errores.numero = "Número incompleto o inválido";
+                    if (!nuevaTarjeta.exp || !/^\d{2}\/\d{2}$/.test(nuevaTarjeta.exp)) errores.exp = "Formato MM/YY";
+                    if (!nuevaTarjeta.cvv || nuevaTarjeta.cvv.length < 3) errores.cvv = "Inválido";
+                    if (!nuevaTarjeta.nombre) errores.nombre = "Requerido";
+
+                    if (Object.keys(errores).length > 0) {
+                        setErroresTarjeta(errores);
+                        setCargandoPago(false);
+                        return;
+                    }
+
+                    // Guardar tarjeta si seleccionó checkbox
+                    if (guardarNuevaTarjeta) {
+                        const resAdd = await agregarTarjeta(usuario.id, { ...nuevaTarjeta, principal: tarjetasGuardadas.length === 0 });
+                        if (resAdd.success) {
+                            finalTarjetaId = resAdd.data.id;
+                        } else {
+                            alert("Error al guardar tarjeta, pero intentaremos procesar el pago.");
+                            finalTarjetaId = 'token_temporal_' + Date.now();
+                        }
+                    } else {
+                        finalTarjetaId = 'token_temporal_' + Date.now();
+                    }
+                } else if (!tarjetaSeleccionada) {
+                    alert("Por favor selecciona una tarjeta o agrega una nueva.");
+                    setCargandoPago(false);
+                    return;
+                }
+            }
+
+            const res = await registrarPagoSaldoDB(modalPago.alquiler.id, metodoPagoSeleccionado, finalTarjetaId, usuario?.id);
+            if (res.success) {
+                setPagoExitoso(true);
+                if (usuario?.id) {
+                    const nuevosGastos = await obtenerMisGastos(usuario.id);
+                    setMisGastos(nuevosGastos || []);
+                }
+            } else {
+                alert(res.error || "Error al procesar el pago.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error de conexión.");
+        } finally {
+            setCargandoPago(false);
         }
     };
 
@@ -304,55 +421,245 @@ const Reportes = ({ rol: rolProp }) => {
                             <XCircle className="text-gray-400 hover:text-gray-600" />
                         </button>
                     </div>
-                    <div className="p-6 space-y-4">
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex gap-3">
-                            <Info className="text-blue-600 shrink-0" size={20} />
-                            <p className="text-sm text-blue-800">
-                                La reprogramación tiene un costo administrativo de <strong>S/ 10.00</strong>, el cual se sumará a su deuda pendiente.
+                    {exitoReprogramacion ? (
+                        <div className="py-8 flex flex-col items-center text-center animate-in fade-in zoom-in duration-300">
+                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                                <CheckCircle size={32} />
+                            </div>
+                            <h4 className="text-xl font-bold text-gray-900 mb-2">¡Reprogramación Exitosa!</h4>
+                            <p className="text-gray-600 max-w-xs mx-auto">
+                                Tu reserva ha sido actualizada. Se ha aplicado el cargo administrativo de S/ 10.00 a tu saldo pendiente.
                             </p>
                         </div>
+                    ) : (
+                        <>
+                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex gap-3">
+                                <Info className="text-blue-600 shrink-0" size={20} />
+                                <p className="text-sm text-blue-800">
+                                    La reprogramación tiene un costo administrativo de <strong>S/ 10.00</strong>, el cual se sumará a su deuda pendiente.
+                                </p>
+                            </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Fecha</label>
-                            <input
-                                type="date"
-                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={nuevaFecha}
-                                onChange={(e) => setNuevaFecha(e.target.value)}
-                                min={new Date().toISOString().split('T')[0]}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Hora Inicio</label>
-                            <input
-                                type="time"
-                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={nuevaHora}
-                                onChange={(e) => setNuevaHora(e.target.value)}
-                            />
-                        </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Fecha</label>
+                                <input
+                                    type="date"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={nuevaFecha}
+                                    onChange={(e) => setNuevaFecha(e.target.value)}
+                                    min={new Date().toISOString().split('T')[0]}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Hora Inicio</label>
+                                <input
+                                    type="time"
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={nuevaHora}
+                                    onChange={(e) => setNuevaHora(e.target.value)}
+                                />
+                            </div>
 
-                        <div className="pt-4 flex gap-3">
-                            <button
-                                onClick={() => setModalReprogramacion({ abierto: false, alquiler: null })}
-                                className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={confirmarReprogramacion}
-                                disabled={cargandoReprogramacion}
-                                className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
-                            >
-                                {cargandoReprogramacion ? 'Procesando...' : 'Confirmar Reprogramación'}
-                            </button>
-                        </div>
-                    </div>
+                            <div className="pt-4 flex gap-3">
+                                <button
+                                    onClick={() => setModalReprogramacion({ abierto: false, alquiler: null })}
+                                    className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmarReprogramacion}
+                                    disabled={cargandoReprogramacion}
+                                    className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    {cargandoReprogramacion ? 'Procesando...' : 'Confirmar Reprogramación'}
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         );
     };
 
+    const renderModalPago = () => {
+        if (!modalPago.abierto || !modalPago.alquiler) return null;
+        const a = modalPago.alquiler;
+
+        const metodos = [
+            { id: 'tarjeta', nombre: 'Tarjeta', icon: <CreditCard size={20} />, desc: 'Pago seguro con débito/crédito' },
+            { id: 'efectivo', nombre: 'Efectivo', icon: <DollarSign size={20} />, desc: 'Pago en caja al momento' },
+            { id: 'transferencia', nombre: 'Transferencia', icon: <Activity size={20} />, desc: 'BCP, BBVA o Interbank' },
+            { id: 'yape', nombre: 'Yape / Plin', icon: <Smartphone size={20} />, desc: 'Escanea el QR en caja' }
+        ];
+
+        return (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                <div className="bg-white rounded-3xl w-full max-w-md overflow-y-auto max-h-[90vh] shadow-2xl animate-in zoom-in-95 duration-300">
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                        <div>
+                            <h3 className="text-xl font-bold text-gray-900">Pagar Saldo Pendiente</h3>
+                            <p className="text-sm text-gray-500">Monto: S/ {Number(a.saldo_pendiente).toFixed(2)}</p>
+                        </div>
+                        <button
+                            onClick={() => {
+                                setModalPago({ abierto: false, alquiler: null });
+                                setPagoExitoso(false);
+                            }}
+                            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        >
+                            <XCircle className="text-gray-400" />
+                        </button>
+                    </div>
+
+                    <div className="p-6">
+                        {pagoExitoso ? (
+                            <div className="py-8 flex flex-col items-center text-center animate-in fade-in zoom-in duration-300">
+                                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                                    <CheckCircle size={32} />
+                                </div>
+                                <h4 className="text-xl font-bold text-gray-900 mb-2">¡Pago Exitoso!</h4>
+                                <p className="text-gray-600 max-w-xs mx-auto">
+                                    Tu deuda ha sido saldada correctamente. Ya puedes disfrutar de tus recursos.
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        setModalPago({ abierto: false, alquiler: null });
+                                        setPagoExitoso(false);
+                                    }}
+                                    className="mt-6 w-full py-3 bg-gray-900 text-white font-bold rounded-2xl hover:bg-gray-800 transition-all"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <p className="text-sm font-semibold text-gray-700 mb-4">Selecciona tu método de pago:</p>
+                                <div className="grid grid-cols-1 gap-3 mb-6">
+                                    {metodos.map(m => (
+                                        <div key={m.id}>
+                                            <button
+                                                onClick={() => setMetodoPagoSeleccionado(m.id)}
+                                                className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all ${metodoPagoSeleccionado === m.id
+                                                    ? 'border-blue-600 bg-blue-50'
+                                                    : 'border-gray-100 hover:border-gray-200'
+                                                    }`}
+                                            >
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${metodoPagoSeleccionado === m.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+                                                    }`}>
+                                                    {m.icon}
+                                                </div>
+                                                <div className="text-left">
+                                                    <div className="font-bold text-gray-900">{m.nombre}</div>
+                                                    <div className="text-xs text-gray-500">{m.desc}</div>
+                                                </div>
+                                                {metodoPagoSeleccionado === m.id && (
+                                                    <div className="ml-auto">
+                                                        <CheckCircle size={20} className="text-blue-600" />
+                                                    </div>
+                                                )}
+                                            </button>
+
+                                            {/* Sub-UI para Tarjeta */}
+                                            {m.id === 'tarjeta' && metodoPagoSeleccionado === 'tarjeta' && (
+                                                <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                    {tarjetasGuardadas.length > 0 && !usarNuevaTarjeta ? (
+                                                        <>
+                                                            <div className="grid grid-cols-1 gap-2">
+                                                                {tarjetasGuardadas.map(t => (
+                                                                    <button
+                                                                        key={t.id}
+                                                                        onClick={() => setTarjetaSeleccionada(t.id)}
+                                                                        className={`flex items-center justify-between p-3 rounded-xl border ${tarjetaSeleccionada === t.id ? 'border-blue-600 bg-white' : 'border-gray-100 bg-gray-50'}`}
+                                                                    >
+                                                                        <div className="flex items-center gap-3">
+                                                                            <CreditCard size={16} className="text-gray-400" />
+                                                                            <span className="text-sm font-medium">**** **** **** {t.numero_oculto}</span>
+                                                                        </div>
+                                                                        {tarjetaSeleccionada === t.id && <CheckCircle size={16} className="text-blue-600" />}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                            <button
+                                                                onClick={() => setUsarNuevaTarjeta(true)}
+                                                                className="text-xs font-bold text-blue-600 hover:text-blue-700 py-1"
+                                                            >
+                                                                + Usar otra tarjeta
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-3">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Nueva Tarjeta</span>
+                                                                {tarjetasGuardadas.length > 0 && (
+                                                                    <button onClick={() => setUsarNuevaTarjeta(false)} className="text-xs font-bold text-blue-600">Volver</button>
+                                                                )}
+                                                            </div>
+
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Número de Tarjeta"
+                                                                className={`w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 ${erroresTarjeta.numero ? 'border-red-500' : 'border-gray-200'}`}
+                                                                value={nuevaTarjeta.numero}
+                                                                onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, numero: e.target.value.replace(/\D/g, '').slice(0, 16) })}
+                                                            />
+
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="MM/YY"
+                                                                    className={`w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 ${erroresTarjeta.exp ? 'border-red-500' : 'border-gray-200'}`}
+                                                                    value={nuevaTarjeta.exp}
+                                                                    onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, exp: e.target.value })}
+                                                                />
+                                                                <input
+                                                                    type="password"
+                                                                    placeholder="CVV"
+                                                                    className={`w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 ${erroresTarjeta.cvv ? 'border-red-500' : 'border-gray-200'}`}
+                                                                    value={nuevaTarjeta.cvv}
+                                                                    onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                                                                />
+                                                            </div>
+
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Nombre en la Tarjeta"
+                                                                className={`w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 ${erroresTarjeta.nombre ? 'border-red-500' : 'border-gray-200'}`}
+                                                                value={nuevaTarjeta.nombre}
+                                                                onChange={(e) => setNuevaTarjeta({ ...nuevaTarjeta, nombre: e.target.value })}
+                                                            />
+
+                                                            <label className="flex items-center gap-2 cursor-pointer pt-1">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={guardarNuevaTarjeta}
+                                                                    onChange={(e) => setGuardarNuevaTarjeta(e.target.checked)}
+                                                                    className="w-4 h-4 text-blue-600"
+                                                                />
+                                                                <span className="text-xs text-gray-600">Guardar tarjeta para futuras compras</span>
+                                                            </label>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <button
+                                    onClick={confirmarPagoSaldo}
+                                    disabled={cargandoPago}
+                                    className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {cargandoPago ? 'Procesando...' : `Confirmar Pago S/ ${Number(a.saldo_pendiente).toFixed(2)}`}
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
     const renderModalDetalle = () => {
         if (!alquilerSeleccionado) return null;
         const a = alquilerSeleccionado;
@@ -370,8 +677,9 @@ const Reportes = ({ rol: rolProp }) => {
                                     <Clock size={12} />
                                     {new Date(a.fecha_inicio || a.fechaInicio).toLocaleDateString()} {new Date(a.fecha_inicio || a.fechaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </div>
-                                <div className="bg-gray-100 px-3 py-1 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200">
-                                    Hasta: {new Date(a.fecha_fin_estimada || a.fecha_fin || a.fechaFin).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                <div className="bg-gray-100 px-3 py-1 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 flex items-center gap-1">
+                                    <Clock size={12} />
+                                    Hasta: {new Date(a.fecha_fin_estimada || a.fecha_fin || a.fechaFin).toLocaleDateString()} {new Date(a.fecha_fin_estimada || a.fecha_fin || a.fechaFin).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </div>
                             </div>
                         </div>
@@ -405,7 +713,10 @@ const Reportes = ({ rol: rolProp }) => {
                                                 <td className="p-3 font-medium text-gray-800">
                                                     <div className="flex items-center gap-2">
                                                         {item.imagen && <img src={item.imagen} className="w-8 h-8 rounded bg-white object-cover border" alt="" />}
-                                                        {item.nombre}
+                                                        <div className="flex flex-col">
+                                                            <span>{item.nombre}</span>
+                                                            <span className="text-[10px] text-gray-400 font-normal">ID: {item.id}</span>
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 <td className="p-3 text-center">{item.cantidad}</td>
@@ -416,6 +727,27 @@ const Reportes = ({ rol: rolProp }) => {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+
+                        {/* Información del Cliente y Vendedor */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Cliente</h4>
+                                <p className="font-bold text-gray-800 leading-tight">{a.cliente}</p>
+                                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                    <CreditCard size={10} /> {a.clienteDni || 'Sin Documento'}
+                                </p>
+                            </div>
+                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Atendido por</h4>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600">
+                                        {(a.vendedor || 'W').charAt(0)}
+                                    </div>
+                                    <p className="font-semibold text-gray-800 text-sm">{a.vendedor || 'Venta Web / Autoservicio'}</p>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-1">Sede: {a.sedeId || 'N/A'}</p>
                             </div>
                         </div>
 
@@ -464,11 +796,12 @@ const Reportes = ({ rol: rolProp }) => {
                                     if (!esDiferenciaSignificativa) return null;
 
                                     const esRecargo = diferencia > 0;
+                                    const esReprogramacion = esRecargo && (a.notas?.toLowerCase().includes('reprogramación') || a.motivo_descuento?.toLowerCase().includes('reprogramación'));
 
                                     return (
                                         <div className={`mt-3 p-2 rounded text-xs font-semibold ${esRecargo ? 'bg-orange-50 text-orange-700 border border-orange-100' : 'bg-green-50 text-green-700'}`}>
                                             <div className="flex justify-between items-center">
-                                                <span>{esRecargo ? '⚠️ Recargos / Penalidades' : 'Descuento Manual'}:</span>
+                                                <span>{esReprogramacion ? '🔄 Cargo por Reprogramación' : (esRecargo ? '⚠️ Recargos / Penalidades' : 'Descuento Manual')}:</span>
                                                 <span>{esRecargo ? '' : '- '}S/ {Math.abs(diferencia).toFixed(2)}</span>
                                             </div>
                                             {(a.notas || a.motivo_descuento) && (
@@ -567,12 +900,12 @@ const Reportes = ({ rol: rolProp }) => {
                                                         <div className="flex items-center gap-2 text-xs">
                                                             <span className="font-semibold w-12">Inicio:</span>
                                                             <Calendar size={12} className="text-gray-400" />
-                                                            <span>{a.fecha_inicio ? new Date(a.fecha_inicio).toLocaleDateString() : 'N/A'}</span>
+                                                            <span>{a.fechaInicio ? new Date(a.fechaInicio).toLocaleDateString() : 'N/A'}</span>
                                                         </div>
                                                         <div className="flex items-center gap-2 text-xs">
                                                             <span className="font-semibold w-12">Fin Est:</span>
                                                             <Calendar size={12} className="text-gray-400" />
-                                                            <span>{a.fecha_fin ? new Date(a.fecha_fin).toLocaleDateString() : 'N/A'}</span>
+                                                            <span>{a.fechaFin ? new Date(a.fechaFin).toLocaleDateString() : 'N/A'}</span>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -619,19 +952,7 @@ const Reportes = ({ rol: rolProp }) => {
                                                         {/* Botón Pagar - Solo con deuda */}
                                                         {Number(a.saldo_pendiente || 0) > 0 && (
                                                             <button
-                                                                onClick={async () => {
-                                                                    if (window.confirm(`¿Deseas pagar la deuda de S/ ${a.saldo_pendiente} usando tu tarjeta predeterminada?`)) {
-                                                                        const res = await registrarPagoSaldoDB(a.id);
-                                                                        if (res) {
-                                                                            alert("¡Pago registrado con éxito! Tu deuda ha quedado saldada.");
-                                                                            setMisGastos(prev => prev.map(item =>
-                                                                                item.id === a.id ? { ...item, saldo_pendiente: 0, monto_pagado: Number(item.total_final) } : item
-                                                                            ));
-                                                                        } else {
-                                                                            alert("Error al procesar el pago. Inténtalo nuevamente.");
-                                                                        }
-                                                                    }
-                                                                }}
+                                                                onClick={() => setModalPago({ abierto: true, alquiler: a })}
                                                                 className="flex items-center justify-center gap-2 py-2 px-3 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-blue-700 transition-all animate-pulse w-full"
                                                             >
                                                                 <CreditCard size={14} /> Pagar S/ {Number(a.saldo_pendiente || 0).toFixed(2)}
@@ -645,10 +966,11 @@ const Reportes = ({ rol: rolProp }) => {
                                 </table>
                             </div>
                         </div>
-                    )}
+                    )
+                    }
                     {renderModalReprogramacion()}
                     {renderModalDetalle()}
-                </div>
+                </div >
             );
         }
 
@@ -719,7 +1041,8 @@ const Reportes = ({ rol: rolProp }) => {
                                                         className="text-green-600 hover:text-green-800 text-xs font-bold flex items-center gap-1 border border-green-200 bg-green-50 px-2 py-1 rounded mb-1 animate-pulse"
                                                         onClick={async () => {
                                                             if (confirm(`¿Confirmar recepción de pago de S/ ${Number(a.saldoPendiente || a.saldo_pendiente).toFixed(2)}?`)) {
-                                                                await registrarPagoSaldo(a.id);
+                                                                // Pasamos usuario.id como vendedor que cobra
+                                                                await registrarPagoSaldo(a.id, 'efectivo', null, usuario?.id);
                                                             }
                                                         }}
                                                     >
@@ -745,6 +1068,12 @@ const Reportes = ({ rol: rolProp }) => {
                                                         <Wrench size={12} /> Compensar
                                                     </button>
                                                 )}
+                                                <button
+                                                    onClick={() => setAlquilerSeleccionado(a)}
+                                                    className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center gap-1 mt-1 underline"
+                                                >
+                                                    <Info size={12} /> Ver Detalle
+                                                </button>
                                             </div>
                                         )}
                                     </td>
@@ -1018,6 +1347,22 @@ const Reportes = ({ rol: rolProp }) => {
                                 </select>
                             </div>
 
+                            {/* Filtro de Sede (Solo Dueño) */}
+                            {rol === 'dueno' && (
+                                <div className="w-full md:w-auto">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Sede</label>
+                                    <select
+                                        className="w-full md:w-32 p-2 border rounded-lg text-sm bg-gray-50"
+                                        value={sedeFiltro}
+                                        onChange={(e) => setSedeFiltro(e.target.value)}
+                                    >
+                                        <option value="todas">Todas</option>
+                                        <option value="costa">Costa</option>
+                                        <option value="rural">Rural</option>
+                                    </select>
+                                </div>
+                            )}
+
                             {modoReporte === 'individual' && (
                                 <div className="w-full md:w-auto flex-1">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Usuario</label>
@@ -1059,6 +1404,9 @@ const Reportes = ({ rol: rolProp }) => {
 
             {/* Modal Detalle */}
             {alquilerSeleccionado && renderModalDetalle()}
+
+            {/* Modal Selección de Pago */}
+            {modalPago.abierto && renderModalPago()}
 
         </div >
     );

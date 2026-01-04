@@ -12,8 +12,14 @@ const PanelVendedor = () => {
     // Filtrar por ID de vendedor (del usuario logueado) O por Sede (si al vendedor no se le asignó pero está en la misma sede)
     const misAlquileres = alquileres.filter(a => {
         const esVendedor = a.vendedorId === usuario?.id;
-        // Si no soy el vendedor, pero el alquiler es de mi sede (y no tiene vendedor asignado o soy admin/backup), lo muestro
-        const esSede = a.sedeId === sedeActual;
+        // Lógica Multisede: Solo mostramos alquileres de la sede del usuario
+        // Si no hay sede asignada al usuario (ej: Admin global or error), usamos sedeActual del contexto
+        const sedeUsuario = usuario?.sede || sedeActual;
+        const esSede = a.sedeId === sedeUsuario;
+
+        // Dueño ve todo lo de la sede seleccionada o todo
+        if (usuario?.rol === 'dueno') return a.sedeId === sedeActual;
+
         return esVendedor || esSede;
     });
 

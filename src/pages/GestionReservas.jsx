@@ -30,9 +30,16 @@ const GestionCobros = () => {
 
     // --- Lógica Albert (Cobros) ---
     const cobrosPendientes = alquileres.filter(a => {
-        const esSedeCorrecta = (usuario.rol === 'admin' || usuario.rol === 'vendedor') ? a.sedeId === sedeActual : true;
-        const tieneDeuda = (Number(a.saldoPendiente?.toFixed(2)) || 0) > 0; // Robust check
+        // Lógica Multisede: Admin/Vendedor solo ven su sede. Dueño ve todo.
+        const esSedeCorrecta = (usuario.rol === 'admin' || usuario.rol === 'vendedor')
+            ? a.sedeId === usuario.sede
+            : (usuario.rol === 'dueno' ? true : a.sedeId === sedeActual);
+
+        const tieneDeuda = (Number(a.saldoPendiente?.toFixed(2)) || 0) > 0;
         const estaActivo = a.estado !== 'cancelado';
+
+        // Lógica de Venta Presencial: Tiene un vendedorId asignado (POS)
+        const esVentaPresencial = a.vendedorId !== null && a.vendedorId !== undefined;
 
         const textoBusqueda = busqueda.toLowerCase();
         const coincideTexto =
@@ -42,27 +49,34 @@ const GestionCobros = () => {
         const fechaAlquiler = new Date(a.fechaInicio).toISOString().split('T')[0];
         const coincideFecha = fechaFiltro ? fechaAlquiler === fechaFiltro : true;
 
-        return esSedeCorrecta && tieneDeuda && estaActivo && coincideTexto && coincideFecha;
+        return esSedeCorrecta && tieneDeuda && estaActivo && esVentaPresencial && coincideTexto && coincideFecha;
     });
 
     const manejarCobro = async (id, monto) => {
         if (confirm(`¿Confirmar pago del saldo restante de S/ ${monto.toFixed(2)}?`)) {
-            await registrarPagoSaldo(id);
+            // Asumimos efectivo/tarjeta genérico para cobro rápido, pero atribuimos al vendedor
+            await registrarPagoSaldo(id, 'efectivo', null, usuario.id);
         }
     };
 
     // --- Lógica HEAD (Reservas Confirmadas) ---
     // Reservas Web (Confirmadas)
     const alquileresConfirmados = alquileres.filter(a => {
-        const esSedeCorrecta = (usuario.rol === 'admin' || usuario.rol === 'vendedor') ? a.sedeId === sedeActual : true;
-        return esSedeCorrecta && a.estado === 'confirmado' && a.cliente.toLowerCase().includes(busqueda.toLowerCase());
+        const esSedeCorrecta = (usuario.rol === 'admin' || usuario.rol === 'vendedor')
+            ? a.sedeId === usuario.sede
+            : (usuario.rol === 'dueno' ? true : a.sedeId === sedeActual);
+
+        // Lógica de Reserva Web: No tiene vendedorId (Online)
+        const esReservaWeb = a.vendedorId === null || a.vendedorId === undefined;
+
+        return esSedeCorrecta && esReservaWeb && (a.estado === 'confirmado' || a.estado === 'pendiente') && a.cliente.toLowerCase().includes(busqueda.toLowerCase());
     });
 
     const finalizarReserva = async (alquiler) => {
         if (!confirm(`¿El cliente ha pagado el saldo restante de S/ ${Number(alquiler.saldoPendiente || 0).toFixed(2)}? \n\nAl confirmar, se registrará el pago y se cambiará el estado a 'En Uso'.`)) return;
 
         // 1. Registrar pago del saldo
-        const resPago = await registrarPagoSaldo(alquiler.id);
+        const resPago = await registrarPagoSaldo(alquiler.id, 'efectivo', null, usuario.id);
         if (!resPago.success && !resPago.error?.message?.includes('ya está pagado')) {
             alert("Error al registrar el pago: " + (resPago.error?.message || 'Desconocido'));
             return;

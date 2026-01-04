@@ -4,15 +4,17 @@ import {
     obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerContenidoWeb, obtenerConfiguracion,
     crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB,
     gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
-    aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB,
+    aplicarDescuentoManualDB, registrarPagoSaldoDB, registrarUsuarioDB, aprobarReservaDB,
     obtenerDisponibilidadRecursoDB, buscarClientesDB, actualizarTipoCambioReal,
-    calcularDescuentosDB, verificarDisponibilidadDB
+    calcularDescuentosDB, verificarDisponibilidadDB, calcularCotizacion
 } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
+import { ContextoAutenticacion } from './ContextoAutenticacion';
 
 export const ContextoInventario = createContext();
 
 export const ProveedorInventario = ({ children }) => {
+    const { usuario } = React.useContext(ContextoAutenticacion);
     const [inventario, setInventario] = useState([]);
     const [alquileres, setAlquileres] = useState([]);
     const [sedes, setSedes] = useState([]);
@@ -110,9 +112,11 @@ export const ProveedorInventario = ({ children }) => {
                 totalFinal: a.total_final,
                 montoPagado: a.monto_pagado,
                 saldoPendiente: a.saldo_pendiente,
+                fechaFin: a.fecha_fin_estimada || a.fecha_fin,
+                fechaFinEstimada: a.fecha_fin_estimada,
                 tipoReserva: a.tipo_reserva,
                 sedeId: a.sede_id,
-                cliente: a.usuarios?.nombre || 'Cliente Desconocido' // Mapear nombre desde la relación
+                cliente: a.cliente // Ya viene mapeado correctamente desde db.js
             })));
         } catch (error) {
             console.error("Error al recargar datos:", error);
@@ -244,12 +248,38 @@ export const ProveedorInventario = ({ children }) => {
 
     // Funciones de gestión de estado (Simuladas localmente por ahora, idealmente deberían ser llamadas a DB)
     const aprobarParaEntrega = async (idAlquiler) => {
-        const resultado = await aprobarReservaDB(idAlquiler);
-        if (resultado.success) {
-            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'listo_para_entrega' } : a));
-            return true;
-        } else {
-            alert(resultado.error);
+        try {
+            const resultado = await aprobarReservaDB(idAlquiler);
+            if (resultado.success) {
+                // Nueva lógica: El tiempo de alquiler comienza 2 minutos después de la aprobación
+                const nuevaFechaInicio = new Date();
+                nuevaFechaInicio.setMinutes(nuevaFechaInicio.getMinutes() + 2);
+
+                const { error: errorUpdate } = await supabase
+                    .from('alquileres')
+                    .update({
+                        fecha_inicio: nuevaFechaInicio.toISOString(),
+                        estado: 'listo_para_entrega'
+                    })
+                    .eq('id', idAlquiler);
+
+                if (errorUpdate) throw errorUpdate;
+
+                setAlquileres(prev => prev.map(a => a.id === idAlquiler ? {
+                    ...a,
+                    estado: 'listo_para_entrega',
+                    fechaInicio: nuevaFechaInicio.toISOString()
+                } : a));
+
+                await recargarDatos();
+                return true;
+            } else {
+                alert(resultado.error);
+                return false;
+            }
+        } catch (err) {
+            console.error("Error en aprobarParaEntrega:", err);
+            alert("Error al procesar aprobación: " + (err.message || "Desconocido"));
             return false;
         }
     };
@@ -300,7 +330,8 @@ export const ProveedorInventario = ({ children }) => {
 
                 const itemsParaVerificar = alquilerActual.alquiler_detalles?.map(d => ({
                     id: d.recurso_id,
-                    cantidad: d.cantidad
+                    cantidad: d.cantidad,
+                    horas: d.horas
                 })) || [];
 
                 if (itemsParaVerificar.length > 0) {
@@ -395,8 +426,8 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const registrarPagoSaldo = async (idAlquiler) => {
-        const resultado = await registrarPagoSaldoDB(idAlquiler);
+    const registrarPagoSaldo = async (idAlquiler, metodoPago, tarjetaId, vendedorId) => {
+        const resultado = await registrarPagoSaldoDB(idAlquiler, metodoPago, tarjetaId, vendedorId);
         if (resultado.success) {
             setAlquileres(prev => prev.map(a => {
                 if (a.id === idAlquiler) {
@@ -404,11 +435,13 @@ export const ProveedorInventario = ({ children }) => {
                         ...a,
                         montoPagado: a.totalFinal,
                         saldoPendiente: 0,
-                        estado: a.estado === 'pendiente' ? 'confirmado' : a.estado
+                        estado: a.estado === 'pendiente' ? 'confirmado' : a.estado,
+                        vendedorId: vendedorId || a.vendedorId, // Actualizar localmente también
                     };
                 }
                 return a;
             }));
+            await recargarDatos(); // Asegurar consistencia total
             return true;
         } else {
             alert(resultado.error);
@@ -442,10 +475,40 @@ export const ProveedorInventario = ({ children }) => {
     const finalizarMantenimiento = async (idRecurso) => {
         const resultado = await gestionarMantenimientoDB(idRecurso, 'finalizar');
         if (resultado.success) {
-            setInventario(prev => prev.map(i => i.id === idRecurso ? { ...i, activo: true } : i));
+            setInventario(prev => prev.map(i => i.id === idRecurso ? { ...i, activo: true, estado: 'operativo' } : i));
+            await recargarDatos();
             return true;
         } else {
             alert(resultado.error);
+            return false;
+        }
+    };
+
+    const finalizarLimpiezaAlquiler = async (idAlquiler) => {
+        try {
+            // 1. Obtener el alquiler para saber qué recursos liberar
+            const alquiler = alquileres.find(a => a.id === idAlquiler);
+            if (!alquiler) throw new Error("Alquiler no encontrado");
+
+            // 2. Cambiar estado del alquiler a 'finalizado'
+            const { error: errorAlquiler } = await supabase
+                .from('alquileres')
+                .update({ estado: 'finalizado' })
+                .eq('id', idAlquiler);
+
+            if (errorAlquiler) throw errorAlquiler;
+
+            // 3. Liberar cada recurso del alquiler usando la lógica de mantenimiento
+            for (const item of alquiler.items) {
+                await gestionarMantenimientoDB(item.id, 'finalizar');
+            }
+
+            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'finalizado' } : a));
+            await recargarDatos();
+            return true;
+        } catch (err) {
+            console.error("Error en finalizarLimpiezaAlquiler:", err);
+            alert("Error al liberar equipos: " + (err.message || "Desconocido"));
             return false;
         }
     };
@@ -497,12 +560,20 @@ export const ProveedorInventario = ({ children }) => {
 
 
 
+    // Sincronizar sedeActual con el perfil del usuario (Admin/Vendedor)
+    useEffect(() => {
+        if (usuario?.sede && (usuario.rol === 'admin' || usuario.rol === 'vendedor')) {
+            setSedeActual(usuario.sede);
+        }
+    }, [usuario]);
+
     return (
         <ContextoInventario.Provider value={{
             inventario: inventarioVisible,
             inventarioCompleto: inventario,
             alquileres,
             sedes,
+            horarios,
             sedeActual,
             setSedeActual,
             fechaSeleccionada,
@@ -518,6 +589,7 @@ export const ProveedorInventario = ({ children }) => {
             devolverAlquiler,
             enviarAMantenimiento,
             finalizarMantenimiento,
+            finalizarLimpiezaAlquiler,
             marcarFueraDeServicio,
             reprogramarAlquiler,
             verificarDisponibilidad,
@@ -529,8 +601,8 @@ export const ProveedorInventario = ({ children }) => {
             configuracion,
             buscarClientes,
             registrarCliente,
-            cotizarReserva: calcularDescuentosDB
-
+            cotizarReserva: calcularDescuentosDB,
+            calcularCotizacion
         }}>
             {children}
         </ContextoInventario.Provider>

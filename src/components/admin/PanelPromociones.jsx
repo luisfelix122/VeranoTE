@@ -17,7 +17,9 @@ const PanelPromociones = () => {
         tipo: 'regla_tiempo', // regla_tiempo, regla_cantidad
         condicion: { minHoras: 3, minCantidad: 3, categoria: '' },
         beneficio: { tipo: 'porcentaje', valor: 10 },
-        activo: true
+        activo: true,
+        es_automatico: true,
+        codigo_cupon: ''
     });
 
     const manejarSubmit = (e) => {
@@ -40,7 +42,9 @@ const PanelPromociones = () => {
             tipo: 'regla_tiempo',
             condicion: { minHoras: 3, minCantidad: 3, categoria: '' },
             beneficio: { tipo: 'porcentaje', valor: 10 },
-            activo: true
+            activo: true,
+            es_automatico: true,
+            codigo_cupon: ''
         });
     };
 
@@ -99,7 +103,16 @@ const PanelPromociones = () => {
                             promocionesFiltradas.map(promo => (
                                 <tr key={promo.id} className="hover:bg-gray-50">
                                     <td className="p-4 font-medium">{promo.nombre}</td>
-                                    <td className="p-4 text-sm text-gray-600">{promo.descripcion}</td>
+                                    <td className="p-4 text-sm text-gray-600">
+                                        {promo.descripcion}
+                                        {!promo.es_automatico && (
+                                            <div className="mt-1">
+                                                <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded border border-yellow-200 font-mono">
+                                                    CUPÓN: {promo.codigo_cupon}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className="p-4">
                                         <span className={`px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit ${promo.tipo === 'regla_tiempo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
                                             {promo.tipo === 'regla_tiempo' ? <Clock size={12} /> : <Package size={12} />}
@@ -138,6 +151,39 @@ const PanelPromociones = () => {
             <Modal titulo={modoEdicion ? "Editar Promoción" : "Crear Nueva Promoción"} abierto={mostrarForm} alCerrar={cerrarModal}>
                 <form onSubmit={manejarSubmit} className="space-y-4">
                     <input required placeholder="Nombre de la Promoción" className="w-full p-2 border rounded" value={nuevaPromo.nombre} onChange={e => setNuevaPromo({ ...nuevaPromo, nombre: e.target.value })} />
+                    <input required placeholder="Nombre de la Promoción" className="w-full p-2 border rounded" value={nuevaPromo.nombre} onChange={e => setNuevaPromo({ ...nuevaPromo, nombre: e.target.value })} />
+
+                    <div className="flex items-center gap-4 bg-gray-50 p-2 rounded border">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                checked={nuevaPromo.es_automatico}
+                                onChange={() => setNuevaPromo({ ...nuevaPromo, es_automatico: true, codigo_cupon: '' })}
+                                className="text-blue-600"
+                            />
+                            <span className="text-sm">Automática</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="radio"
+                                checked={!nuevaPromo.es_automatico}
+                                onChange={() => setNuevaPromo({ ...nuevaPromo, es_automatico: false })}
+                                className="text-blue-600"
+                            />
+                            <span className="text-sm">Requiere Cupón</span>
+                        </label>
+                    </div>
+
+                    {!nuevaPromo.es_automatico && (
+                        <input
+                            required
+                            placeholder="Código del Cupón (Ej: VERANO2026)"
+                            className="w-full p-2 border rounded font-mono uppercase bg-yellow-50"
+                            value={nuevaPromo.codigo_cupon}
+                            onChange={e => setNuevaPromo({ ...nuevaPromo, codigo_cupon: e.target.value.toUpperCase() })}
+                        />
+                    )}
+
                     <input required placeholder="Descripción (Visible al cliente)" className="w-full p-2 border rounded" value={nuevaPromo.descripcion} onChange={e => setNuevaPromo({ ...nuevaPromo, descripcion: e.target.value })} />
 
                     <div className="grid grid-cols-2 gap-4">

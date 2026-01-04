@@ -55,8 +55,16 @@ export const obtenerHorarios = async () => {
 };
 
 // Función para calcular cotización en el servidor
-export const calcularCotizacion = async (items) => {
-    const { data, error } = await supabase.rpc('calcular_cotizacion', { items });
+export const calcularCotizacion = async (items, fechaInicio, tipoReserva, clienteId, cupon = null) => {
+    // Usamos el mismo RPC robusto que para descuentos
+    const { data, error } = await supabase.rpc('calcular_descuento_simulado', {
+        p_items: items,
+        p_fecha_inicio: fechaInicio,
+        p_tipo_reserva: tipoReserva,
+        p_cliente_id: clienteId,
+        p_cupon: cupon // Nuevo parámetro
+    });
+
     if (error) {
         console.error('Error calculando cotización:', error);
         return null;
@@ -164,7 +172,7 @@ export const obtenerUsuarioPorId = async (id) => {
     if (nombreRolDB.includes('admin')) rolNormalizado = 'admin';
     else if (nombreRolDB.includes('vend')) rolNormalizado = 'vendedor';
     else if (nombreRolDB.includes('mecanic') || nombreRolDB.includes('mecánic')) rolNormalizado = 'mecanico';
-    else if (nombreRolDB.includes('dueñ') || nombreRolDB.includes('duen')) rolNormalizado = 'dueno';
+    else if (nombreRolDB.includes('dueñ') || nombreRolDB.includes('duen') || nombreRolDB.includes('owner')) rolNormalizado = 'dueno';
 
     return {
         ...data,
@@ -231,29 +239,30 @@ export const verificarDisponibilidadDB = async (items, fechaInicio) => {
     return data;
 };
 
-export const calcularDescuentosDB = async (items, fechaInicio) => {
+export const calcularDescuentosDB = async (items, fechaInicio, cupon = null) => {
     // 1. Calcular totales base localmente (Matemática estándar)
-    const totalBase = items.reduce((acc, item) => acc + (item.precioPorHora * item.horas * item.cantidad), 0);
+    const totalBase = items.reduce((acc, item) => acc + (Number(item.precioPorHora || 0) * Number(item.horas || 0) * Number(item.cantidad || 0)), 0);
     const garantia = totalBase * 0.20;
 
     // 2. Obtener descuentos avanzados desde DB
     const itemsRPC = items.map(item => ({
         id: item.id,
-        cantidad: item.cantidad,
-        horas: item.horas,
-        precioPorHora: item.precioPorHora,
+        cantidad: Number(item.cantidad) || 0,
+        horas: Number(item.horas) || 0,
+        precioPorHora: Number(item.precioPorHora) || 0,
         categoria: item.categoria
     }));
 
     const { data, error } = await supabase
         .rpc('calcular_descuento_simulado', {
             p_items: itemsRPC,
-            p_fecha_inicio: fechaInicio || new Date()
+            p_fecha_inicio: fechaInicio || new Date().toISOString(),
+            p_cupon: cupon // Agregado: Soporte para cupones
         });
 
-    if (error) {
-        console.error('Error al calcular descuentos:', error);
-        // Fallback: retornar base sin descuento
+    if (error || !data) {
+        if (error) console.error('Error al calcular descuentos:', error);
+        // Fallback: retornar base sin descuento si hay error o no hay datos
         return {
             total_servicio: totalBase,
             garantia: garantia,
@@ -264,13 +273,16 @@ export const calcularDescuentosDB = async (items, fechaInicio) => {
         };
     }
 
-    // 3. Fusionar resultados
+    // 3. Fusionar resultados con seguridad
     const descuento = Number(data.descuentoTotal) || 0;
+    const totalServicio = totalBase;
+    const totalFinal = totalServicio + garantia - descuento;
+
     return {
-        total_servicio: totalBase,
+        total_servicio: totalServicio,
         garantia: garantia,
-        total_a_pagar: totalBase + garantia - descuento,
-        descuento_total: descuento,
+        total_a_pagar: isNaN(totalFinal) ? (totalBase + garantia) : totalFinal,
+        descuento_total: isNaN(descuento) ? 0 : descuento,
         alertas: data.alertas || [],
         promocionesAplicadas: data.promocionesAplicadas || []
     };
@@ -311,7 +323,7 @@ const transformarAlquiler = (a) => {
         estado: a.estados_alquiler?.nombre || a.estado_id,
         vendedor: vendedorInfo,
         clienteObj: a.cliente,
-        cliente: a.cliente?.nombre || 'Cliente',
+        cliente: a.cliente?.nombre || (a.cliente_id ? `Cliente (${a.cliente_id.slice(0, 8)})` : 'Cliente No Identificado'),
         clienteDni: a.cliente?.numero_documento || 'Sin Documento',
         items: a.alquiler_detalles.map(d => ({
             id: d.recurso_id,
@@ -323,7 +335,11 @@ const transformarAlquiler = (a) => {
         })),
         cantidad_items: a.alquiler_detalles.reduce((acc, d) => acc + d.cantidad, 0),
         producto_principal: a.alquiler_detalles.map(d => `${d.cantidad}x ${d.recursos?.nombre}`).join(', '),
-        imagen_principal: a.alquiler_detalles[0]?.recursos?.imagen
+        imagen_principal: a.alquiler_detalles[0]?.recursos?.imagen,
+        fechaInicio: a.fecha_inicio,
+        fechaFin: a.fecha_fin_estimada || a.fecha_fin,
+        sedeId: a.sede_id,
+        vendedorId: a.vendedor_id
     };
 };
 
@@ -539,8 +555,23 @@ export const aplicarDescuentoManualDB = async (alquilerId, porcentaje, motivo) =
     return data;
 };
 
-export const registrarPagoSaldoDB = async (alquilerId) => {
-    const { data, error } = await supabase.rpc('registrar_pago_saldo', { p_alquiler_id: alquilerId });
+export const registrarPagoSaldoDB = async (alquilerId, metodoPagoId = 'tarjeta', tarjetaId = null, vendedorId = null) => {
+    // 1. Si hay vendedor asignado (cobro presencial), actualizar el alquiler primero
+    if (vendedorId) {
+        const { error: errorUpdate } = await supabase
+            .from('alquileres')
+            .update({ vendedor_id: vendedorId })
+            .eq('id', alquilerId);
+
+        if (errorUpdate) console.warn("No se pudo asignar vendedor al cobro:", errorUpdate);
+    }
+
+    // 2. Registrar el pago usando RPC
+    const { data, error } = await supabase.rpc('registrar_pago_saldo', {
+        p_alquiler_id: alquilerId,
+        p_metodo_pago_id: metodoPagoId,
+        p_token_tarjeta: tarjetaId
+    });
     if (error) {
         console.error('Error al registrar pago:', error);
         return { success: false, error };

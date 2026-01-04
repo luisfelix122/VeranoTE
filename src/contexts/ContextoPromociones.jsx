@@ -53,9 +53,9 @@ export const ProveedorPromociones = ({ children }) => {
         return false;
     };
 
-    const calcularDescuentos = async (carrito) => {
+    const calcularDescuentos = async (carrito, cupon = null) => {
         const { calcularDescuentosDB } = await import('../services/db');
-        return await calcularDescuentosDB(carrito);
+        return await calcularDescuentosDB(carrito, null, cupon);
     };
 
     return (

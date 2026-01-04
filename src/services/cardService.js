@@ -5,7 +5,6 @@ export const obtenerTarjetas = async (usuarioId) => {
         .from('tarjetas_credito')
         .select('*')
         .eq('usuario_id', usuarioId)
-        .eq('activa', true)
         .order('es_principal', { ascending: false });
 
     if (error) {
@@ -30,9 +29,7 @@ export const agregarTarjeta = async (usuarioId, tarjeta) => {
             expiracion: tarjeta.exp,
             titular: tarjeta.nombre,
             marca: tarjeta.marca || 'Desconocida',
-            tipo: tarjeta.tipo || 'credito',
-            es_principal: tarjeta.principal,
-            activa: true
+            es_principal: tarjeta.principal
         }])
         .select()
         .single();

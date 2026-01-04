@@ -23,21 +23,21 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
         const manana = new Date(hoy);
         manana.setDate(manana.getDate() + 1);
 
-        const horaStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const horaStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
 
         // Verificar si es hoy
         if (d.getDate() === hoy.getDate() && d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear()) {
-            return `las ${horaStr}`;
+            return `hoy las ${horaStr}`;
         }
 
         // Verificar si es mañana
         if (d.getDate() === manana.getDate() && d.getMonth() === manana.getMonth() && d.getFullYear() === manana.getFullYear()) {
-            return `Mañana a las ${horaStr}`;
+            return `mañana las ${horaStr}`;
         }
 
         // Otra fecha
         const fechaStr = d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
-        return `el ${fechaStr} a las ${horaStr}`;
+        return `${fechaStr} las ${horaStr}`;
     };
 
     return (
@@ -62,11 +62,11 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
                 </div>
 
                 {/* Información detallada de disponibilidad */}
-                {siguienteLiberacion && (
-                    <p className="text-xs text-orange-600 mb-2 font-medium bg-orange-50 px-2 py-1 rounded-lg">
+                {proximosLiberados.length > 0 && (
+                    <p className="text-[10px] sm:text-xs text-orange-600 font-medium bg-orange-50 px-2 py-1 rounded-lg">
                         {producto.stock === 0
-                            ? `Próximo disponible ${formatearHora(siguienteLiberacion)}`
-                            : `+${siguienteLiberacion.cantidad} disponible(s) ${formatearHora(siguienteLiberacion)}`
+                            ? `Próximo disponible ${formatearHora(proximosLiberados[0])}`
+                            : `+${proximosLiberados[0].cantidad} disponible(s) ${formatearHora(proximosLiberados[0])}`
                         }
                     </p>
                 )}

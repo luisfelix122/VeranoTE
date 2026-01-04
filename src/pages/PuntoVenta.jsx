@@ -6,7 +6,7 @@ import Boton from '../components/ui/Boton';
 import Modal from '../components/ui/Modal';
 
 const PuntoVenta = () => {
-    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva } = useContext(ContextoInventario);
+    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva, horarios } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
     const [carritoVenta, setCarritoVenta] = useState([]);
     const [clienteNombre, setClienteNombre] = useState('');
@@ -15,11 +15,11 @@ const PuntoVenta = () => {
     // Estados para búsqueda de clientes
     const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
     const [mostrandoResultados, setMostrandoResultados] = useState(false);
+    const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', email: '', password: '123', numeroDocumento: '' });
     const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
     const [modalCrearClienteAbierto, setModalCrearClienteAbierto] = useState(false);
-    const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', email: '', password: '123', numeroDocumento: '' });
+    const [modalTerminosAbierto, setModalTerminosAbierto] = useState(false);
 
-    // Estado para modal de configuración de alquiler
     // Estado para modal de configuración de alquiler
     const [productoAAnadir, setProductoAAnadir] = useState(null);
     const [configuracionAlquiler, setConfiguracionAlquiler] = useState({
@@ -41,8 +41,12 @@ const PuntoVenta = () => {
         totalServicio: 0,
         garantia: 0,
         totalFinal: 0,
+        totalFinal: 0,
         descuento: 0
     });
+
+    // Cupones
+    const [codigoCupon, setCodigoCupon] = useState('');
 
     // Efecto para cotizar cada vez que cambia el carrito
     React.useEffect(() => {
@@ -53,7 +57,7 @@ const PuntoVenta = () => {
             }
 
             // Llamar al backend para calcular
-            const resultado = await cotizarReserva(carritoVenta, new Date()); // Usar fecha actual o la del primer item
+            const resultado = await cotizarReserva(carritoVenta, new Date(), codigoCupon); // Usar fecha actual o la del primer item
 
             if (resultado) {
                 setTotales({
@@ -66,7 +70,7 @@ const PuntoVenta = () => {
         };
 
         actualizarCotizacion();
-    }, [carritoVenta, cotizarReserva]);
+    }, [carritoVenta, cotizarReserva, codigoCupon]);
 
     const manejarBusquedaCliente = async (texto) => {
         setClienteNombre(texto);
@@ -122,20 +126,33 @@ const PuntoVenta = () => {
     const confirmarAgregarProducto = () => {
         if (!productoAAnadir) return;
 
+        const inicio = configuracionAlquiler.tipoReserva === 'inmediata' ? new Date() : new Date(configuracionAlquiler.fechaInicio);
+        const fin = new Date(inicio.getTime() + (Number(configuracionAlquiler.horas) * 60 * 60 * 1000));
+
+        // 🟢 VALIDACIÓN DE HORARIO DE CIERRE
+        const diaSemana = inicio.getDay(); // 0 = Domingo
+        const sedeId = usuario?.sede || 'costa';
+        const horarioHoy = horarios.find(h => h.sede_id === sedeId && h.dia_semana === diaSemana);
+
+        if (horarioHoy && !horarioHoy.cerrado) {
+            const [hCierre, mCierre] = horarioHoy.hora_cierre.split(':').map(Number);
+            const horaCierre = new Date(inicio);
+            horaCierre.setHours(hCierre, mCierre, 0, 0);
+
+            if (fin > horaCierre) {
+                return alert(`⚠️ No se puede alquilar por ${configuracionAlquiler.horas}h. El local cierra a las ${horarioHoy.hora_cierre.slice(0, 5)} y el alquiler terminaría a las ${fin.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+            }
+        }
+
         const nuevoItem = {
             ...productoAAnadir,
             cantidad: 1,
             horas: Number(configuracionAlquiler.horas),
-            fechaInicio: configuracionAlquiler.tipoReserva === 'inmediata' ? new Date() : new Date(configuracionAlquiler.fechaInicio),
-            tipoReserva: configuracionAlquiler.tipoReserva // Guardar preferencia por item
+            fechaInicio: inicio,
+            tipoReserva: configuracionAlquiler.tipoReserva
         };
 
-        setCarritoVenta(prev => {
-            // En POS permitimos agregar el mismo producto como líneas separadas si tienen diferentes configuraciones
-            // O simplificamos sumando si es idéntico (aquí asumimos líneas separadas para flexibilidad de horas)
-            return [...prev, { ...nuevoItem, idTemp: Date.now() }];
-        });
-
+        setCarritoVenta(prev => [...prev, { ...nuevoItem, idTemp: Date.now() }]);
         setProductoAAnadir(null);
     };
 
@@ -160,7 +177,8 @@ const PuntoVenta = () => {
         // Si TODOS son inmediata, entonces 'en_uso'.
 
         const tieneAnticipada = carritoVenta.some(i => i.tipoReserva === 'anticipada');
-        const estadoFinal = tieneAnticipada ? 'confirmado' : 'en_uso';
+        const tieneMotor = carritoVenta.some(i => i.categoria === 'Motor');
+        const estadoFinal = (tieneAnticipada || tieneMotor) ? 'confirmado' : 'en_uso';
 
         // Calcular montos
         const totalPagar = totales.totalFinal;
@@ -186,7 +204,8 @@ const PuntoVenta = () => {
             tipoComprobante,
             datosFactura: tipoComprobante === 'factura' ? datosFactura : null,
             estado: estadoFinal,
-            penalizacion: 0
+            penalizacion: 0,
+            sedeId: usuario?.sede || 'costa'
         };
 
         registrarAlquiler(nuevoAlquiler);
@@ -202,10 +221,12 @@ const PuntoVenta = () => {
         alert(mensaje);
     };
 
-    const productosFiltrados = inventario.filter(p =>
-        p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        p.categoria.toLowerCase().includes(busqueda.toLowerCase())
-    );
+    const productosFiltrados = inventario.filter(p => {
+        const coincideSede = (usuario?.rol === 'admin' || usuario?.rol === 'vendedor') ? p.sedeId === usuario.sede : true;
+        const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+            p.categoria.toLowerCase().includes(busqueda.toLowerCase());
+        return coincideSede && coincideBusqueda;
+    });
 
     return (
         <div className="grid md:grid-cols-3 gap-6 px-4 sm:px-6 lg:px-8 h-[calc(100vh-100px)]">
@@ -234,9 +255,24 @@ const PuntoVenta = () => {
                             <p className="text-xs text-gray-500">{prod.categoria}</p>
                             <div className="flex justify-between items-center mt-2">
                                 <span className="font-bold text-blue-600">S/ {prod.precioPorHora}/h</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${prod.stock > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                    {prod.stock} unid.
-                                </span>
+                                <div className="flex flex-col items-end">
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${prod.stock > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        {prod.stock} unid.
+                                    </span>
+                                    {prod.stock === 0 && prod.detalleDisponibilidad?.proximosLiberados?.length > 0 && (
+                                        <span className="text-[10px] text-orange-600 font-medium mt-1">
+                                            Libre: {(() => {
+                                                const d = new Date(prod.detalleDisponibilidad.proximosLiberados[0].hora || prod.detalleDisponibilidad.proximosLiberados[0]);
+                                                // Añadir buffer de limpieza (10 min motores, 2 min otros)
+                                                const buffer = prod.categoria === 'Motor' ? 10 : 2;
+                                                d.setMinutes(d.getMinutes() + buffer);
+                                                const hoy = new Date();
+                                                const horaStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                return d.toDateString() === hoy.toDateString() ? `Hoy ${horaStr}` : `${d.toLocaleDateString([], { day: '2-digit', month: '2-digit' })} ${horaStr}`;
+                                            })()}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -311,8 +347,28 @@ const PuntoVenta = () => {
 
                     {tipoComprobante === 'factura' && (
                         <div className="space-y-2 bg-gray-50 p-2 rounded animate-fadeIn">
-                            <input placeholder="RUC" className="w-full p-1 border rounded text-xs" value={datosFactura.ruc} onChange={e => setDatosFactura({ ...datosFactura, ruc: e.target.value })} />
-                            <input placeholder="Razón Social" className="w-full p-1 border rounded text-xs" value={datosFactura.razonSocial} onChange={e => setDatosFactura({ ...datosFactura, razonSocial: e.target.value })} />
+                            <input
+                                placeholder="RUC (11 dígitos)"
+                                className="w-full p-1 border rounded text-xs"
+                                value={datosFactura.ruc}
+                                maxLength={11}
+                                onChange={e => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    if (val.length <= 11) setDatosFactura({ ...datosFactura, ruc: val });
+                                }}
+                            />
+                            <input
+                                placeholder="Razón Social"
+                                className="w-full p-1 border rounded text-xs"
+                                value={datosFactura.razonSocial}
+                                onChange={e => setDatosFactura({ ...datosFactura, razonSocial: e.target.value })}
+                            />
+                            <input
+                                placeholder="Dirección Fiscal"
+                                className="w-full p-1 border rounded text-xs"
+                                value={datosFactura.direccion}
+                                onChange={e => setDatosFactura({ ...datosFactura, direccion: e.target.value })}
+                            />
                         </div>
                     )}
                 </div>
@@ -330,7 +386,7 @@ const PuntoVenta = () => {
                             onChange={(e) => setContratoAceptado(e.target.checked)}
                         />
                         <span className="text-xs">
-                            He leído y acepto los <span className="text-blue-600 underline">Términos y Condiciones</span>,
+                            He leído y acepto los <button onClick={() => setModalTerminosAbierto(true)} className="text-blue-600 underline font-medium">Términos y Condiciones</button>,
                             incluyendo la responsabilidad por daños y el depósito de garantía reembolsable.
                         </span>
                     </label>
@@ -362,8 +418,30 @@ const PuntoVenta = () => {
                     </div>
 
                     <div className="flex-shrink-0 pt-4 space-y-2 px-2 pb-4">
-                        <div className="flex justify-between items-center text-sm text-gray-600"><span className="">Subtotal</span><span>S/ {totales.totalServicio.toFixed(2)}</span></div>
-                        <div className="flex justify-between items-center text-sm text-gray-600"><span className="">Total Servicio</span><span>S/ {totales.totalServicio.toFixed(2)}</span></div>
+                        <div className="flex justify-between items-center text-sm text-gray-600">
+                            <span className="">Subtotal Base</span>
+                            <span>S/ {(Number(totales.totalServicio) || 0).toFixed(2)}</span>
+                        </div>
+
+                        {/* Input Cupón */}
+                        <div className="flex items-center gap-2 py-1">
+                            <input
+                                type="text"
+                                placeholder="CUPÓN"
+                                className="w-full text-xs p-1 border rounded uppercase"
+                                value={codigoCupon}
+                                onChange={e => setCodigoCupon(e.target.value.toUpperCase())}
+                            />
+                        </div>
+
+                        <div className="flex justify-between items-center text-sm text-gray-600">
+                            <span className="">IGV (18%)</span>
+                            <span>S/ {((Number(totales.totalServicio) || 0) * 0.18).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm text-gray-600 font-bold border-t border-gray-100 pt-1">
+                            <span className="">Total Servicio</span>
+                            <span>S/ {(Number(totales.totalServicio) || 0).toFixed(2)}</span>
+                        </div>
                         {totales.descuento > 0 && <div className="flex justify-between items-center text-sm text-green-600"><span className="">Descuento</span><span>- S/ {totales.descuento.toFixed(2)}</span></div>}
                         <div className="flex justify-between items-center text-sm text-green-600"><span className="">Garantía (20% Reembolsable)</span><span>S/ {totales.garantia.toFixed(2)}</span></div>
 
@@ -397,81 +475,103 @@ const PuntoVenta = () => {
                         </Boton>
                     </div>
                 </div>
+
+                <Modal titulo={`Agregar ${productoAAnadir?.nombre || ''}`} abierto={!!productoAAnadir} alCerrar={() => setProductoAAnadir(null)}>
+                    <div className="space-y-4">
+                        {/* Selector Tipo Reserva */}
+                        <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
+                            <button
+                                className={`p-2 rounded text-sm font-medium transition-colors ${configuracionAlquiler.tipoReserva === 'inmediata' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}
+                                onClick={() => setConfiguracionAlquiler({ ...configuracionAlquiler, tipoReserva: 'inmediata' })}
+                            >
+                                ⚡ Inmediata
+                            </button>
+                            <button
+                                className={`p-2 rounded text-sm font-medium transition-colors ${configuracionAlquiler.tipoReserva === 'anticipada' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}
+                                onClick={() => setConfiguracionAlquiler({ ...configuracionAlquiler, tipoReserva: 'anticipada' })}
+                            >
+                                📅 Anticipada
+                            </button>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha y Hora de Inicio</label>
+                            <input
+                                type="datetime-local"
+                                className={`w-full p-2 border rounded-lg ${configuracionAlquiler.tipoReserva === 'inmediata' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                                value={configuracionAlquiler.tipoReserva === 'inmediata' ? new Date().toISOString().slice(0, 16) : configuracionAlquiler.fechaInicio}
+                                onChange={e => setConfiguracionAlquiler({ ...configuracionAlquiler, fechaInicio: e.target.value })}
+                                disabled={configuracionAlquiler.tipoReserva === 'inmediata'}
+                            />
+                            {configuracionAlquiler.tipoReserva === 'inmediata' && <p className="text-xs text-green-600 mt-1">Se registrará con fecha actual</p>}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Duración (Horas)</label>
+                            <input
+                                type="number"
+                                min="1"
+                                className="w-full p-2 border rounded-lg"
+                                value={configuracionAlquiler.horas}
+                                onChange={e => setConfiguracionAlquiler({ ...configuracionAlquiler, horas: e.target.value })}
+                            />
+                        </div>
+                        <div className="bg-blue-50 p-3 rounded-lg">
+                            <p className="text-sm text-blue-800 flex justify-between">
+                                <span>Precio por hora:</span>
+                                <span className="font-bold">S/ {productoAAnadir?.precioPorHora}</span>
+                            </p>
+                            <p className="text-sm text-blue-800 flex justify-between mt-1">
+                                <span>Total Estimado:</span>
+                                <span className="font-bold">S/ {(productoAAnadir?.precioPorHora * configuracionAlquiler.horas).toFixed(2)}</span>
+                            </p>
+                        </div>
+                        <Boton className="w-full" onClick={confirmarAgregarProducto}>
+                            Agregar al Ticket
+                        </Boton>
+                    </div>
+                </Modal>
+
+                {/* Modal Crear Cliente */}
+                <Modal titulo="Registrar Nuevo Cliente" abierto={modalCrearClienteAbierto} alCerrar={() => setModalCrearClienteAbierto(false)}>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Nombre Completo</label>
+                            <input className="w-full p-2 border rounded" value={nuevoCliente.nombre} onChange={e => setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Email</label>
+                            <input type="email" className="w-full p-2 border rounded" value={nuevoCliente.email} onChange={e => setNuevoCliente({ ...nuevoCliente, email: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">DNI / Documento</label>
+                            <input className="w-full p-2 border rounded" value={nuevoCliente.numeroDocumento} onChange={e => setNuevoCliente({ ...nuevoCliente, numeroDocumento: e.target.value })} />
+                        </div>
+                        <Boton className="w-full" onClick={guardarNuevoCliente}>Guardar Cliente</Boton>
+                    </div>
+                </Modal>
+                {/* Modal Términos y Condiciones */}
+                <Modal titulo="Términos y Condiciones del Servicio" abierto={modalTerminosAbierto} alCerrar={() => setModalTerminosAbierto(false)}>
+                    <div className="space-y-4 text-sm text-gray-600 max-h-96 overflow-y-auto pr-2">
+                        <section>
+                            <h4 className="font-bold text-gray-800">1. Objeto del Contrato</h4>
+                            <p>El presente documento establece las condiciones para el alquiler de recursos recreativos (bicicletas, botes, equipos de montaña, etc.) en las sedes de Verano Rental System.</p>
+                        </section>
+                        <section>
+                            <h4 className="font-bold text-gray-800">2. Responsabilidad del Cliente</h4>
+                            <p>El cliente se hace plenamente responsable de la integridad física del recurso alquilado durante el periodo de uso. Cualquier daño, pérdida o robo será cubierto mediante el depósito de garantía o cobro adicional según tasación.</p>
+                        </section>
+                        <section>
+                            <h4 className="font-bold text-gray-800">3. Garantía Reembolsable</h4>
+                            <p>Se requiere un depósito del 20% sobre el valor del servicio como garantía. Este monto será devuelto íntegramente al momento de la entrega del recurso en las mismas condiciones en que fue recibido.</p>
+                        </section>
+                        <section>
+                            <h4 className="font-bold text-gray-800">4. Horarios y Penalidades</h4>
+                            <p>La devolución fuera de la hora pactada generará penalidades automáticas. El servicio debe concluir dentro del horario de atención de la sede seleccionada.</p>
+                        </section>
+                        <p className="text-xs text-gray-400 mt-4 italic">Al marcar la casilla en el ticket de venta, usted acepta estas condiciones de forma legal y vinculante.</p>
+                    </div>
+                </Modal>
             </div>
-
-            <Modal titulo={`Agregar ${productoAAnadir?.nombre || ''}`} abierto={!!productoAAnadir} alCerrar={() => setProductoAAnadir(null)}>
-                <div className="space-y-4">
-                    {/* Selector Tipo Reserva */}
-                    <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
-                        <button
-                            className={`p-2 rounded text-sm font-medium transition-colors ${configuracionAlquiler.tipoReserva === 'inmediata' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}
-                            onClick={() => setConfiguracionAlquiler({ ...configuracionAlquiler, tipoReserva: 'inmediata' })}
-                        >
-                            ⚡ Inmediata
-                        </button>
-                        <button
-                            className={`p-2 rounded text-sm font-medium transition-colors ${configuracionAlquiler.tipoReserva === 'anticipada' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}
-                            onClick={() => setConfiguracionAlquiler({ ...configuracionAlquiler, tipoReserva: 'anticipada' })}
-                        >
-                            📅 Anticipada
-                        </button>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha y Hora de Inicio</label>
-                        <input
-                            type="datetime-local"
-                            className={`w-full p-2 border rounded-lg ${configuracionAlquiler.tipoReserva === 'inmediata' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
-                            value={configuracionAlquiler.tipoReserva === 'inmediata' ? new Date().toISOString().slice(0, 16) : configuracionAlquiler.fechaInicio}
-                            onChange={e => setConfiguracionAlquiler({ ...configuracionAlquiler, fechaInicio: e.target.value })}
-                            disabled={configuracionAlquiler.tipoReserva === 'inmediata'}
-                        />
-                        {configuracionAlquiler.tipoReserva === 'inmediata' && <p className="text-xs text-green-600 mt-1">Se registrará con fecha actual</p>}
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Duración (Horas)</label>
-                        <input
-                            type="number"
-                            min="1"
-                            className="w-full p-2 border rounded-lg"
-                            value={configuracionAlquiler.horas}
-                            onChange={e => setConfiguracionAlquiler({ ...configuracionAlquiler, horas: e.target.value })}
-                        />
-                    </div>
-                    <div className="bg-blue-50 p-3 rounded-lg">
-                        <p className="text-sm text-blue-800 flex justify-between">
-                            <span>Precio por hora:</span>
-                            <span className="font-bold">S/ {productoAAnadir?.precioPorHora}</span>
-                        </p>
-                        <p className="text-sm text-blue-800 flex justify-between mt-1">
-                            <span>Total Estimado:</span>
-                            <span className="font-bold">S/ {(productoAAnadir?.precioPorHora * configuracionAlquiler.horas).toFixed(2)}</span>
-                        </p>
-                    </div>
-                    <Boton className="w-full" onClick={confirmarAgregarProducto}>
-                        Agregar al Ticket
-                    </Boton>
-                </div>
-            </Modal>
-
-            {/* Modal Crear Cliente */}
-            <Modal titulo="Registrar Nuevo Cliente" abierto={modalCrearClienteAbierto} alCerrar={() => setModalCrearClienteAbierto(false)}>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Nombre Completo</label>
-                        <input className="w-full p-2 border rounded" value={nuevoCliente.nombre} onChange={e => setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })} />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Email</label>
-                        <input type="email" className="w-full p-2 border rounded" value={nuevoCliente.email} onChange={e => setNuevoCliente({ ...nuevoCliente, email: e.target.value })} />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">DNI / Documento</label>
-                        <input className="w-full p-2 border rounded" value={nuevoCliente.numeroDocumento} onChange={e => setNuevoCliente({ ...nuevoCliente, numeroDocumento: e.target.value })} />
-                    </div>
-                    <Boton className="w-full" onClick={guardarNuevoCliente}>Guardar Cliente</Boton>
-                </div>
-            </Modal>
         </div>
     );
 };
