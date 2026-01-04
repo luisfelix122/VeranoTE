@@ -200,7 +200,8 @@ export const crearReserva = async (datosReserva) => {
         p_tipo_reserva: datosReserva.tipoReserva,
         p_metodo_pago_id: datosReserva.metodoPago,
         p_tipo_comprobante: datosReserva.tipoComprobante,
-        p_datos_factura: datosReserva.datosFactura
+        p_datos_factura: datosReserva.datosFactura,
+        p_cupon: datosReserva.cupon // Agregamos el cupón al payload
     };
 
     try {

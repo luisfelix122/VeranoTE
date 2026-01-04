@@ -505,7 +505,8 @@ function AppContenido() {
                 metodoPago: metodoPago || 'transferencia',
                 tipoComprobante: tipoComprobante || 'boleta',
                 datosFactura: tipoComprobante === 'factura' ? datosFactura : null,
-                tokenTarjeta: tokenTarjeta // Nuevo: token o ID de tarjeta si aplica
+                tokenTarjeta: tokenTarjeta, // Nuevo: token o ID de tarjeta si aplica
+                cupon: codigoCupon // Pasamos el cupón del estado
             };
 
             setAceptaTerminos(false); // UI Loader
