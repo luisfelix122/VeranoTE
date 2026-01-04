@@ -201,7 +201,7 @@ function AppContenido() {
     const [aceptaTerminos, setAceptaTerminos] = useState(false);
     const [errorHora, setErrorHora] = useState('');
     const [erroresCheckout, setErroresCheckout] = useState({});
-    const [compraExitoso, setCompraExitosa] = useState(false);
+    const [compraExitosa, setCompraExitosa] = useState(false);
 
     // Estados para descuentos y promociones en el carrito
     // const [descuentoTotal, setDescuentoTotal] = useState(0); // REMOVED to avoid conflict with calculated const
