@@ -59,9 +59,7 @@ function AppContenido() {
     const horaCierre = sedeInfo?.hora_cierre ? sedeInfo.hora_cierre.slice(0, 5) : '18:00';
 
     // Actualizar tipo de cambio al montar
-    React.useEffect(() => {
-        actualizarTipoCambioReal();
-    }, []);
+
 
     // Sincronizar Sede con el Usuario (Admin/Vendedor)
     React.useEffect(() => {

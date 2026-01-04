@@ -5,7 +5,7 @@ import {
     crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB,
     gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
     aplicarDescuentoManualDB, registrarPagoSaldoDB, aprobarReservaDB,
-    obtenerDisponibilidadRecursoDB, buscarClientesDB,
+    obtenerDisponibilidadRecursoDB, buscarClientesDB, actualizarTipoCambioReal,
     calcularDescuentosDB, verificarDisponibilidadDB
 } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
@@ -58,7 +58,8 @@ export const ProveedorInventario = ({ children }) => {
                 obtenerAlquileres(),
                 obtenerHorarios(),
                 obtenerContenidoWeb(),
-                obtenerConfiguracion()
+                obtenerConfiguracion(),
+                actualizarTipoCambioReal() // Actualizamos tipo de cambio al iniciar
             ]);
 
             // Enriquecer inventario con disponibilidad real del backend
