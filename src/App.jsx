@@ -46,7 +46,7 @@ function App() {
 }
 
 function AppContenido() {
-    const { usuario, iniciarSesion, registrarUsuario, recuperarPregunta, verificarRespuesta, restablecerPassword } = useContext(ContextoAutenticacion);
+    const { usuario, iniciarSesion, registrarUsuario, recuperarPregunta, verificarRespuesta, restablecerPassword, cargando } = useContext(ContextoAutenticacion);
     const { carrito, removerDelCarrito, esVisible, setEsVisible, total, limpiarCarrito } = useContext(ContextoCarrito);
     const { registrarAlquiler, verificarDisponibilidad, calcularStockDisponible, fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva } = useContext(ContextoInventario);
     const { calcularDescuentos } = useContext(ContextoPromociones);
