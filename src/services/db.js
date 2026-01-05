@@ -1159,16 +1159,15 @@ export const estimarDisponibilidad = async (recursoId) => {
     return data; // Retorna timestamp o null
 };
 
-export const obtenerDisponibilidadRecursoDB = async (recursoId, fecha = null) => {
+export const obtenerDisponibilidadRecursoDB = async (recursoId) => {
     const { data, error } = await supabase
         .rpc('obtener_disponibilidad_recurso', {
-            p_recurso_id: recursoId,
-            p_fecha: fecha || new Date().toISOString()
+            p_recurso_id: recursoId
         });
 
     if (error) {
         console.error('Error al obtener disponibilidad backend:', error);
-        return { disponibles_ahora: 0, proximos_liberados: [], total_fisico: 0 };
+        return null; // Retornar null para usar fallback local
     }
     return data;
 };

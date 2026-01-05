@@ -58,8 +58,19 @@ export const ProveedorInventario = ({ children }) => {
     // Cargar datos iniciales
     const recargarDatos = async (fechaTarget = null) => {
         try {
-            // Si no se pasa fechaTarget, usar la fecha seleccionada global (o hoy)
-            const targetDate = fechaTarget || (fechaSeleccionada ? new Date(fechaSeleccionada + 'T12:00:00').toISOString() : new Date().toISOString());
+            // Determinar si la fecha seleccionada es hoy (en horario local)
+            const hoyStr = new Date().toISOString().split('T')[0];
+            const esHoy = (fechaTarget === hoyStr) || (!fechaTarget && fechaSeleccionada === hoyStr);
+
+            // Si es hoy, usar NOW() para ver disponibilidad real en este instante.
+            // Si es otro día, usar el mediodía de ese día para una estimación general.
+            let targetDate;
+            if (esHoy) {
+                targetDate = new Date().toISOString();
+            } else {
+                const datePart = fechaTarget || fechaSeleccionada || hoyStr;
+                targetDate = new Date(datePart + 'T12:00:00').toISOString();
+            }
 
             const [recursosData, categoriasData, sedesData, alquileresData, horariosData, contenidoData, configData] = await Promise.all([
                 obtenerRecursos(),
@@ -72,26 +83,57 @@ export const ProveedorInventario = ({ children }) => {
                 actualizarTipoCambioReal() // Actualizamos tipo de cambio al iniciar
             ]);
 
-            // Enriquecer inventario con disponibilidad real del backend
+            // Enriquecer inventario con disponibilidad real del backend y cálculo local
             const inventarioConDisponibilidad = await Promise.all(recursosData.map(async (item) => {
                 let disponibilidad = null;
                 try {
-                    disponibilidad = await obtenerDisponibilidadRecursoDB(item.id, targetDate);
+                    // Solo intentar RPC para info de tiempo real si es "Hoy/Ahora"
+                    if (esHoy) {
+                        disponibilidad = await obtenerDisponibilidadRecursoDB(item.id);
+                    }
                 } catch (e) {
-                    console.error("Error disponibilidad", e);
+                    console.error("Error disponibilidad RPC", e);
                 }
-                const safeDisp = disponibilidad || { disponibles_ahora: 0, proximos_liberados: [], total_fisico: item.stockTotal || 0 };
 
-                // Mapeo snake_case (DB) -> camelCase (Frontend)
+                // CÁLCULO LOCAL DE STOCK (Fallback / Date-Aware) basado en alquileresData
+                const ocupadosEnFecha = alquileresData.reduce((total, a) => {
+                    // Estados que bloquean stock
+                    const esActivo = ['pendiente', 'confirmado', 'en_uso', 'listo_para_entrega'].includes(a.estado_id);
+                    if (!esActivo) return total;
+
+                    const detalle = a.alquiler_detalles?.find(d => d.recurso_id === item.id);
+                    if (!detalle) return total;
+
+                    // Solapamiento: (Inicio1 < Fin2) AND (Inicio2 < Fin1)
+                    // Ventana de evaluación: targetDate a targetDate + 1h
+                    const tStart = new Date(targetDate);
+                    const tEnd = new Date(targetDate);
+                    tEnd.setHours(tEnd.getHours() + 1);
+
+                    const rStart = new Date(a.fecha_inicio);
+                    const rEnd = new Date(a.fecha_fin_estimada || a.fecha_fin);
+
+                    if (rStart < tEnd && rEnd > tStart) {
+                        return total + (detalle.cantidad || 0);
+                    }
+                    return total;
+                }, 0);
+
+                const stockCalculado = Math.max(0, (item.stockTotal || 0) - ocupadosEnFecha);
+
+                // Si el RPC funcionó y es hoy, priorizar su valor para disponibles_ahora
+                // pero si no, usar el cálculo local.
+                const dispAhora = (esHoy && disponibilidad) ? disponibilidad.disponibles_ahora : stockCalculado;
+
                 const detalleFormat = {
-                    disponiblesAhora: safeDisp.disponibles_ahora,
-                    proximosLiberados: safeDisp.proximos_liberados || [],
-                    totalFisico: safeDisp.total_fisico
+                    disponiblesAhora: dispAhora,
+                    proximosLiberados: disponibilidad?.proximos_liberados || [],
+                    totalFisico: item.stockTotal || 0
                 };
 
                 return {
                     ...item,
-                    stock: detalleFormat.disponiblesAhora, // Sobrescribimos stock visual
+                    stock: detalleFormat.disponiblesAhora,
                     stockTotal: item.stockTotal,
                     sedeId: item.sede_id,
                     precioPorHora: item.precio_por_hora,
