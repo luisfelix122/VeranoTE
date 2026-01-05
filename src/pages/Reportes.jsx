@@ -130,14 +130,16 @@ const Reportes = ({ rol: rolProp }) => {
     // 2. Filtrado de Reporte Avanzado (Admin/Dueño/Vendedor)
     let datosParaTabla = [];
 
+    // Filtro base para trabajos de mantenimiento/limpieza (usado por mecánicos y en stats de admin)
+    const trabajosMecanico = alquileres.filter(a =>
+        (a.estado_id === 'en_mantenimiento' ||
+            a.estado_id === 'limpieza' ||
+            a.estado_id === 'reparacion' ||
+            a.estado_id === 'finalizado') &&
+        (!usuario?.sede || a.sedeId === usuario.sede)
+    );
+
     if (rol === 'mecanico') {
-        const trabajosMecanico = alquileres.filter(a =>
-            (a.estado_id === 'en_mantenimiento' ||
-                a.estado_id === 'limpieza' ||
-                a.estado_id === 'reparacion' ||
-                a.estado_id === 'finalizado') &&
-            (!usuario?.sede || a.sedeId === usuario.sede)
-        );
         datosParaTabla = pestanaActiva === 'trabajos_activos'
             ? trabajosMecanico.filter(a => ['en_mantenimiento', 'limpieza', 'reparacion'].includes(a.estado_id))
             : trabajosMecanico.filter(a => a.estado_id === 'finalizado');
