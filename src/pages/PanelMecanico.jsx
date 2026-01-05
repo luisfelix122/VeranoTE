@@ -6,6 +6,13 @@ import Boton from '../components/ui/Boton';
 
 const PanelMecanico = () => {
     const { alquileres, inventario, aprobarParaEntrega, enviarAMantenimiento, finalizarMantenimiento, finalizarLimpiezaAlquiler, marcarFueraDeServicio, sedeActual } = useContext(ContextoInventario);
+    const [cargandoId, setCargandoId] = React.useState(null);
+
+    const handleFinalizarLimpieza = async (id) => {
+        setCargandoId(id);
+        await finalizarLimpiezaAlquiler(id);
+        setCargandoId(null);
+    };
 
     // 1. Revisiones Pre-Entrega: Solo 'en_preparacion' (Activado por Vendedor)
     const pendientes = alquileres.filter(a => {
@@ -151,8 +158,13 @@ const PanelMecanico = () => {
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <Boton variante="exito" className="text-sm px-6" onClick={() => finalizarLimpiezaAlquiler(a.id)}>
-                                        Habilitar Stock ✅
+                                    <Boton
+                                        variante="exito"
+                                        className="text-sm px-6 min-w-[140px]"
+                                        onClick={() => handleFinalizarLimpieza(a.id)}
+                                        disabled={cargandoId === a.id}
+                                    >
+                                        {cargandoId === a.id ? 'Habilitando...' : 'Habilitar Stock ✅'}
                                     </Boton>
                                     <Boton variante="secundario" className="text-sm" onClick={() => enviarAMantenimiento(a.id)}>
                                         <Wrench size={14} /> Mantenimiento

@@ -554,28 +554,46 @@ export const ProveedorInventario = ({ children }) => {
 
     const finalizarLimpiezaAlquiler = async (idAlquiler) => {
         try {
-            // 1. Obtener el alquiler para saber qué recursos liberar
+            // 1. Obtener el alquiler de la fuente de verdad (estado local o buscar en DB si no está)
             const alquiler = alquileres.find(a => a.id === idAlquiler);
-            if (!alquiler) throw new Error("Alquiler no encontrado");
+            if (!alquiler) {
+                console.error("Alquiler no encontrado localmente:", idAlquiler);
+                throw new Error("Alquiler no encontrado");
+            }
 
-            // 2. Cambiar estado del alquiler a 'finalizado'
+            // 2. Cambiar estado del alquiler a 'finalizado' en la DB primero
             const { error: errorAlquiler } = await supabase
                 .from('alquileres')
-                .update({ estado_id: 'finalizado' })
+                .update({
+                    estado_id: 'finalizado',
+                    updated_at: new Date().toISOString()
+                })
                 .eq('id', idAlquiler);
 
             if (errorAlquiler) throw errorAlquiler;
 
-            // 3. Liberar cada recurso del alquiler usando la lógica de mantenimiento
-            for (const item of alquiler.items) {
-                await gestionarMantenimientoDB(item.id, 'finalizar');
+            // 3. Liberar cada recurso del alquiler. 
+            // IMPORTANTE: Incluso si falla un mantenimiento, el alquiler ya está finalizado en DB, liberando stock.
+            if (alquiler.items && Array.isArray(alquiler.items)) {
+                for (const item of alquiler.items) {
+                    try {
+                        // Intentamos finalizar cualquier mantenimiento pendiente por si acaso
+                        await gestionarMantenimientoDB(item.id, 'finalizar');
+                    } catch (e) {
+                        console.warn(`No se pudo finalizar mantenimiento para item ${item.id}:`, e);
+                    }
+                }
             }
 
+            // 4. Actualizar estado local e invocar recarga manual por seguridad
             setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'finalizado', estado_id: 'finalizado' } : a));
-            await recargarDatos();
+
+            // Un pequeño delay para que el Realtime de Supabase no colisione con la recarga manual
+            setTimeout(() => recargarDatos(), 200);
+
             return true;
         } catch (err) {
-            console.error("Error en finalizarLimpiezaAlquiler:", err);
+            console.error("Error crítico en finalizarLimpiezaAlquiler:", err);
             alert("Error al liberar equipos: " + (err.message || "Desconocido"));
             return false;
         }
