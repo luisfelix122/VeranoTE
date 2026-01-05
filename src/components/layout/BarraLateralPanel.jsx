@@ -15,14 +15,11 @@ import {
     Calendar
 } from 'lucide-react';
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
-import { ContextoSoporte } from '../../contexts/ContextoSoporte';
 import Boton from '../ui/Boton';
 
 const BarraLateralPanel = () => {
     const { usuario, usuarios } = useContext(ContextoAutenticacion);
     const location = useLocation();
-    const [mostrarModalContacto, setMostrarModalContacto] = useState(false);
-    const [mensaje, setMensaje] = useState('');
 
     const obtenerClaseEnlace = (ruta) => {
         const esActivo = location.pathname === ruta || location.pathname.startsWith(ruta + '/');
@@ -70,35 +67,30 @@ const BarraLateralPanel = () => {
 
     const enlaces = obtenerEnlaces();
 
-    const { crearTicket } = useContext(ContextoSoporte);
 
-    const enviarMensaje = (e) => {
-        e.preventDefault();
-        if (!mensaje.trim()) return;
+    const manejarContacto = () => {
+        if (!usuario) return;
 
-        const rolDestino = usuario.rol === 'vendedor' ? 'admin' : 'dueno';
-        const usuarioDestino = usuarios.find(u => u.rol === rolDestino);
-        const nombreDestinatario = usuario.rol === 'vendedor' ? 'Administrador' : 'Dueño';
+        let destino = null;
+        let rolBuscado = '';
 
-        crearTicket({
-            asunto: `Mensaje Interno de ${usuario.nombre} (${usuario.rol})`,
-            mensaje: mensaje,
-            telefono: usuario.telefono || 'N/A',
-            remitente: {
-                id: usuario.id,
-                nombre: usuario.nombre,
-                rol: usuario.rol
-            },
-            destinatario: usuarioDestino ? {
-                id: usuarioDestino.id,
-                nombre: usuarioDestino.nombre,
-                rol: usuarioDestino.rol
-            } : { rol: rolDestino }
-        });
+        if (usuario.rol === 'vendedor') {
+            rolBuscado = 'admin';
+            // Buscar admin de la misma sede
+            destino = usuarios.find(u => u.rol === 'admin' && u.sede_id === usuario.sede_id);
+        } else if (usuario.rol === 'admin') {
+            rolBuscado = 'dueno';
+            // Buscar dueño
+            destino = usuarios.find(u => u.rol === 'dueno');
+        }
 
-        alert(`Mensaje enviado al ${nombreDestinatario} correctamente.`);
-        setMostrarModalContacto(false);
-        setMensaje('');
+        if (destino && destino.telefono) {
+            const numero = destino.telefono.replace(/\s+/g, '');
+            const mensajeWa = encodeURIComponent(`¡Hola ${destino.nombre}! Soy ${usuario.nombre} (${usuario.rol}) de la sede ${usuario.sede_id || 'Principal'}. Necesito soporte con el sistema.`);
+            window.open(`https://wa.me/51${numero}?text=${mensajeWa}`, '_blank');
+        } else {
+            alert(`No se encontró un número de WhatsApp para el ${rolBuscado === 'dueno' ? 'Dueño' : 'Administrador'}. Por favor, contacte soporte técnico.`);
+        }
     };
 
     return (
@@ -119,36 +111,15 @@ const BarraLateralPanel = () => {
             {(usuario?.rol === 'vendedor' || usuario?.rol === 'admin') && (
                 <div className="mt-auto pt-4 border-t border-gray-100">
                     <button
-                        onClick={() => setMostrarModalContacto(true)}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-all"
+                        onClick={manejarContacto}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-green-50 hover:text-green-600 transition-all font-medium"
                     >
                         <MessageSquare size={20} />
                         <span>Contactar {usuario.rol === 'vendedor' ? 'Admin' : 'Dueño'}</span>
                     </button>
-                </div>
-            )}
-
-            {mostrarModalContacto && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
-                        <h3 className="text-xl font-bold mb-4">Contactar al {usuario.rol === 'vendedor' ? 'Administrador' : 'Dueño'}</h3>
-                        <form onSubmit={enviarMensaje} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Mensaje</label>
-                                <textarea
-                                    className="w-full p-2 border rounded-lg h-32 resize-none"
-                                    placeholder="Escribe tu mensaje aquí..."
-                                    value={mensaje}
-                                    onChange={(e) => setMensaje(e.target.value)}
-                                    required
-                                ></textarea>
-                            </div>
-                            <div className="flex gap-3">
-                                <Boton type="button" variante="secundario" onClick={() => setMostrarModalContacto(false)} className="flex-1">Cancelar</Boton>
-                                <Boton type="submit" variante="primario" className="flex-1">Enviar</Boton>
-                            </div>
-                        </form>
-                    </div>
+                    <p className="text-[10px] text-gray-400 mt-2 text-center px-2">
+                        Redirección directa a WhatsApp para soporte inmediato.
+                    </p>
                 </div>
             )}
         </aside>

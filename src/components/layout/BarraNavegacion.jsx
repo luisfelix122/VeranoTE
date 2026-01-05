@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Package, ShoppingCart, LogOut, MapPin, User, ChevronDown, CreditCard, Bell, Sun, Waves } from 'lucide-react';
+import { Package, ShoppingCart, LogOut, MapPin, User, ChevronDown, CreditCard, Sun, Waves } from 'lucide-react';
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
 import { ContextoCarrito } from '../../contexts/ContextoCarrito';
 import { ContextoInventario } from '../../contexts/ContextoInventario';
@@ -18,35 +18,12 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
     const { usuario, cerrarSesion } = useContext(ContextoAutenticacion);
     const { carrito, setEsVisible } = useContext(ContextoCarrito);
     const { sedeActual, setSedeActual, sedes } = useContext(ContextoInventario);
-    const { tickets } = useContext(ContextoSoporte);
     const [mostrarMenuUsuario, setMostrarMenuUsuario] = useState(false);
-    const [mostrarBandeja, setMostrarBandeja] = useState(false);
     const menuRef = useRef(null);
-    const bandejaRef = useRef(null);
-
-    // Calcular mensajes no leídos
-    const conteoNoLeidos = tickets.filter(ticket => {
-        if (ticket.leido) return false;
-        if (!usuario) return false;
-
-        if (usuario.rol === 'admin') {
-            return (ticket.destinatario?.rol === 'admin') ||
-                (ticket.destinatario?.id === usuario.id) ||
-                (!ticket.destinatario && ticket.remitente?.rol !== 'admin');
-        } else if (usuario.rol === 'dueno') {
-            return (ticket.destinatario?.rol === 'dueno') || (ticket.destinatario?.id === usuario.id);
-        } else {
-            return ticket.destinatario?.id === usuario.id || ticket.destinatario?.rol === usuario.rol;
-        }
-    }).length;
-
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
                 setMostrarMenuUsuario(false);
-            }
-            if (bandejaRef.current && !bandejaRef.current.contains(event.target) && !event.target.closest('.boton-bandeja')) {
-                setMostrarBandeja(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -129,25 +106,6 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
 
                                 {/* Inbox & Profile */}
                                 <div className="flex items-center gap-2 pl-2 border-l border-gray-200/50">
-                                    <div className="relative">
-                                        <button
-                                            onClick={() => setMostrarBandeja(!mostrarBandeja)}
-                                            className={`relative p-2 rounded-full transition-all duration-300 ${mostrarBandeja ? 'bg-gray-900 text-white shadow-lg rotate-12' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
-                                        >
-                                            <Bell size={20} />
-                                            {conteoNoLeidos > 0 && (
-                                                <span className="absolute top-0 right-0 bg-red-500 border-2 border-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] text-white font-bold">
-                                                    {conteoNoLeidos}
-                                                </span>
-                                            )}
-                                        </button>
-                                        {/* Dropdown Bandeja */}
-                                        {mostrarBandeja && (
-                                            <div ref={bandejaRef} className="absolute right-0 mt-4 w-[380px] max-h-[70vh] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-[60] animate-in fade-in zoom-in-95 duration-200">
-                                                <BandejaEntrada modoCompacto={true} />
-                                            </div>
-                                        )}
-                                    </div>
 
                                     <div className="relative" ref={menuRef}>
                                         <button
@@ -177,7 +135,7 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
                                                             <CreditCard size={16} /> {t('nav.mis_reportes')}
                                                         </button>
                                                         <button onClick={() => { navigate('/soporte'); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
-                                                            <Bell size={16} /> {t('nav.soporte', 'Soporte')}
+                                                            <MapPin size={16} /> {t('nav.soporte', 'Soporte')}
                                                         </button>
                                                     </div>
                                                 )}

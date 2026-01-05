@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, LogOut, Bell, User, ChevronDown } from 'lucide-react';
+import { Package, LogOut, User, ChevronDown } from 'lucide-react';
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
 import { ContextoSoporte } from '../../contexts/ContextoSoporte';
 import { ContextoInventario } from '../../contexts/ContextoInventario';
@@ -10,36 +10,13 @@ import BandejaEntrada from '../../pages/BandejaEntrada';
 const BarraNavegacionPanel = () => {
     const navigate = useNavigate();
     const { usuario, cerrarSesion } = useContext(ContextoAutenticacion);
-    const { tickets } = useContext(ContextoSoporte);
     const { sedes, sedeActual, setSedeActual } = useContext(ContextoInventario);
     const [mostrarMenuUsuario, setMostrarMenuUsuario] = useState(false);
-    const [mostrarBandeja, setMostrarBandeja] = useState(false);
     const menuRef = useRef(null);
-    const bandejaRef = useRef(null);
-
-    // Calcular mensajes no leídos
-    const conteoNoLeidos = tickets.filter(ticket => {
-        if (ticket.leido) return false;
-        if (!usuario) return false;
-
-        if (usuario.rol === 'admin') {
-            return (ticket.destinatario?.rol === 'admin') ||
-                (ticket.destinatario?.id === usuario.id) ||
-                (!ticket.destinatario && ticket.remitente?.rol !== 'admin');
-        } else if (usuario.rol === 'dueno') {
-            return (ticket.destinatario?.rol === 'dueno') || (ticket.destinatario?.id === usuario.id);
-        } else {
-            return ticket.destinatario?.id === usuario.id || ticket.destinatario?.rol === usuario.rol;
-        }
-    }).length;
-
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
                 setMostrarMenuUsuario(false);
-            }
-            if (bandejaRef.current && !bandejaRef.current.contains(event.target) && !event.target.closest('.boton-bandeja')) {
-                setMostrarBandeja(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -77,33 +54,6 @@ const BarraNavegacionPanel = () => {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        {/* Botón Notificaciones / Bandeja (Campanita) - Visible para TODOS los roles del panel */}
-                        <div className="relative">
-                            <button
-                                onClick={() => setMostrarBandeja(!mostrarBandeja)}
-                                className={`boton-bandeja relative p-2 rounded-lg transition-colors ${mostrarBandeja ? 'bg-blue-50 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-                                title="Notificaciones"
-                            >
-                                <Bell size={20} />
-                                {conteoNoLeidos > 0 && (
-                                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white font-bold px-1">
-                                        {conteoNoLeidos > 9 ? '9+' : conteoNoLeidos}
-                                    </span>
-                                )}
-                            </button>
-
-                            {/* Dropdown Bandeja de Entrada */}
-                            {mostrarBandeja && (
-                                <div
-                                    ref={bandejaRef}
-                                    className="absolute right-0 mt-2 w-[90vw] sm:w-[480px] max-h-[80vh] bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 flex flex-col"
-                                >
-                                    <div className="p-0 h-full overflow-y-auto custom-scrollbar">
-                                        <BandejaEntrada modoCompacto={true} />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
 
                         <div className="relative" ref={menuRef}>
                             <button

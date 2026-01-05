@@ -111,7 +111,7 @@ const Tienda = () => {
                     <div className="w-full max-w-3xl animate-fade-in-up delay-100">
                         <div className="bg-white/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-white/50 flex flex-col md:flex-row gap-2">
                             {/* Selector de Sede */}
-                            <div id="sede-selector" className="relative flex-1 group">
+                            <div id="sede-selector" className="relative flex-[1.4] group">
                                 <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-100">
                                     <MapPin size={18} />
                                 </div>
@@ -133,7 +133,23 @@ const Tienda = () => {
 
                             <div className="h-px md:y-auto md:w-px bg-gray-200/50 mx-2" />
 
-                            {/* Selector de Fecha Custom */}
+                            {/* Input Busqueda - Ahora en el Centro */}
+                            <div id="search-bar" className="relative flex-[1.6] group min-w-[200px]">
+                                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full bg-gray-50 text-gray-500 transition-colors group-focus-within:bg-blue-50 group-focus-within:text-blue-600">
+                                    <Search size={18} />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder={t('home.search_placeholder')}
+                                    className="w-full h-full pl-14 pr-4 py-4 rounded-xl bg-transparent border-none outline-none text-gray-900 font-medium placeholder-gray-400 hover:bg-white/50 focus:bg-white/80 transition-all"
+                                    value={busqueda}
+                                    onChange={(e) => setBusqueda(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="h-px md:y-auto md:w-px bg-gray-200/50 mx-2" />
+
+                            {/* Selector de Fecha Custom - Ahora al Final */}
                             <div
                                 id="date-selector"
                                 className="relative flex-1 group min-w-[160px] cursor-pointer hover:bg-white/50 transition-colors rounded-xl h-14 w-full block"
@@ -162,27 +178,6 @@ const Tienda = () => {
                                     className="opacity-0 absolute inset-0 w-full h-full pointer-events-none"
                                 />
                             </div>
-
-                            <div className="h-px md:y-auto md:w-px bg-gray-200/50 mx-2" />
-
-                            {/* Input Busqueda */}
-                            <div id="search-bar" className="relative flex-[1.5] group min-w-[200px]">
-                                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full bg-gray-50 text-gray-500 transition-colors group-focus-within:bg-blue-50 group-focus-within:text-blue-600">
-                                    <Search size={18} />
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder={t('home.search_placeholder')}
-                                    className="w-full h-full pl-14 pr-4 py-4 rounded-xl bg-transparent border-none outline-none text-gray-900 font-medium placeholder-gray-400 hover:bg-white/50 focus:bg-white/80 transition-all"
-                                    value={busqueda}
-                                    onChange={(e) => setBusqueda(e.target.value)}
-                                />
-                            </div>
-
-                            <button id="explore-btn" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl font-bold transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2">
-                                <span>{t('home.explore_btn')}</span>
-                                <ArrowRight size={18} />
-                            </button>
                         </div>
                     </div>
                 </div>

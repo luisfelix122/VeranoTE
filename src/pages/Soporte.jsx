@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { Phone, Shield, FileText, AlertTriangle, LifeBuoy, ChevronDown, ChevronUp, Mail, Info, Search } from 'lucide-react';
+import { Phone, Shield, FileText, AlertTriangle, LifeBuoy, ChevronDown, ChevronUp, Info, Search, Smartphone } from 'lucide-react';
 import Boton from '../components/ui/Boton';
 import { ContextoSoporte } from '../contexts/ContextoSoporte';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
@@ -8,15 +8,9 @@ import { obtenerGuiasSeguridad } from '../services/db';
 
 const Soporte = () => {
     const [seccionActiva, setSeccionActiva] = useState('contacto'); // 'contacto', 'seguridad', 'emergencia'
-    const { crearTicket } = useContext(ContextoSoporte);
     const { usuario } = useContext(ContextoAutenticacion);
     const { sedes } = useContext(ContextoInventario);
 
-    const [formulario, setFormulario] = useState({
-        asunto: 'Reporte de Incidente',
-        mensaje: '',
-        sede: ''
-    });
 
     const [guiasSeguridad, setGuiasSeguridad] = useState([]);
     const [cargandoGuias, setCargandoGuias] = useState(true);
@@ -31,32 +25,12 @@ const Soporte = () => {
         cargarGuias();
     }, []);
 
-    // Pre-seleccionar primera sede
+    // Limpiar búsqueda al cambiar de pestaña
     useEffect(() => {
-        if (sedes && sedes.length > 0 && !formulario.sede) {
-            setFormulario(prev => ({ ...prev, sede: sedes[0].nombre }));
-        }
-    }, [sedes]);
+        setBusqueda('');
+    }, [seccionActiva]);
 
-    const manejarEnvio = (e) => {
-        e.preventDefault();
-
-        // Etiquetar asunto con la Sede
-        const asuntoConSede = `[Sede: ${formulario.sede || 'General'}] ${formulario.asunto}`;
-
-        crearTicket({
-            asunto: asuntoConSede,
-            mensaje: formulario.mensaje,
-            remitente: {
-                id: usuario?.id,
-                nombre: usuario?.nombre || 'Usuario',
-                rol: usuario?.rol || 'cliente'
-            },
-            destinatario: { rol: 'admin' }
-        });
-        alert('Mensaje enviado. Nos contactaremos contigo a la brevedad.');
-        setFormulario(prev => ({ ...prev, asunto: 'Reporte de Incidente', mensaje: '' }));
-    };
+    // Pre-seleccionar primera sede
 
     return (
         <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
@@ -71,7 +45,7 @@ const Soporte = () => {
                     onClick={() => setSeccionActiva('contacto')}
                     className={`px-6 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${seccionActiva === 'contacto' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                 >
-                    <Mail size={18} />
+                    <Phone size={18} />
                     Contacto y Soporte
                 </button>
                 <button
@@ -93,54 +67,95 @@ const Soporte = () => {
             {/* Contenido de Pestañas */}
             <div className="min-h-[400px]">
                 {seccionActiva === 'contacto' && (
-                    <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 max-w-2xl mx-auto animate-in fade-in zoom-in duration-300">
-                        <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-gray-800">
-                            <Phone className="text-blue-600" />
-                            Envíanos un Mensaje
-                        </h2>
-                        <form className="space-y-5" onSubmit={manejarEnvio}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Sede / Zona</label>
-                                    <select
-                                        className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        value={formulario.sede}
-                                        onChange={(e) => setFormulario({ ...formulario, sede: e.target.value })}
-                                    >
-                                        {sedes.map(s => (
-                                            <option key={s.id} value={s.nombre}>{s.nombre}</option>
-                                        ))}
-                                        <option value="General">Otra / General</option>
-                                    </select>
+                    <div className="space-y-8 animate-in fade-in zoom-in duration-300">
+                        {/* Nueva Sección de WhatsApp */}
+                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-100 shadow-sm">
+                            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-emerald-900">
+                                <Smartphone className="text-emerald-600" />
+                                Contacto Directo por WhatsApp
+                            </h2>
+                            <p className="text-sm text-emerald-700 mb-6">
+                                ¿Necesitas una respuesta inmediata? Comunícate con nuestros coordinadores de zona.
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Sede Costa */}
+                                <div className="bg-white/60 backdrop-blur-sm p-5 rounded-xl border border-emerald-100 shadow-sm">
+                                    <h3 className="font-bold text-gray-900 flex items-center gap-2 mb-4 border-b pb-2 border-emerald-100">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                        Sede Costa
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Administrador</p>
+                                                <p className="text-sm font-medium text-gray-700">+51 999 111 222</p>
+                                            </div>
+                                            <a
+                                                href="https://wa.me/51999111222?text=Hola,%20necesito%20asistencia%20en%20Sede%20Costa"
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
+                                            >
+                                                <Smartphone size={18} />
+                                            </a>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Vendedores</p>
+                                                <p className="text-sm font-medium text-gray-700">+51 999 222 111</p>
+                                            </div>
+                                            <a
+                                                href="https://wa.me/51999222111?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20alquiler%20en%20Costa"
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
+                                            >
+                                                <Smartphone size={18} />
+                                            </a>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Asunto</label>
-                                    <select
-                                        className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        value={formulario.asunto}
-                                        onChange={(e) => setFormulario({ ...formulario, asunto: e.target.value })}
-                                    >
-                                        <option>Reporte de Incidente</option>
-                                        <option>Problema con Reserva</option>
-                                        <option>Consulta General</option>
-                                        <option>Sugerencia</option>
-                                    </select>
+
+                                {/* Sede Sierra / Rural */}
+                                <div className="bg-white/60 backdrop-blur-sm p-5 rounded-xl border border-emerald-100 shadow-sm">
+                                    <h3 className="font-bold text-gray-900 flex items-center gap-2 mb-4 border-b pb-2 border-emerald-100">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                        Sede Sierra / Rural
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Administrador</p>
+                                                <p className="text-sm font-medium text-gray-700">+51 999 111 333</p>
+                                            </div>
+                                            <a
+                                                href="https://wa.me/51999111333?text=Hola,%20necesito%20asistencia%20en%20Sede%20Sierra"
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
+                                            >
+                                                <Smartphone size={18} />
+                                            </a>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Vendedores</p>
+                                                <p className="text-sm font-medium text-gray-700">+51 999 222 333</p>
+                                            </div>
+                                            <a
+                                                href="https://wa.me/51999222333?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20alquiler%20en%20Sierra"
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
+                                            >
+                                                <Smartphone size={18} />
+                                            </a>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Mensaje</label>
-                                <textarea
-                                    className="w-full p-3 border border-gray-200 rounded-lg text-sm h-32 resize-none focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                    placeholder="Describe detalladamente tu consulta o situación..."
-                                    required
-                                    value={formulario.mensaje}
-                                    onChange={(e) => setFormulario({ ...formulario, mensaje: e.target.value })}
-                                ></textarea>
-                            </div>
-                            <div className="flex justify-end">
-                                <Boton type="submit" className="w-full sm:w-auto">Enviar Mensaje</Boton>
-                            </div>
-                        </form>
+                        </div>
                     </div>
                 )}
 

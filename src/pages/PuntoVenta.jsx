@@ -35,6 +35,7 @@ const PuntoVenta = () => {
     const [productoAAnadir, setProductoAAnadir] = useState(null);
     const [configuracionAlquiler, setConfiguracionAlquiler] = useState({
         horas: 1,
+        cantidad: 1, // Nuevo campo
         fechaInicio: new Date().toISOString().slice(0, 16), // Formato datetime-local
         tipoReserva: 'inmediata' // 'inmediata' | 'anticipada'
     });
@@ -241,6 +242,7 @@ const PuntoVenta = () => {
         setProductoAAnadir(producto);
         setConfiguracionAlquiler({
             horas: 1,
+            cantidad: 1,
             fechaInicio: new Date().toISOString().slice(0, 16),
             tipoReserva: 'inmediata'
         });
@@ -250,6 +252,7 @@ const PuntoVenta = () => {
         if (!productoAAnadir) return;
 
         const inicio = configuracionAlquiler.tipoReserva === 'inmediata' ? new Date() : new Date(configuracionAlquiler.fechaInicio);
+        const cantidadAlquiler = Number(configuracionAlquiler.cantidad);
         const fin = new Date(inicio.getTime() + (Number(configuracionAlquiler.horas) * 60 * 60 * 1000));
 
         // 🟢 VALIDACIÓN DE HORARIO DE CIERRE
@@ -269,7 +272,7 @@ const PuntoVenta = () => {
 
         const nuevoItem = {
             ...productoAAnadir,
-            cantidad: 1,
+            cantidad: cantidadAlquiler,
             horas: Number(configuracionAlquiler.horas),
             fechaInicio: inicio,
             tipoReserva: configuracionAlquiler.tipoReserva
@@ -517,29 +520,31 @@ const PuntoVenta = () => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto min-h-0">
-                    <div className="border-t border-b py-2 space-y-2">
-                        {carritoVenta.length === 0 ? (
-                            <p className="text-center text-gray-400 text-sm py-4">Carrito vacío</p>
-                        ) : (
-                            carritoVenta.map(item => (
-                                <div key={item.idTemp} className="flex justify-between text-sm pb-2 border-b border-dashed last:border-0 p-2">
-                                    <div>
-                                        <p className="font-medium">{item.nombre}</p>
-                                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                                            <Clock size={10} /> {item.horas}h x S/ {item.precioPorHora}
-                                        </p>
-                                        <p className="text-xs text-gray-400">Inicio: {new Date(item.fechaInicio).toLocaleString()}</p>
-                                    </div>
-                                    <div className="text-right flex flex-col items-end justify-between">
-                                        <p className="font-bold">S/ {(item.precioPorHora * item.horas * item.cantidad).toFixed(2)}</p>
-                                        <button onClick={() => setCarritoVenta(prev => prev.filter(p => p.idTemp !== item.idTemp))} className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1">
-                                            <X size={12} /> Quitar
-                                        </button>
-                                    </div>
+                    {carritoVenta.length === 0 ? (
+                        <p className="text-center text-gray-400 text-sm py-8 italic bg-gray-50 rounded-lg">
+                            Carrito vacío
+                        </p>
+                    ) : (
+                        carritoVenta.map(item => (
+                            <div key={item.idTemp} className="flex justify-between text-sm pb-2 border-b border-dashed last:border-0 p-2 hover:bg-gray-50 transition-colors">
+                                <div>
+                                    <p className="font-medium">
+                                        {item.cantidad > 1 && <span className="text-blue-600 font-bold mr-1">{item.cantidad}x</span>}
+                                        {item.nombre}
+                                    </p>
+                                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                                        <Clock size={10} /> {item.horas}h x S/ {item.precioPorHora}
+                                    </p>
+                                    <p className="text-[10px] text-gray-400 font-mono mt-1">S/ {(item.precioPorHora * item.horas * item.cantidad).toFixed(2)}</p>
                                 </div>
-                            ))
-                        )}
-                    </div>
+                                <div className="text-right flex flex-col items-end justify-between">
+                                    <button onClick={() => setCarritoVenta(prev => prev.filter(p => p.idTemp !== item.idTemp))} className="text-red-500 hover:text-red-700 text-[10px] flex items-center gap-1 bg-red-50 px-2 py-0.5 rounded border border-red-100">
+                                        <X size={10} /> Quitar
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )}
 
                     <div className="flex-shrink-0 pt-4 space-y-2 px-2 pb-4">
                         <div className="flex justify-between items-center text-sm text-gray-600">
@@ -656,24 +661,67 @@ const PuntoVenta = () => {
                             />
                             {configuracionAlquiler.tipoReserva === 'inmediata' && <p className="text-xs text-green-600 mt-1">Se registrará con fecha actual</p>}
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Duración (Horas)</label>
-                            <input
-                                type="number"
-                                min="1"
-                                className="w-full p-2 border rounded-lg"
-                                value={configuracionAlquiler.horas}
-                                onChange={e => setConfiguracionAlquiler({ ...configuracionAlquiler, horas: e.target.value })}
-                            />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Duración (Horas)</label>
+                                <div className="flex items-center border rounded-lg overflow-hidden">
+                                    <button
+                                        onClick={() => setConfiguracionAlquiler(prev => ({ ...prev, horas: Math.max(1, prev.horas - 1) }))}
+                                        className="px-3 py-2 bg-gray-50 hover:bg-gray-100"
+                                    >
+                                        -
+                                    </button>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        className="w-full text-center border-x py-2 focus:outline-none"
+                                        value={configuracionAlquiler.horas}
+                                        onChange={e => setConfiguracionAlquiler({ ...configuracionAlquiler, horas: Math.max(1, parseInt(e.target.value) || 1) })}
+                                    />
+                                    <button
+                                        onClick={() => setConfiguracionAlquiler(prev => ({ ...prev, horas: Number(prev.horas) + 1 }))}
+                                        className="px-3 py-2 bg-gray-50 hover:bg-gray-100"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad de Items</label>
+                                <div className="flex items-center border rounded-lg overflow-hidden">
+                                    <button
+                                        onClick={() => setConfiguracionAlquiler(prev => ({ ...prev, cantidad: Math.max(1, prev.cantidad - 1) }))}
+                                        className="px-3 py-2 bg-gray-50 hover:bg-gray-100"
+                                    >
+                                        -
+                                    </button>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max={productoAAnadir?.stock}
+                                        className="w-full text-center border-x py-2 focus:outline-none"
+                                        value={configuracionAlquiler.cantidad}
+                                        onChange={e => setConfiguracionAlquiler({ ...configuracionAlquiler, cantidad: Math.min(productoAAnadir?.stock || 1, Math.max(1, parseInt(e.target.value) || 1)) })}
+                                    />
+                                    <button
+                                        onClick={() => setConfiguracionAlquiler(prev => ({ ...prev, cantidad: Math.min(productoAAnadir?.stock || 1, Number(prev.cantidad) + 1) }))}
+                                        className="px-3 py-2 bg-gray-50 hover:bg-gray-100"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-gray-500 mt-1 text-center">Disponible: {productoAAnadir?.stock}</p>
+                            </div>
                         </div>
+
                         <div className="bg-blue-50 p-3 rounded-lg">
                             <p className="text-sm text-blue-800 flex justify-between">
-                                <span>Precio por hora:</span>
+                                <span>Precio por hora x unidad:</span>
                                 <span className="font-bold">S/ {productoAAnadir?.precioPorHora}</span>
                             </p>
-                            <p className="text-sm text-blue-800 flex justify-between mt-1">
-                                <span>Total Estimado:</span>
-                                <span className="font-bold">S/ {(productoAAnadir?.precioPorHora * configuracionAlquiler.horas).toFixed(2)}</span>
+                            <p className="text-sm text-blue-800 flex justify-between mt-1 items-center">
+                                <span>Total Estimado ({configuracionAlquiler.cantidad} items x {configuracionAlquiler.horas}h):</span>
+                                <span className="text-lg font-black">S/ {(productoAAnadir?.precioPorHora * configuracionAlquiler.horas * configuracionAlquiler.cantidad).toFixed(2)}</span>
                             </p>
                         </div>
                         {/* Mensaje de Error de Horario */}
