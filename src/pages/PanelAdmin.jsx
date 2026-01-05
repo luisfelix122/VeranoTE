@@ -1,15 +1,21 @@
 import React, { useContext, useState } from 'react';
-import { Plus, Trash2, Edit } from 'lucide-react';
+import { Plus, Trash2, Edit, RefreshCw, XCircle, Search } from 'lucide-react';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import Boton from '../components/ui/Boton';
 import Modal from '../components/ui/Modal';
 
 const PanelAdmin = () => {
-    const { inventario, agregarProducto, editarProducto, eliminarProducto } = useContext(ContextoInventario);
+    const { inventario, agregarProducto, editarProducto, eliminarProducto, reactivarProducto } = useContext(ContextoInventario);
     const [mostarFormulario, setMostrarFormulario] = useState(false);
     const [modoEdicion, setModoEdicion] = useState(false);
     const [idEdicion, setIdEdicion] = useState(null);
     const [nuevoProducto, setNuevoProducto] = useState({ nombre: '', categoria: '', precioPorHora: '', stock: '', imagen: '' });
+    const [busqueda, setBusqueda] = useState('');
+
+    const inventarioFiltrado = inventario.filter(prod =>
+        prod.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+        prod.categoria.toLowerCase().includes(busqueda.toLowerCase())
+    );
 
     const manejarSubmit = (e) => {
         e.preventDefault();
@@ -45,9 +51,21 @@ const PanelAdmin = () => {
     return (
         <div className="space-y-8 px-4 sm:px-6 lg:px-8">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                    <h2 className="text-lg font-bold text-gray-900">Inventario</h2>
-                    <Boton onClick={() => setMostrarFormulario(true)} variante="primario"><Plus size={18} /> Nuevo Producto</Boton>
+                <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+                        <h2 className="text-lg font-bold text-gray-900 border-r pr-4 border-gray-200">Inventario</h2>
+                        <div className="relative w-full sm:w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Buscar equipo o categoría..."
+                                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm shadow-black/5"
+                                value={busqueda}
+                                onChange={(e) => setBusqueda(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <Boton onClick={() => setMostrarFormulario(true)} variante="primario" className="w-full sm:w-auto shadow-lg shadow-blue-500/20"><Plus size={18} /> Nuevo Producto</Boton>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
@@ -61,19 +79,62 @@ const PanelAdmin = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {inventario.map(prod => (
-                                <tr key={prod.id} className="hover:bg-gray-50">
-                                    <td className="p-4 font-medium">{prod.nombre}</td>
-                                    <td className="p-4 text-sm text-gray-600">{prod.categoria}</td>
-                                    <td className="p-4">S/ {prod.precioPorHora}</td>
-                                    <td className="p-4">{prod.stock}</td>
-                                    <td className="p-4 flex gap-2">
-                                        <button onClick={() => cargarDatosEdicion(prod)} className="text-blue-500 hover:text-blue-700">
-                                            <Edit size={18} />
-                                        </button>
-                                        <button onClick={() => eliminarProducto(prod.id)} className="text-red-500 hover:text-red-700">
-                                            <Trash2 size={18} />
-                                        </button>
+                            {inventarioFiltrado.map(prod => (
+                                <tr key={prod.id} className={`transition-all ${prod.activo === false ? 'bg-gray-50/50 opacity-60 grayscale-[0.5]' : 'hover:bg-gray-50'}`}>
+                                    <td className="p-4 font-medium flex items-center gap-3">
+                                        <div className="relative">
+                                            <img src={prod.imagen} alt="" className="w-10 h-10 rounded-lg object-cover shadow-sm" />
+                                            {prod.activo === false && (
+                                                <div className="absolute -top-1 -right-1 bg-gray-500 text-white rounded-full p-0.5 shadow-sm">
+                                                    <XCircle size={10} />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span>{prod.nombre}</span>
+                                            {prod.activo === false && <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Deshabilitado</span>}
+                                        </div>
+                                    </td>
+                                    <td className="p-4">
+                                        <span className="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold uppercase tracking-tight">
+                                            {prod.categoria}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 font-semibold text-gray-700">S/ {prod.precioPorHora}</td>
+                                    <td className="p-4">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-gray-900">{prod.stock}</span>
+                                            <span className="text-[10px] text-gray-400">unidades</span>
+                                        </div>
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="flex gap-1.5">
+                                            <button
+                                                onClick={() => cargarDatosEdicion(prod)}
+                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                                title="Editar"
+                                            >
+                                                <Edit size={18} />
+                                            </button>
+
+                                            {prod.activo === false ? (
+                                                <button
+                                                    onClick={() => reactivarProducto(prod.id)}
+                                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors group"
+                                                    title="Reactivar Producto"
+                                                >
+                                                    <RefreshCw size={18} className="group-active:rotate-180 transition-transform duration-500" />
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => eliminarProducto(prod.id)}
+                                                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Deshabilitar"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

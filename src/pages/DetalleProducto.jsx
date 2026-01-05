@@ -75,9 +75,9 @@ const DetalleProducto = () => {
                                         {stockDisponible > 0 ? `${stockDisponible} unidades` : 'Agotado temporalmente'}
                                     </span>
                                 </div>
-                                {detalleDisponibilidad.proximosLiberados?.length > 0 && (
+                                {stockDisponible === 0 && detalleDisponibilidad.proximosLiberados?.length > 0 && (
                                     <div className="mt-2 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                                        <p className="text-sm font-semibold text-blue-800 mb-1">Próximas liberaciones:</p>
+                                        <p className="text-sm font-semibold text-blue-800 mb-1">Próximos disponibles:</p>
                                         <ul className="text-sm text-blue-700 space-y-1">
                                             {detalleDisponibilidad.proximosLiberados.slice(0, 3).map((l, idx) => (
                                                 <li key={idx}>• +{l.cantidad} unidad(es) a las {formatearHora(l)}</li>

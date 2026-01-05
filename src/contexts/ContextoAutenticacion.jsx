@@ -114,9 +114,22 @@ export const ProveedorAutenticacion = ({ children }) => {
         actualizarUsuarioDB(id, { rol: nuevoRol, sede_id: sede });
     };
 
-    const eliminarUsuario = (id) => {
-        setUsuarios(prev => prev.filter(u => u.id !== id));
-        // Implementar eliminar en DB si es necesario
+    const eliminarUsuario = async (id) => {
+        const { eliminarUsuarioDB } = await import('../services/db');
+        const resultado = await eliminarUsuarioDB(id);
+
+        if (resultado.success) {
+            setUsuarios(prev => prev.filter(u => u.id !== id));
+            if (resultado.tipo === 'soft') {
+                alert("🗑️ El usuario tenía historial, así que se ha desactivado (Borrado Lógico) para mantener la integridad.");
+            } else {
+                alert("🗑️ Usuario eliminado permanentemente.");
+            }
+            return true;
+        } else {
+            alert("⚠️ Error al eliminar: " + (resultado.error || "Desconocido"));
+            return false;
+        }
     };
 
     const actualizarPasswordWrapper = async (id, actual, nueva) => {

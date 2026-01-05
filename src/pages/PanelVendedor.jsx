@@ -1,12 +1,13 @@
 import React, { useContext } from 'react';
-import { Truck, ClipboardList } from 'lucide-react';
+import { Truck, CheckCircle, AlertTriangle, Clock, Play, RotateCcw, ClipboardList, DollarSign, Printer } from 'lucide-react';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import { formatearFecha } from '../utils/formatters';
+import { generarComprobantePenalidad } from '../utils/pdfGenerator';
 import Boton from '../components/ui/Boton';
 
 const PanelVendedor = () => {
-    const { alquileres, entregarAlquiler, devolverAlquiler, aprobarParaEntrega, solicitarPreparacion, sedeActual } = useContext(ContextoInventario);
+    const { alquileres, entregarAlquiler, devolverAlquiler: devolverAlquilerContext, aprobarParaEntrega, solicitarPreparacion, anularAlquiler, sedeActual } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
 
     // Filtrar por ID de vendedor (del usuario logueado) O por Sede (si al vendedor no se le asignó pero está en la misma sede)
@@ -58,17 +59,29 @@ const PanelVendedor = () => {
         }
     };
 
+    // Función para manejar la devolución de un alquiler
+    const devolverAlquiler = async (id, vendedorId, devolverGarantia) => {
+        if (!window.confirm("¿Confirmar recepción del equipo?")) return;
+
+        await devolverAlquilerContext(id, vendedorId, devolverGarantia);
+
+        // Si NO se devuelve la garantía, generamos el comprobante de penalidad
+        if (!devolverGarantia) {
+            const alquiler = enUso.find(a => a.id === id);
+            if (alquiler && alquiler.garantia > 0) {
+                if (window.confirm("Has retenido la garantía. ¿Deseas imprimir el Comprobante de Penalidad/Retención?")) {
+                    generarComprobantePenalidad(alquiler, alquiler.garantia, "Retención por daños o incumplimiento (Decisión Vendedor)");
+                }
+            }
+        }
+    };
+
+
     return (
         <div className="space-y-8 px-4 sm:px-6 lg:px-8">
             <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-teal-500">
                 Dashboard Vendedor
             </h1>
-
-            {/* DEBUG SECTION - REMOVE AFTER FIXING */}
-            {/* <details className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-xs font-mono overflow-auto max-h-60">
-                <summary className="cursor-pointer font-bold text-yellow-700">DEBUG INFO (Click para ver por qué no salen datos)</summary>
-                <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-            </details> */}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Próximas Entregas */}
@@ -101,18 +114,27 @@ const PanelVendedor = () => {
                                     </div>
                                     <div className="flex flex-col gap-1 items-end">
                                         {esListo ? (
-                                            <Boton variante="primario" onClick={() => entregarAlquiler(a.id, usuario?.id)}>Entregar Cliente</Boton>
+                                            <div className="flex gap-2">
+                                                <Boton variante="primario" onClick={() => entregarAlquiler(a.id, usuario?.id)}>Entregar Cliente</Boton>
+                                                <Boton variante="peligro" className="px-2" onClick={() => anularAlquiler(a.id)}>Anular</Boton>
+                                            </div>
                                         ) : esPreparacion ? (
-                                            <span className="text-xs text-gray-400 italic text-center">Esperando Mecánico...</span>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <span className="text-xs text-gray-400 italic text-center">Esperando Mecánico...</span>
+                                                <Boton variante="fantasma" className="text-[10px] text-red-500 py-0" onClick={() => anularAlquiler(a.id)}>Cancelar Reserva</Boton>
+                                            </div>
                                         ) : (
-                                            <Boton
-                                                variante={debePlata ? 'deshabilitado' : 'secundario'}
-                                                className={debePlata ? 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500' : ''}
-                                                disabled={debePlata}
-                                                onClick={() => !debePlata && handleSolicitarPreparacion(a.id)}
-                                            >
-                                                Solicitar Revisión
-                                            </Boton>
+                                            <div className="flex gap-2">
+                                                <Boton
+                                                    variante={debePlata ? 'deshabilitado' : 'secundario'}
+                                                    className={debePlata ? 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500' : ''}
+                                                    disabled={debePlata}
+                                                    onClick={() => !debePlata && handleSolicitarPreparacion(a.id)}
+                                                >
+                                                    Solicitar Revisión
+                                                </Boton>
+                                                <Boton variante="fantasma" className="text-[10px] text-red-500" onClick={() => anularAlquiler(a.id)}>Anular</Boton>
+                                            </div>
                                         )}
                                         {debePlata && !esListo && !esPreparacion && (
                                             <span className="text-[10px] text-red-600 font-medium">Cobrar antes de solicitar</span>
@@ -133,7 +155,24 @@ const PanelVendedor = () => {
                                         <p className="font-bold text-gray-900">{a.cliente}</p>
                                         <p className="text-sm text-gray-600">Entrega: {formatearFecha(a.fechaEntrega)}</p>
                                     </div>
-                                    <Boton variante="secundario" onClick={() => devolverAlquiler(a.id, usuario?.id)}>Recibir</Boton>
+                                    <div className="flex flex-col items-end gap-2">
+                                        <div className="flex flex-wrap justify-end gap-2">
+                                            <Boton
+                                                variante="exito"
+                                                onClick={() => devolverAlquiler(a.id, usuario?.id, true)}
+                                                className="text-xs py-1.5"
+                                            >
+                                                ✅ Todo Conforme: Devolver S/ {Number(a.garantia || 0).toFixed(2)}
+                                            </Boton>
+                                            <Boton
+                                                variante="peligro"
+                                                onClick={() => devolverAlquiler(a.id, usuario?.id, false)}
+                                                className="text-xs py-1.5"
+                                            >
+                                                ⚠️ Retener Garantía: S/ {Number(a.garantia || 0).toFixed(2)}
+                                            </Boton>
+                                        </div>
+                                    </div>
                                 </div>
                                 {/* Detalle de items para devoluciones */}
                                 <div className="text-sm text-gray-600 mt-2 border-t pt-2">
@@ -143,6 +182,9 @@ const PanelVendedor = () => {
                                             <span>{i.horas}h</span>
                                         </div>
                                     ))}
+                                    <p className="text-[10px] text-gray-400 mt-1 italic">
+                                        * La retención de garantía se registra como ingreso extra por daños o multas.
+                                    </p>
                                 </div>
                             </div>
                         ))}

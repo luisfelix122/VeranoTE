@@ -36,17 +36,18 @@ const Tienda = () => {
         }
     }, [usuario, navigate]);
 
-    const categorias = ['Todas', ...new Set(inventario.map(p => p.categoria)), 'Agotados'];
+    const categorias = ['Todas', ...new Set(inventario.map(p => p.categoria))];
 
     // Map inventory - Ya viene con stock real del backend
     const inventarioConStock = inventario;
 
     const filtrados = inventarioConStock.filter(p => {
         const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
+        const esActivo = p.activo !== false;
 
-        if (categoria === 'Agotados') {
-            return coincideBusqueda && p.stock <= 0;
-        } else if (categoria === 'Todas') {
+        if (!esActivo) return false;
+
+        if (categoria === 'Todas') {
             return coincideBusqueda;
         } else {
             return coincideBusqueda && p.categoria === categoria;
@@ -193,20 +194,12 @@ const Tienda = () => {
                 <div className="flex flex-col items-center -mt-10 mb-12">
                     <div className="flex overflow-x-auto gap-3 max-w-full no-scrollbar p-2 bg-white/50 backdrop-blur-md rounded-full border border-white/60 shadow-lg">
                         {categorias.map(cat => {
-                            const esAgotado = cat === 'Agotados';
                             const seleccionado = categoria === cat;
 
-                            let clase = "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all transform hover:scale-105 ";
-
-                            if (esAgotado) {
-                                clase += seleccionado
-                                    ? 'bg-red-500 text-white shadow-md'
-                                    : 'bg-transparent text-red-500 hover:bg-red-50 hover:shadow-sm';
-                            } else {
-                                clase += seleccionado
+                            let clase = "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all transform hover:scale-105 " +
+                                (seleccionado
                                     ? 'bg-gray-900 text-white shadow-md'
-                                    : 'bg-transparent text-gray-600 hover:bg-white hover:shadow-sm';
-                            }
+                                    : 'bg-transparent text-gray-600 hover:bg-white hover:shadow-sm');
 
                             return (
                                 <button
@@ -214,7 +207,7 @@ const Tienda = () => {
                                     onClick={() => setCategoria(cat)}
                                     className={clase}
                                 >
-                                    {esAgotado ? 'Agotados' : t(`categories.${cat}`, cat)}
+                                    {t(`categories.${cat}`, cat)}
                                 </button>
                             );
                         })}

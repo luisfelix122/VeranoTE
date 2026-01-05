@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
 import {
-    obtenerRecursos, obtenerSedes, obtenerHorarios, obtenerContenidoWeb, obtenerConfiguracion,
+    obtenerRecursos, obtenerCategorias, obtenerSedes, obtenerHorarios, obtenerContenidoWeb, obtenerConfiguracion,
     crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB,
     gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
     aplicarDescuentoManualDB, registrarPagoSaldoDB, registrarUsuarioDB, aprobarReservaDB,
@@ -18,11 +18,15 @@ export const ProveedorInventario = ({ children }) => {
     const [inventario, setInventario] = useState([]);
     const [alquileres, setAlquileres] = useState([]);
     const [sedes, setSedes] = useState([]);
+    const [categorias, setCategorias] = useState([]);
     const [horarios, setHorarios] = useState([]);
     const [contenido, setContenido] = useState({});
     const [configuracion, setConfiguracion] = useState({});
     const [sedeActual, setSedeActual] = useState('costa'); // Default ID
-    const [fechaSeleccionada, setFechaSeleccionada] = useState(new Date().toISOString().split('T')[0]); // Global Date
+    // Fix: Usar fecha LOCAL, no UTC (para evitar salto de día en la noche)
+    const fechaLocal = new Date();
+    fechaLocal.setMinutes(fechaLocal.getMinutes() - fechaLocal.getTimezoneOffset());
+    const [fechaSeleccionada, setFechaSeleccionada] = useState(fechaLocal.toISOString().split('T')[0]);
 
     // Helper: Validar rango de fechas
     const hayCruce = (inicio1, fin1, inicio2, fin2) => {
@@ -54,8 +58,9 @@ export const ProveedorInventario = ({ children }) => {
     // Cargar datos iniciales
     const recargarDatos = async () => {
         try {
-            const [recursosData, sedesData, alquileresData, horariosData, contenidoData, configData] = await Promise.all([
+            const [recursosData, categoriasData, sedesData, alquileresData, horariosData, contenidoData, configData] = await Promise.all([
                 obtenerRecursos(),
+                obtenerCategorias(),
                 obtenerSedes(),
                 obtenerAlquileres(),
                 obtenerHorarios(),
@@ -92,6 +97,7 @@ export const ProveedorInventario = ({ children }) => {
             }));
 
             setInventario(inventarioConDisponibilidad);
+            setCategorias(categoriasData);
             setSedes(sedesData);
             setHorarios(horariosData);
             setContenido(contenidoData);
@@ -147,6 +153,22 @@ export const ProveedorInventario = ({ children }) => {
                     setTimeout(() => recargarDatos(), 500);
                 }
             )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'recursos' },
+                (payload) => {
+                    console.log('Cambio detectado en recursos (Stock/Activo):', payload);
+                    setTimeout(() => recargarDatos(), 300);
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'mantenimientos' },
+                (payload) => {
+                    console.log('Cambio detectado en mantenimientos:', payload);
+                    setTimeout(() => recargarDatos(), 300);
+                }
+            )
             .subscribe();
 
         return () => {
@@ -156,38 +178,53 @@ export const ProveedorInventario = ({ children }) => {
 
 
 
-    const estaAbierto = (sedeId) => {
+    const estaAbierto = (sedeId, fechaEspecifica = null) => {
         if (!horarios || horarios.length === 0) return { abierto: false, mensaje: 'Horario no disponible' };
 
-        const ahora = new Date();
-        const diaSemana = ahora.getDay(); // 0 = Domingo
-        const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-
+        const fechaEvaluar = fechaEspecifica ? new Date(fechaEspecifica) : new Date();
+        const diaSemana = fechaEvaluar.getDay(); // 0 Domingo - 6 Sabado
         const horarioHoy = horarios.find(h => h.sede_id === sedeId && h.dia_semana === diaSemana);
 
-        if (!horarioHoy || horarioHoy.cerrado) {
-            return { abierto: false, mensaje: 'Cerrado hoy' };
+        if (!horarioHoy || horarioHoy.cerrado) return { abierto: false, mensaje: 'Hoy no atendemos.' };
+
+        // Convertir hora actual/evaluar a minutos desde medianoche
+        const minutosActuales = fechaEvaluar.getHours() * 60 + fechaEvaluar.getMinutes();
+
+        // Convertir horarios de apertura/cierre
+        const [hA, mA] = horarioHoy.hora_apertura.split(':').map(Number);
+        const [hC, mC] = horarioHoy.hora_cierre.split(':').map(Number);
+
+        const minutosApertura = hA * 60 + mA;
+        const minutosCierre = hC * 60 + mC;
+
+        if (minutosActuales < minutosApertura || minutosActuales >= minutosCierre) {
+            return {
+                abierto: false,
+                mensaje: `Horario de atención: ${horarioHoy.hora_apertura.slice(0, 5)} - ${horarioHoy.hora_cierre.slice(0, 5)}`
+            };
         }
 
-        const [hApertura, mApertura] = horarioHoy.hora_apertura.split(':').map(Number);
-        const [hCierre, mCierre] = horarioHoy.hora_cierre.split(':').map(Number);
-
-        const minApertura = hApertura * 60 + mApertura;
-        const minCierre = hCierre * 60 + mCierre;
-
-        if (horaActual >= minApertura && horaActual < minCierre) {
-            return { abierto: true, mensaje: `Abierto hasta las ${horarioHoy.hora_cierre.slice(0, 5)}` };
-        } else {
-            return { abierto: false, mensaje: `Cerrado. Abre a las ${horarioHoy.hora_apertura.slice(0, 5)}` };
-        }
+        return { abierto: true };
     };
+
+
+
 
     // Filtrar inventario por sede
     const inventarioVisible = inventario.filter(item => item.sedeId === sedeActual);
 
-    const agregarProducto = (producto) => {
-        // Implementar si se requiere agregar a DB
-        console.warn("Agregar producto no implementado en DB aún");
+    const agregarProducto = async (producto) => {
+        const { crearRecursoDB } = await import('../services/db');
+        const resultado = await crearRecursoDB({ ...producto, sedeId: sedeActual });
+
+        if (resultado.success) {
+            await recargarDatos();
+            alert("✅ Producto agregado correctamente.");
+            return true;
+        } else {
+            alert("❌ Error al agregar producto: " + (resultado.error?.message || "Error desconocido"));
+            return false;
+        }
     };
 
     const editarProducto = async (id, datos) => {
@@ -208,9 +245,34 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const eliminarProducto = (id) => {
-        // Implementar si se requiere eliminar en DB
-        console.warn("Eliminar producto no implementado en DB aún");
+    const eliminarProducto = async (id) => {
+        const { eliminarRecursoDB } = await import('../services/db');
+        const resultado = await eliminarRecursoDB(id);
+
+        if (resultado.success) {
+            // Ya NO filtramos, ahora solo actualizamos el estado local para que se vea opaco
+            setInventario(prev => prev.map(item => item.id === id ? { ...item, activo: false } : item));
+            await recargarDatos(); // Aseguramos sincronía total
+            alert("🗑️ Recurso desactivado correctamente (Borrado Lógico). Se mantiene en el historial.");
+            return true;
+        } else {
+            alert("⚠️ " + (resultado.error || "Error al eliminar producto"));
+            return false;
+        }
+    };
+
+    const reactivarProducto = async (id) => {
+        const { reactivarRecursoDB } = await import('../services/db');
+        const resultado = await reactivarRecursoDB(id);
+
+        if (resultado.success) {
+            await recargarDatos();
+            alert("✅ Producto reactivado correctamente.");
+            return true;
+        } else {
+            alert("❌ Error al reactivar: " + (resultado.error?.message || "Error desconocido"));
+            return false;
+        }
     };
 
     const actualizarStock = (idProducto, cantidad) => {
@@ -530,8 +592,9 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const devolverAlquiler = async (idAlquiler, vendedorId) => {
-        const resultado = await registrarDevolucionDB(idAlquiler, vendedorId);
+    const devolverAlquiler = async (idAlquiler, vendedorId, devolverGarantia) => {
+        const { registrarDevolucionDB } = await import('../services/db');
+        const resultado = await registrarDevolucionDB(idAlquiler, vendedorId, devolverGarantia);
         if (resultado.success) {
             setAlquileres(prev => prev.map(a => {
                 if (a.id === idAlquiler) {
@@ -546,9 +609,31 @@ export const ProveedorInventario = ({ children }) => {
                 }
                 return a;
             }));
+            await recargarDatos(); // Asegurar consistencia
             return true;
         } else {
             alert(resultado.error || "Error al registrar devolución");
+            return false;
+        }
+    };
+
+    const anularAlquiler = async (idAlquiler) => {
+        if (!window.confirm("¿Estás seguro de anular esta reserva? El stock se liberará inmediatamente.")) return false;
+
+        try {
+            const { error } = await supabase
+                .from('alquileres')
+                .update({ estado_id: 'cancelado' })
+                .eq('id', idAlquiler);
+
+            if (error) throw error;
+
+            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado_id: 'cancelado', estado: 'Cancelado' } : a));
+            await recargarDatos();
+            return true;
+        } catch (err) {
+            console.error("Error al anular:", err);
+            alert("Error: " + err.message);
             return false;
         }
     };
@@ -568,6 +653,7 @@ export const ProveedorInventario = ({ children }) => {
             console.error("Error en solicitarPreparacion:", err);
             alert("Error al solicitar preparación: " + err.message);
             return false;
+
         }
     };
 
@@ -603,6 +689,7 @@ export const ProveedorInventario = ({ children }) => {
             inventarioCompleto: inventario,
             alquileres,
             sedes,
+            categorias,
             horarios,
             sedeActual,
             setSedeActual,
@@ -613,6 +700,7 @@ export const ProveedorInventario = ({ children }) => {
             agregarProducto,
             editarProducto,
             eliminarProducto,
+            reactivarProducto,
             registrarAlquiler,
             aprobarParaEntrega,
             entregarAlquiler,
@@ -624,6 +712,7 @@ export const ProveedorInventario = ({ children }) => {
             reprogramarAlquiler,
             verificarDisponibilidad,
             marcarNoShow,
+            anularAlquiler,
             aplicarDescuentoMantenimiento,
             registrarPagoSaldo,
             estaAbierto,

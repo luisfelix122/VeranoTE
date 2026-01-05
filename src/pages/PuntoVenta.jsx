@@ -1,5 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { CreditCard, UserPlus, Search, X, Clock, Calendar, AlertTriangle } from 'lucide-react'; // Agregado AlertTriangle
+import { Search, UserPlus, ShoppingCart, Trash2, CreditCard, AlertTriangle, Printer, CheckCircle, Clock, X } from 'lucide-react'; // Agregado AlertTriangle y Clock y X
+import { generarComprobante } from '../utils/pdfGenerator';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import Boton from '../components/ui/Boton'; // Se asegura import
@@ -7,7 +8,7 @@ import Modal from '../components/ui/Modal';
 import { supabase } from '../supabase/client'; // Importar supabase directo para RPC si no está en contexto
 
 const PuntoVenta = () => {
-    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva, horarios } = useContext(ContextoInventario); // cotizarReserva usaría la nueva logica
+    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva, horarios, estaAbierto } = useContext(ContextoInventario); // cotizarReserva usaría la nueva logica
     const { usuario } = useContext(ContextoAutenticacion);
     const [carritoVenta, setCarritoVenta] = useState([]);
     const [clienteNombre, setClienteNombre] = useState('');
@@ -16,10 +17,19 @@ const PuntoVenta = () => {
     // Estados para búsqueda de clientes
     const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
     const [mostrandoResultados, setMostrandoResultados] = useState(false);
-    const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', email: '', password: '123', numeroDocumento: '' });
+    const [nuevoCliente, setNuevoCliente] = useState({
+        nombre: '',
+        email: '',
+        password: '', // Se generará automáticamente
+        numeroDocumento: '',
+        pais: 'Perú' // Default
+    });
     const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
     const [modalCrearClienteAbierto, setModalCrearClienteAbierto] = useState(false);
     const [modalTerminosAbierto, setModalTerminosAbierto] = useState(false);
+
+    // Estado para Modal de Éxito (Venta)
+    const [modalExito, setModalExito] = useState({ abierto: false, alquiler: null });
 
     // Estado para modal de configuración de alquiler
     const [productoAAnadir, setProductoAAnadir] = useState(null);
@@ -51,6 +61,26 @@ const PuntoVenta = () => {
     const [aplicandoCupon, setAplicandoCupon] = useState(false);
     const [mensajeCupon, setMensajeCupon] = useState(null);
     const [alertas, setAlertas] = useState([]);
+    const [errorHorario, setErrorHorario] = useState(null); // Nuevo estado para feedback visual
+
+    // useEffect para validar horario en tiempo real
+    useEffect(() => {
+        if (!configuracionAlquiler.fechaInicio || !productoAAnadir) {
+            setErrorHorario(null);
+            return;
+        }
+
+        const fechaEvaluar = configuracionAlquiler.tipoReserva === 'inmediata' ? new Date() : new Date(configuracionAlquiler.fechaInicio);
+        // Validar contra la sede del producto o default costa
+        const estadoApertura = estaAbierto(productoAAnadir.sede_id || 'costa', fechaEvaluar);
+
+        if (!estadoApertura.abierto) {
+            setErrorHorario(estadoApertura.mensaje);
+        } else {
+            setErrorHorario(null);
+        }
+    }, [configuracionAlquiler.fechaInicio, configuracionAlquiler.tipoReserva, productoAAnadir, estaAbierto]);
+
 
     // Efecto para feedback del cupón
     useEffect(() => {
@@ -139,19 +169,68 @@ const PuntoVenta = () => {
     };
 
     const guardarNuevoCliente = async () => {
+        // Validador robusto solicitado
         if (!nuevoCliente.nombre || !nuevoCliente.email || !nuevoCliente.numeroDocumento) {
-            return alert("Complete todos los campos obligatorios");
+            return alert("⚠️ Complete todos los campos obligatorios");
         }
 
-        const res = await registrarCliente(nuevoCliente);
-        if (res.success) {
-            alert("Cliente creado correctamente");
-            setModalCrearClienteAbierto(false);
-            setNuevoCliente({ nombre: '', email: '', password: '123', numeroDocumento: '' });
-            // Auto-seleccionar
-            seleccionarCliente({ ...res.data, nombre: nuevoCliente.nombre }); // Optimista o usar respuesta
+        // Validación Email (@ y .)
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(nuevoCliente.email)) {
+            return alert("⚠️ Ingrese un email válido (debe contener '@' y '.')");
+        }
+
+        // Validación Documento según País
+        if (nuevoCliente.pais === 'Perú') {
+            if (!/^\d{8}$/.test(nuevoCliente.numeroDocumento)) {
+                return alert("⚠️ Para Perú, el DNI debe tener exactamente 8 dígitos numéricos.");
+            }
         } else {
-            alert(res.error?.message || "Error al crear cliente");
+            // Para otros países, validación básica (no vacío ya hecho arriba)
+            if (nuevoCliente.numeroDocumento.length < 3) {
+                return alert("⚠️ El número de documento parece inválido (muy corto).");
+            }
+        }
+
+        // Auto-generar password = DNI
+        const clienteParaGuardar = {
+            ...nuevoCliente,
+            password: nuevoCliente.numeroDocumento,
+            nacionalidad: nuevoCliente.pais, // Mapeo para DB
+            // Si el usuario puso fecha, la usamos. Si no, default 2000-01-01 para desbloquear
+            fecha_nacimiento: nuevoCliente.fechaNacimiento || '2000-01-01',
+            licencia_conducir: nuevoCliente.licenciaConducir || false // Checkbox
+        };
+
+        // delete nuevoCliente.pais; // No borrar del state UI, pero sí cuidar mapping si DB no lo espera (db.js lo maneja o lo ignora, pero 'nacionalidad' es el campo DB)
+
+        const res = await registrarCliente(clienteParaGuardar);
+        if (res.success) {
+            alert(`✅ Cliente creado correctamente.\n🔑 Contraseña temporal: ${clienteParaGuardar.password}`);
+            setModalCrearClienteAbierto(false);
+            setNuevoCliente({
+                nombre: '',
+                email: '',
+                password: '',
+                numeroDocumento: '',
+                pais: 'Perú',
+                fechaNacimiento: '',
+                licenciaConducir: false
+            });
+            // Auto-seleccionar
+            seleccionarCliente({ ...res.data, nombre: clienteParaGuardar.nombre });
+        } else {
+            console.error("Error detallado al crear cliente:", res.error);
+            // Detección específica de duplicados (Error 409 / 23505)
+            const esDuplicado = res.error?.code === '23505' ||
+                res.error?.message?.includes('duplicate') ||
+                res.error?.details?.includes('already exists');
+
+            if (esDuplicado) {
+                alert("⛔ El cliente ya existe.\n\nEl DNI o el Email ya están registrados en el sistema. Por favor búsquelo en la barra de búsqueda.");
+            } else {
+                alert("❌ Error al crear cliente: " + (res.error?.message || res.error?.details || "Error desconocido."));
+            }
         }
     };
 
@@ -205,7 +284,7 @@ const PuntoVenta = () => {
     // const garantiaVenta = totalVenta * 0.20;
     // const totalFinalVenta = totalVenta + garantiaVenta;
 
-    const procesarVenta = () => {
+    const procesarVenta = async () => {
         if (carritoVenta.length === 0) return alert('Carrito vacío');
         if (!clienteSeleccionado) return alert('Por favor seleccione un cliente de la lista o registre uno nuevo.');
         if (!contratoAceptado) return alert('Debe aceptar los Términos y Condiciones del Contrato Digital.');
@@ -235,6 +314,7 @@ const PuntoVenta = () => {
             id: crypto.randomUUID(),
             cliente: clienteNombre,
             clienteId: clienteSeleccionado.id,
+            clienteDni: clienteSeleccionado.numeroDocumento || clienteSeleccionado.numero_documento,
             vendedorId: usuario ? usuario.id : null,
             items: carritoVenta,
             total: totales.totalServicio,
@@ -251,20 +331,18 @@ const PuntoVenta = () => {
             datosFactura: tipoComprobante === 'factura' ? datosFactura : null,
             estado: estadoFinal,
             penalizacion: 0,
-            sedeId: usuario?.sede || 'costa'
+            sede_id: usuario?.sede || 'costa' // Corregido a snake_case para consistencia DB/PDF
         };
 
-        registrarAlquiler(nuevoAlquiler);
+        await registrarAlquiler(nuevoAlquiler);
+
         setCarritoVenta([]);
         setClienteNombre('');
         setDatosFactura({ ruc: '', razonSocial: '', direccion: '' });
         setContratoAceptado(false);
 
-        const mensaje = tieneAnticipada
-            ? `Reserva Anticipada Registrada.\n\nAdelanto (60%): S/ ${adelanto.toFixed(2)}\nSaldo Pendiente: S/ ${saldo.toFixed(2)}`
-            : `Venta Inmediata Registrada.\n\nTotal Cobrado: S/ ${totalPagar.toFixed(2)}`;
-
-        alert(mensaje);
+        // Abrir Modal de Éxito para imprimir
+        setModalExito({ abierto: true, alquiler: nuevoAlquiler, mensaje: tieneAnticipada ? 'Reserva Anticipada' : 'Venta Inmediata' });
     };
 
     const productosFiltrados = inventario.filter(p => {
@@ -598,7 +676,29 @@ const PuntoVenta = () => {
                                 <span className="font-bold">S/ {(productoAAnadir?.precioPorHora * configuracionAlquiler.horas).toFixed(2)}</span>
                             </p>
                         </div>
-                        <Boton className="w-full" onClick={confirmarAgregarProducto}>
+                        {/* Mensaje de Error de Horario */}
+                        {errorHorario && (
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded flex gap-2 items-center text-red-700 animate-pulse">
+                                <span className="text-lg">⛔</span>
+                                <div className="text-xs">
+                                    <p className="font-bold">Fuera de Horario</p>
+                                    <p>{errorHorario}</p>
+                                </div>
+                            </div>
+                        )}
+                        <Boton className={`w-full ${errorHorario ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={async () => {
+                            if (errorHorario) return;
+
+                            const fechaInicio = configuracionAlquiler.tipoReserva === 'inmediata' ? new Date() : new Date(configuracionAlquiler.fechaInicio);
+
+                            // Validar Horario de Atención (Doble check)
+                            const estadoApertura = estaAbierto(productoAAnadir.sede_id || 'costa', fechaInicio);
+                            if (!estadoApertura.abierto) {
+                                return; // Ya se muestra visualmente
+                            }
+
+                            confirmarAgregarProducto();
+                        }}>
                             Agregar al Ticket
                         </Boton>
                     </div>
@@ -607,18 +707,130 @@ const PuntoVenta = () => {
                 {/* Modal Crear Cliente */}
                 <Modal titulo="Registrar Nuevo Cliente" abierto={modalCrearClienteAbierto} alCerrar={() => setModalCrearClienteAbierto(false)}>
                     <div className="space-y-4">
+                        <div className="flex gap-2">
+                            <div className="w-1/3">
+                                <label className="block text-sm font-medium mb-1">País</label>
+                                <select
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={nuevoCliente.pais}
+                                    onChange={e => setNuevoCliente({ ...nuevoCliente, pais: e.target.value, numeroDocumento: '' })} // Clear doc on change
+                                >
+                                    <option value="Perú">Perú</option>
+                                    <option value="Otro">Otro</option>
+                                </select>
+                            </div>
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium mb-1">DNI / Documento</label>
+                                <input
+                                    className="w-full p-2 border rounded"
+                                    placeholder={nuevoCliente.pais === 'Perú' ? '8 dígitos' : 'Pasaporte / ID'}
+                                    value={nuevoCliente.numeroDocumento}
+                                    maxLength={nuevoCliente.pais === 'Perú' ? 8 : 20}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (nuevoCliente.pais === 'Perú') {
+                                            // Solo números para Perú
+                                            if (/^\d*$/.test(val) && val.length <= 8) {
+                                                setNuevoCliente({ ...nuevoCliente, numeroDocumento: val });
+                                            }
+                                        } else {
+                                            setNuevoCliente({ ...nuevoCliente, numeroDocumento: val });
+                                        }
+                                    }}
+                                />
+                            </div>
+                        </div>
+
                         <div>
                             <label className="block text-sm font-medium mb-1">Nombre Completo</label>
-                            <input className="w-full p-2 border rounded" value={nuevoCliente.nombre} onChange={e => setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })} />
+                            <input
+                                className="w-full p-2 border rounded"
+                                value={nuevoCliente.nombre}
+                                onChange={e => setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })}
+                            />
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1">Email</label>
-                            <input type="email" className="w-full p-2 border rounded" value={nuevoCliente.email} onChange={e => setNuevoCliente({ ...nuevoCliente, email: e.target.value })} />
+                            <input
+                                type="email"
+                                className="w-full p-2 border rounded"
+                                placeholder="ejemplo@email.com"
+                                value={nuevoCliente.email}
+                                onChange={e => setNuevoCliente({ ...nuevoCliente, email: e.target.value })}
+                            />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1">DNI / Documento</label>
-                            <input className="w-full p-2 border rounded" value={nuevoCliente.numeroDocumento} onChange={e => setNuevoCliente({ ...nuevoCliente, numeroDocumento: e.target.value })} />
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Fecha Nacimiento</label>
+                                <input
+                                    type="date"
+                                    className="w-full p-2 border rounded"
+                                    value={nuevoCliente.fechaNacimiento || ''}
+                                    onChange={e => {
+                                        const fecha = e.target.value;
+                                        setNuevoCliente({ ...nuevoCliente, fechaNacimiento: fecha });
+
+                                        // Validar edad para licencia
+                                        if (fecha) {
+                                            const hoy = new Date();
+                                            const cumple = new Date(fecha);
+                                            let edad = hoy.getFullYear() - cumple.getFullYear();
+                                            const m = hoy.getMonth() - cumple.getMonth();
+                                            if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) {
+                                                edad--;
+                                            }
+                                            if (edad < 18) {
+                                                setNuevoCliente(prev => ({ ...prev, licenciaConducir: false, fechaNacimiento: fecha }));
+                                            }
+                                        }
+                                    }}
+                                />
+                            </div>
+                            <div className="flex items-end pb-2">
+                                <label className={`flex items-center gap-2 select-none ${(() => {
+                                    if (!nuevoCliente.fechaNacimiento) return 'opacity-50 cursor-not-allowed';
+                                    const hoy = new Date();
+                                    const cumple = new Date(nuevoCliente.fechaNacimiento);
+                                    let edad = hoy.getFullYear() - cumple.getFullYear();
+                                    const m = hoy.getMonth() - cumple.getMonth();
+                                    if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) edad--;
+                                    return edad < 18 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
+                                })()}`}>
+                                    <input
+                                        type="checkbox"
+                                        className="w-5 h-5 text-blue-600 rounded disabled:bg-gray-100"
+                                        checked={nuevoCliente.licenciaConducir || false}
+                                        disabled={(() => {
+                                            if (!nuevoCliente.fechaNacimiento) return true;
+                                            const hoy = new Date();
+                                            const cumple = new Date(nuevoCliente.fechaNacimiento);
+                                            let edad = hoy.getFullYear() - cumple.getFullYear();
+                                            const m = hoy.getMonth() - cumple.getMonth();
+                                            if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) edad--;
+                                            return edad < 18;
+                                        })()}
+                                        onChange={e => setNuevoCliente({ ...nuevoCliente, licenciaConducir: e.target.checked })}
+                                    />
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-medium text-gray-700">Tiene Licencia de Conducir</span>
+                                        {nuevoCliente.fechaNacimiento && (() => {
+                                            const hoy = new Date();
+                                            const cumple = new Date(nuevoCliente.fechaNacimiento);
+                                            let edad = hoy.getFullYear() - cumple.getFullYear();
+                                            const m = hoy.getMonth() - cumple.getMonth();
+                                            if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) edad--;
+                                            return edad < 18;
+                                        })() && <span className="text-[10px] text-red-500 font-bold">⚠️ Solo para mayores de 18 años</span>}
+                                    </div>
+                                </label>
+                            </div>
                         </div>
+
+                        <div className="bg-blue-50 p-2 rounded text-xs text-blue-800">
+                            ℹ️ La contraseña se generará automáticamente usando el número de documento.
+                        </div>
+
                         <Boton className="w-full" onClick={guardarNuevoCliente}>Guardar Cliente</Boton>
                     </div>
                 </Modal>
@@ -644,8 +856,48 @@ const PuntoVenta = () => {
                         <p className="text-xs text-gray-400 mt-4 italic">Al marcar la casilla en el ticket de venta, usted acepta estas condiciones de forma legal y vinculante.</p>
                     </div>
                 </Modal>
-            </div>
-        </div>
+
+                {/* Modal Exito Venta */}
+                <Modal titulo="¡Venta Registrada Correctamente!" abierto={modalExito.abierto} alCerrar={() => setModalExito({ ...modalExito, abierto: false })}>
+                    <div className="flex flex-col items-center gap-4 py-4">
+                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2">
+                            <CheckCircle size={32} />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-800">{modalExito.mensaje}</h3>
+                        <p className="text-sm text-gray-500 text-center">
+                            La operación ha sido procesada con éxito. <br />
+                            Puede imprimir el comprobante o enviarlo por correo.
+                        </p>
+
+                        <div className="w-full bg-gray-50 p-4 rounded border my-2">
+                            <div className="flex justify-between text-sm">
+                                <span>Total Cobrado:</span>
+                                <span className="font-bold">S/ {Number(modalExito.alquiler?.montoPagado || 0).toFixed(2)}</span>
+                            </div>
+                            {modalExito.alquiler?.saldoPendiente > 0 && (
+                                <div className="flex justify-between text-sm text-orange-600 font-bold mt-1">
+                                    <span>Saldo Pendiente:</span>
+                                    <span>S/ {Number(modalExito.alquiler?.saldoPendiente || 0).toFixed(2)}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-4 w-full mt-2">
+                            <Boton variante="secundario" className="flex-1" onClick={() => setModalExito({ ...modalExito, abierto: false })}>
+                                Cerrar
+                            </Boton>
+                            <Boton
+                                variante="primario"
+                                className="flex-1 flex items-center justify-center gap-2"
+                                onClick={() => generarComprobante(modalExito.alquiler, modalExito.alquiler?.tipoComprobante)}
+                            >
+                                <Printer size={18} /> Imprimir Ticket
+                            </Boton>
+                        </div>
+                    </div>
+                </Modal>
+            </div >
+        </div >
     );
 };
 

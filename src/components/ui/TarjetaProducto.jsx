@@ -61,13 +61,10 @@ const TarjetaProducto = ({ producto, alSeleccionar }) => {
                     </span>
                 </div>
 
-                {/* Información detallada de disponibilidad */}
-                {proximosLiberados.length > 0 && (
+                {/* Información detallada de disponibilidad: SOLO se muestra si está agotado */}
+                {producto.stock === 0 && proximosLiberados.length > 0 && (
                     <p className="text-[10px] sm:text-xs text-orange-600 font-medium bg-orange-50 px-2 py-1 rounded-lg">
-                        {producto.stock === 0
-                            ? `Próximo disponible ${formatearHora(proximosLiberados[0])}`
-                            : `+${proximosLiberados[0].cantidad} disponible(s) ${formatearHora(proximosLiberados[0])}`
-                        }
+                        Próximo disponible {formatearHora(proximosLiberados[0])}
                     </p>
                 )}
 

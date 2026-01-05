@@ -1,10 +1,16 @@
 import { supabase } from '../supabase/client';
 
 export const obtenerRecursos = async () => {
-    // Usamos la VISTA v_recursos_disponibles que ya incluye el stock dinámico y el nombre de categoría
+    // Consultamos la tabla base 'recursos' para incluir los desactivados (activo=false) para el administrador
     const { data, error } = await supabase
-        .from('v_recursos_disponibles')
-        .select('*'); // Ya no necesitamos join porque la vista lo trae
+        .from('recursos')
+        .select(`
+            *,
+            categorias (
+                nombre
+            )
+        `)
+        .order('id', { ascending: true });
 
     if (error) {
         console.error('Error al obtener recursos:', error);
@@ -13,10 +19,23 @@ export const obtenerRecursos = async () => {
     // Aplanar la estructura para que el frontend reciba 'categoria' como string
     return data.map(item => ({
         ...item,
-        categoria: item.categoria_nombre || 'Sin Categoría', // Mapear desde la columna de la vista
-        stock: item.stock_disponible,
-        stockTotal: item.stock_total // STOCK FÍSICO REAL (Sin descontar reservas)
+        categoria: item.categorias?.nombre || 'Sin Categoría',
+        stock: item.stock_total, // Nota: El stock dinámico se enriquece en el Contexto posteriormente
+        stockTotal: item.stock_total
     }));
+};
+
+export const obtenerCategorias = async () => {
+    const { data, error } = await supabase
+        .from('categorias')
+        .select('*')
+        .order('nombre', { ascending: true });
+
+    if (error) {
+        console.error('Error al obtener categorías:', error);
+        return [];
+    }
+    return data;
 };
 
 export const obtenerSedes = async () => {
@@ -301,17 +320,42 @@ export const calcularDescuentosDB = async (items, fechaInicio, cupon = null) => 
     };
 };
 
-export const registrarDevolucionDB = async (alquilerId, vendedorId) => {
+export const registrarDevolucionDB = async (alquilerId, vendedorId, devolverGarantia = false) => {
+    // 1. Ejecutar la lógica base de devolución (RPC)
     const { data, error } = await supabase
         .rpc('registrar_devolucion_robusta', {
             p_alquiler_id: alquilerId,
-            p_vendedor_id: vendedorId // Nuevo argumento
+            p_vendedor_id: vendedorId
         });
 
     if (error) {
         console.error('Error al registrar devolución:', error);
-        return { success: false, error };
+        return { success: false, error: error.message || error };
     }
+
+    // 2. Si se solicitó devolver garantía, ajustamos el total final
+    if (devolverGarantia) {
+        // Necesitamos saber cuánto era la garantía. Consultamos el alquiler.
+        const { data: alq, error: errAlq } = await supabase
+            .from('alquileres')
+            .select('garantia, total_final')
+            .eq('id', alquilerId)
+            .single();
+
+        if (alq && alq.garantia > 0) {
+            const nuevoTotal = Math.max(0, alq.total_final - alq.garantia);
+
+            // Actualizamos el total_final restando la garantía (efectivamente "devolviéndola")
+            const { error: errUpdate } = await supabase
+                .from('alquileres')
+                .update({ total_final: nuevoTotal })
+                .eq('id', alquilerId);
+
+            if (errUpdate) console.error("Error ajustando total por devolución de garantía:", errUpdate);
+            else data.nuevo_total = nuevoTotal; // Actualizar dato devuelto para el frontend
+        }
+    }
+
     return data;
 };
 
@@ -352,7 +396,8 @@ const transformarAlquiler = (a) => {
         fechaInicio: a.fecha_inicio,
         fechaFin: a.fecha_fin_estimada || a.fecha_fin,
         sedeId: a.sede_id,
-        vendedorId: a.vendedor_id
+        vendedorId: a.vendedor_id,
+        clienteId: a.cliente_id
     };
 };
 
@@ -527,6 +572,43 @@ export const actualizarUsuarioDB = async (id, datos) => {
     return { success: true, data: data[0] };
 };
 
+export const eliminarUsuarioDB = async (id) => {
+    // 1. Verificar si tiene historial de alquileres
+    const { count, error: errorCount } = await supabase
+        .from('alquileres')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', id);
+
+    if (errorCount) return { success: false, error: "Error al verificar historial del cliente" };
+
+    if (count > 0) {
+        // Tiene historial -> Soft Delete
+        // Intentamos actualizar 'activo' a false. Si la columna no existe, esto fallará, 
+        // pero asumimos que el usuario la creará o ya existe.
+        const { data, error } = await supabase
+            .from('usuarios')
+            .update({ activo: false })
+            .eq('id', id)
+            .select();
+
+        if (error) {
+            console.error("Error al desactivar usuario:", error);
+            return { success: false, error: "No se pudo desactivar. ¿Existe la columna 'activo'?" };
+        }
+        return { success: true, tipo: 'soft', data: data[0] };
+
+    } else {
+        // No tiene historial -> Hard Delete (Opcional, pero limpio)
+        const { error } = await supabase
+            .from('usuarios')
+            .delete()
+            .eq('id', id);
+
+        if (error) return { success: false, error: error.message };
+        return { success: true, tipo: 'hard' };
+    }
+};
+
 export const obtenerPreguntaRecuperacion = async (email) => {
     const { data, error } = await supabase
         .from('usuarios')
@@ -621,7 +703,7 @@ export const entregarAlquilerDB = async (alquilerId, vendedorId) => {
     });
     if (error) {
         console.error('Error al entregar alquiler:', error);
-        return { success: false, error };
+        return { success: false, error: error.message || error };
     }
     return data;
 };
@@ -666,6 +748,113 @@ export const actualizarRecursoDB = async (id, datos) => {
 
     if (error) {
         console.error('Error al actualizar recurso:', error);
+        return { success: false, error };
+    }
+    return { success: true, data: data[0] };
+};
+
+export const crearRecursoDB = async (datos) => {
+    // 1. Manejar Categoría (Mapear nombre a ID)
+    let categoriaId = null;
+    if (datos.categoria) {
+        const { data: catExistente } = await supabase
+            .from('categorias')
+            .select('id')
+            .ilike('nombre', datos.categoria.trim())
+            .maybeSingle();
+
+        if (catExistente) {
+            categoriaId = catExistente.id;
+        } else {
+            const { data: nuevaCat, error: errorCat } = await supabase
+                .from('categorias')
+                .insert({ nombre: datos.categoria.trim() })
+                .select();
+            if (!errorCat && nuevaCat) categoriaId = nuevaCat[0].id;
+        }
+    }
+
+    // 2. Mapear frontend -> backend
+    const datosDB = {
+        nombre: datos.nombre,
+        precio_por_hora: Number(datos.precioPorHora),
+        stock_total: Number(datos.stock),
+        imagen: datos.imagen,
+        categoria_id: categoriaId,
+        sede_id: datos.sedeId || 'costa',
+        activo: true
+    };
+
+    const { data, error } = await supabase
+        .from('recursos')
+        .insert(datosDB)
+        .select();
+
+    if (error) {
+        console.error('Error al crear recurso:', error);
+        return { success: false, error };
+    }
+    return { success: true, data: data[0] };
+};
+
+export const reactivarRecursoDB = async (id) => {
+    const { data, error } = await supabase
+        .from('recursos')
+        .update({ activo: true })
+        .eq('id', id)
+        .select();
+
+    if (error) {
+        console.error('Error al reactivar recurso:', error);
+        return { success: false, error };
+    }
+    return { success: true, data: data[0] };
+};
+
+export const eliminarRecursoDB = async (id) => {
+    // 1. Verificar integridad (Alquileres Futuros o En Curso)
+    const hoy = new Date().toISOString();
+
+    // Buscar si existen alquileres NO finalizados que incluyan este recurso y cuya fecha fin sea > hoy (o sean activos ahora)
+    // Nota: Esto es complejo de filtrar perfecto con supabase-js simple, así que haremos una query un poco más amplia y filtraremos en JS
+
+    const { data: usos, error: errorUsos } = await supabase
+        .from('alquiler_detalles')
+        .select(`
+            alquiler_id,
+            alquileres!inner ( 
+                fecha_fin_estimada, 
+                estado_id 
+            )
+        `)
+        .eq('recurso_id', id);
+
+    if (errorUsos) return { success: false, error: "Error verificando historial del recurso" };
+
+    // Filtrar coincidencias peligrosas
+    const conflictos = usos.filter(u => {
+        const estado = u.alquileres.estado_id;
+        const fechaFin = new Date(u.alquileres.fecha_fin_estimada);
+        const esFuturoOActivo = fechaFin > new Date();
+        const esEstadoActivo = !['finalizado', 'cancelado', 'no_show'].includes(estado);
+
+        return esEstadoActivo && esFuturoOActivo;
+    });
+
+    if (conflictos.length > 0) {
+        return { success: false, error: "No se puede eliminar: El recurso tiene reservas activas o futuras." };
+    }
+
+    // 2. Si no hay conflicto critico, procedemos al Soft Delete (activo = false)
+    // Ni siquiera intentamos Hard Delete para recursos, mejor mantener historial siempre disponible
+    const { data, error } = await supabase
+        .from('recursos')
+        .update({ activo: false })
+        .eq('id', id)
+        .select();
+
+    if (error) {
+        console.error('Error al desactivar recurso:', error);
         return { success: false, error };
     }
     return { success: true, data: data[0] };
@@ -982,7 +1171,14 @@ export const obtenerDisponibilidadRecursoDB = async (recursoId) => {
 };
 
 export const buscarClientesDB = async (busqueda) => {
-    const { data, error } = await supabase.rpc('buscar_clientes', { p_busqueda: busqueda });
+    // Reemplazamos RPC por Query estándar para asegurar que traemos todos los campos (especialmente numero_documento)
+    const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .or(`nombre.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%,email.ilike.%${busqueda}%`)
+        .eq('rol_id', 'cliente') // Asumiendo que buscamos solo clientes, o quitar si es general
+        .limit(10);
+
     if (error) {
         console.error('Error al buscar clientes:', error);
         return [];

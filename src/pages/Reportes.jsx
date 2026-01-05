@@ -14,7 +14,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 
 const Reportes = ({ rol: rolProp }) => {
-    const { alquileres, inventario, reprogramarAlquiler, marcarNoShow, aplicarDescuentoMantenimiento, registrarPagoSaldo } = useContext(ContextoInventario);
+    const { alquileres, inventario, reprogramarAlquiler, marcarNoShow, aplicarDescuentoMantenimiento, registrarPagoSaldo, estaAbierto } = useContext(ContextoInventario);
     const { usuario, usuarios } = useContext(ContextoAutenticacion);
     const { tickets } = useContext(ContextoSoporte);
     const location = useLocation();
@@ -29,10 +29,6 @@ const Reportes = ({ rol: rolProp }) => {
     // Filtro por Usuario (Individual)
     const [usuarioFiltroId, setUsuarioFiltroId] = useState(location.state?.usuarioId || '');
 
-    // Estados para Reportes Avanzados (Admin/Dueño)
-    const [modoReporte, setModoReporte] = useState(location.state?.usuarioId ? 'individual' : 'general'); // 'general' | 'individual'
-    const [rolFiltro, setRolFiltro] = useState('todos'); // 'todos' | 'cliente' | 'vendedor' | 'admin' | 'mecanico'
-
     // Estados para Cliente (Premium View)
     const [misGastos, setMisGastos] = useState([]);
     const [misReclamos, setMisReclamos] = useState([]);
@@ -45,6 +41,21 @@ const Reportes = ({ rol: rolProp }) => {
     const [nuevaHora, setNuevaHora] = useState('');
     const [cargandoReprogramacion, setCargandoReprogramacion] = useState(false);
     const [exitoReprogramacion, setExitoReprogramacion] = useState(false);
+    const [errorHorario, setErrorHorario] = useState(null); // Nuevo estado para validación de horario
+
+    useEffect(() => {
+        if (nuevaFecha && nuevaHora && modalReprogramacion.alquiler) {
+            const sedeId = modalReprogramacion.alquiler.sedeId || modalReprogramacion.alquiler.sede_id;
+            const res = estaAbierto(sedeId, `${nuevaFecha}T${nuevaHora}`);
+            if (!res.abierto) {
+                setErrorHorario(res.mensaje);
+            } else {
+                setErrorHorario(null);
+            }
+        } else {
+            setErrorHorario(null);
+        }
+    }, [nuevaFecha, nuevaHora, modalReprogramacion.alquiler, estaAbierto]);
 
     // Estados para Pago de Saldo
     const [modalPago, setModalPago] = useState({ abierto: false, alquiler: null });
@@ -58,6 +69,13 @@ const Reportes = ({ rol: rolProp }) => {
     const [usarNuevaTarjeta, setUsarNuevaTarjeta] = useState(false);
     const [nuevaTarjeta, setNuevaTarjeta] = useState({ numero: '', exp: '', cvv: '', nombre: '' });
     const [guardarNuevaTarjeta, setGuardarNuevaTarjeta] = useState(true);
+
+    // Filtros internos (simplificados)
+    const [sedeFiltro, setSedeFiltro] = useState('todas'); // Aunque no haya UI, mantenemos el estado por compatibilidad de lógica si se requiere
+
+    // Eliminados filtros visuales complejos a petición del usuario
+    // const [rolFiltro, setRolFiltro] = useState('todos'); 
+    // const [modoReporte, setModoReporte] = useState('general');
     const [erroresTarjeta, setErroresTarjeta] = useState({});
 
     useEffect(() => {
@@ -91,19 +109,9 @@ const Reportes = ({ rol: rolProp }) => {
         }
     }, [rol, usuario]);
 
-    // Actualizar usuarioFiltroId cuando cambia el modo a general
-    if (modoReporte === 'general' && usuarioFiltroId !== '') {
-        setUsuarioFiltroId('');
-    }
-
-    // --- Lógica de Filtrado de Datos ---
-
-    // Alquileres
+    // 1. Filtrado Base por Rol del Usuario Logueado
     let misAlquileres = rol === 'cliente' ? misGastos : alquileres;
 
-    const [sedeFiltro, setSedeFiltro] = useState('todas'); // Para el dueño
-
-    // 1. Filtrado Base por Rol del Usuario Logueado
     if (rol === 'cliente') {
         // Ya asignado arriba desde misGastos (Vista SQL)
     } else if (rol === 'vendedor') {
@@ -115,31 +123,13 @@ const Reportes = ({ rol: rolProp }) => {
             misAlquileres = alquileres.filter(a => a.sedeId === usuario.sede);
         }
     } else if (rol === 'dueno') {
-        // Dueño ve todo, con filtro opcional de sede
-        if (sedeFiltro !== 'todas') {
-            misAlquileres = alquileres.filter(a => a.sedeId === sedeFiltro);
-        } else {
-            misAlquileres = alquileres;
-        }
+        // Dueño ve todo, con filtro opcional de sede (ahora eliminado por defecto ve todo)
+        misAlquileres = alquileres;
     }
 
-    // 2. Filtrado Avanzado (Solo Admin/Dueño - Individual vs General)
-    if (rol === 'admin' || rol === 'dueno') {
-        if (modoReporte === 'individual' && usuarioFiltroId) {
-            // Reporte de un usuario específico
-            misAlquileres = misAlquileres.filter(a =>
-                a.clienteId === Number(usuarioFiltroId) ||
-                a.vendedorId === Number(usuarioFiltroId)
-            );
-        } else if (modoReporte === 'general' && rolFiltro !== 'todos') {
-            // Reporte General por Rol
-            if (rolFiltro === 'vendedor') {
-                misAlquileres = misAlquileres.filter(a => a.vendedorId !== null);
-            } else if (rolFiltro === 'cliente') {
-                // Todos los alquileres
-            }
-        }
-    }
+    // 2. Filtrado Avanzado (Eliminado/Simplificado)
+    // Se eliminó la lógica de 'modoReporte' y 'individual' a petición del usuario.
+    // Ahora solo se usa el buscador de texto.
 
     // Filtro específico para Mecánico
     const trabajosMecanico = alquileres.filter(a =>
@@ -183,18 +173,14 @@ const Reportes = ({ rol: rolProp }) => {
     if (rol === 'cliente') {
         // Ya viene filtrado por DB
     } else if (rol === 'admin' || rol === 'dueno') {
-        // Admin/Dueño en Reportes (Vista simplificada, la completa está en BandejaEntrada)
-        if (modoReporte === 'individual' && usuarioFiltroId) {
-            // Ver tickets de un usuario específico
-            // Si filtro es 'enviados' -> Lo que ese usuario envió (Recibidos por el sistema)
-            // Si filtro es 'recibidos' -> Lo que ese usuario recibió (Enviados por el sistema)
-            // NOTA: Aquí la perspectiva puede ser confusa. Vamos a mostrar TODO lo relacionado a ese usuario por ahora para simplificar en reporte individual
+        // Admin/Dueño en Reportes (Vista simplificada)
+        // Ya no usamos modoReporte, si hay un usuario seleccionado lo filtramos, sino usamos la vista general de mensajes
+        if (usuarioFiltroId) {
             misTickets = tickets.filter(t =>
                 t.remitente?.id === Number(usuarioFiltroId) ||
                 t.destinatario?.id === Number(usuarioFiltroId)
             );
         } else {
-            // Vista general en Reportes
             if (filtroMensajes === 'recibidos') {
                 misTickets = tickets.filter(t => t.destinatario?.rol === rol || t.destinatario?.id === usuario?.id || (!t.destinatario && t.remitente?.rol !== rol));
             } else {
@@ -205,9 +191,19 @@ const Reportes = ({ rol: rolProp }) => {
 
     // --- Estadísticas ---
 
-    const totalIngresos = misAlquileres.reduce((acc, curr) => acc + Number(curr.total_final || curr.totalFinal || curr.total || 0), 0);
+    // --- Estadísticas ---
+
+    // 1. Ingreso Base del Negocio (Solo servicio, sin contar garantías)
+    const totalServicio = misAlquileres.reduce((acc, curr) => acc + Number(curr.total_servicio || curr.totalServicio || 0), 0);
+
+    // 2. Ingreso Real Net (Lo que queda en caja FINALMENTE, después de devoluciones)
+    const totalIngresosReales = misAlquileres.reduce((acc, curr) => acc + Number(curr.total_final || curr.totalFinal || 0), 0);
+
+    // 3. Garantía "Extra" (Lo que nos quedamos por no devolver)
+    // Es la diferencia: TotalFinal - TotalServicio. Si es positivo, es ganancia extra.
+    const garantiaRetenidaTotal = Math.max(0, totalIngresosReales - totalServicio);
+
     const totalOperaciones = misAlquileres.length;
-    const totalPenalizaciones = misAlquileres.reduce((acc, curr) => acc + (curr.penalizacion || 0), 0);
     const costosMantenimiento = misAlquileres.reduce((acc, curr) => acc + (curr.descuentoMantenimiento || 0), 0);
 
     // Estadísticas de Inventario (Filtrado por sede para Admin/Vendedor)
@@ -221,8 +217,7 @@ const Reportes = ({ rol: rolProp }) => {
     // Soporte Stats
     const ticketsPendientes = misTickets.filter(t => t.estado === 'pendiente').length;
 
-    // Mecánico Stats (Si fuera admin filtrando por sede, ya debería venir filtrado arriba?)
-    // Pero trabajosMecanico se derivó de 'alquileres' (global). Vamos a filtrarlo también.
+    // Mecánico Stats
     const misTrabajosMecanico = (rol === 'admin' || rol === 'vendedor') && usuario?.sede
         ? trabajosMecanico.filter(a => a.sedeId === usuario.sede)
         : trabajosMecanico;
@@ -232,140 +227,105 @@ const Reportes = ({ rol: rolProp }) => {
 
     // --- Handlers ---
 
-    const manejarReprogramacion = (alquiler) => {
-        setModalReprogramacion({ abierto: true, alquiler }); // Save full object
-        setNuevaFecha('');
-        setNuevaHora('');
-        setExitoReprogramacion(false);
-    };
-
     const confirmarReprogramacion = async () => {
-        if (!nuevaFecha || !nuevaHora) {
-            alert("Por favor selecciona nueva fecha y hora.");
-            return;
-        }
-
-        const fechaHoraInicio = new Date(`${nuevaFecha}T${nuevaHora}`);
-        const ahora = new Date();
-
-        if (fechaHoraInicio < ahora) {
-            alert("La nueva fecha debe ser futura.");
-            return;
-        }
-
-        // Validación de Horario de Cierre
-        if (modalReprogramacion.alquiler) {
-            const a = modalReprogramacion.alquiler;
-            const inicioOriginal = new Date(a.fecha_inicio);
-            const finOriginal = new Date(a.fecha_fin);
-            const duracionMs = finOriginal - inicioOriginal;
-
-            const fechaHoraFin = new Date(fechaHoraInicio.getTime() + duracionMs);
-            const horaFin = fechaHoraFin.getHours();
-            const minutoFin = fechaHoraFin.getMinutes();
-
-            // Asumimos cierre a las 18:00 (6 PM) - Configurable idealmente
-            if (horaFin > 18 || (horaFin === 18 && minutoFin > 0)) {
-                alert(`La reserva terminaría a las ${fechaHoraFin.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, pero el local cierra a las 18:00. Por favor elige una hora más temprana.`);
-                return;
-            }
-        }
+        if (!nuevaFecha || !nuevaHora) return alert('Seleccione fecha y hora');
+        if (errorHorario) return alert('⚠️ ' + errorHorario);
 
         setCargandoReprogramacion(true);
         try {
-            const success = await reprogramarAlquiler(modalReprogramacion.alquiler.id, { nuevaFecha, nuevaHora });
-            if (success) {
+            const fechaString = `${nuevaFecha}T${nuevaHora}:00`;
+            // Pasamos el objeto con nuevaFecha y nuevaHora al contexto
+            const exito = await reprogramarAlquiler(modalReprogramacion.alquiler.id, { nuevaFecha, nuevaHora });
+
+            if (exito) {
                 setExitoReprogramacion(true);
-                // Si la reprogramación es exitosa, refrescamos la lista de gastos
-                if (usuario?.id) {
-                    obtenerMisGastos(usuario.id).then(setMisGastos);
-                }
-            } else {
-                alert("No hay disponibilidad suficiente para los recursos en la nueva fecha/hora o surgió un problema con la penalidad. Por favor intenta con otro horario.");
+                setTimeout(() => {
+                    setModalReprogramacion({ abierto: false, alquiler: null });
+                    setExitoReprogramacion(false);
+                }, 3000);
             }
-        } catch (err) {
-            console.error(err);
-            alert("Error de conexión al reprogramar.");
+        } catch (error) {
+            alert('Error al reprogramar: ' + error.message);
         } finally {
             setCargandoReprogramacion(false);
         }
     };
 
+    const manejarReprogramacion = (alquiler) => {
+        setModalReprogramacion({ abierto: true, alquiler });
+        setNuevaFecha('');
+        setNuevaHora('');
+        setExitoReprogramacion(false);
+    };
+
     const confirmarPagoSaldo = async () => {
         if (!modalPago.alquiler) return;
-        setCargandoPago(true);
-        setErroresTarjeta({});
+        const totalAPagar = Number(modalPago.alquiler.saldo_pendiente);
 
-        try {
-            let finalTarjetaId = tarjetaSeleccionada;
+        if (metodoPagoSeleccionado === 'tarjeta') {
+            if (usarNuevaTarjeta) {
+                // Validar tarjeta básica
+                if (nuevaTarjeta.numero.length < 16) return alert('Número de tarjeta inválido');
+                if (!nuevaTarjeta.exp.includes('/')) return alert('Fecha expiración inválida (MM/YY)');
+                if (nuevaTarjeta.cvv.length < 3) return alert('CVV inválido');
+                if (!nuevaTarjeta.nombre) return alert('Ingrese el titular');
 
-            if (metodoPagoSeleccionado === 'tarjeta') {
-                if (usarNuevaTarjeta) {
-                    // Validar campos de tarjeta nueva
-                    let errores = {};
-                    if (!nuevaTarjeta.numero || nuevaTarjeta.numero.length < 15) errores.numero = "Número incompleto o inválido";
-                    if (!nuevaTarjeta.exp || !/^\d{2}\/\d{2}$/.test(nuevaTarjeta.exp)) errores.exp = "Formato MM/YY";
-                    if (!nuevaTarjeta.cvv || nuevaTarjeta.cvv.length < 3) errores.cvv = "Inválido";
-                    if (!nuevaTarjeta.nombre) errores.nombre = "Requerido";
-
-                    if (Object.keys(errores).length > 0) {
-                        setErroresTarjeta(errores);
-                        setCargandoPago(false);
-                        return;
-                    }
-
-                    // Guardar tarjeta si seleccionó checkbox
+                setCargandoPago(true);
+                try {
+                    // Si se marca guardar, la registramos
+                    let finalTarjetaId = null;
                     if (guardarNuevaTarjeta) {
-                        const resAdd = await agregarTarjeta(usuario.id, { ...nuevaTarjeta, principal: tarjetasGuardadas.length === 0 });
-                        if (resAdd.success) {
-                            finalTarjetaId = resAdd.data.id;
-                        } else {
-                            alert("Error al guardar tarjeta, pero intentaremos procesar el pago.");
-                            finalTarjetaId = 'token_temporal_' + Date.now();
-                        }
-                    } else {
-                        finalTarjetaId = 'token_temporal_' + Date.now();
+                        const res = await agregarTarjeta(usuario.id, {
+                            ...nuevaTarjeta,
+                            principal: true
+                        });
+                        if (res.success) finalTarjetaId = res.data.id;
                     }
-                } else if (!tarjetaSeleccionada) {
-                    alert("Por favor selecciona una tarjeta o agrega una nueva.");
-                    setCargandoPago(false);
-                    return;
-                }
-            }
 
-            const res = await registrarPagoSaldoDB(modalPago.alquiler.id, metodoPagoSeleccionado, finalTarjetaId, usuario?.id);
-            if (res.success) {
-                setPagoExitoso(true);
-                if (usuario?.id) {
-                    const nuevosGastos = await obtenerMisGastos(usuario.id);
-                    setMisGastos(nuevosGastos || []);
+                    const exito = await registrarPagoSaldo(modalPago.alquiler.id, 'tarjeta', finalTarjetaId, null);
+                    if (exito) setPagoExitoso(true);
+                } catch (err) {
+                    alert('Error en el pago: ' + err.message);
+                } finally {
+                    setCargandoPago(false);
                 }
             } else {
-                console.error("Error pago reportes:", res.error);
-                const msg = res.error?.message || (typeof res.error === 'object' ? JSON.stringify(res.error) : res.error) || "Error al procesar el pago.";
-                alert("Error: " + msg);
+                if (!tarjetaSeleccionada) return alert('Seleccione una tarjeta');
+                setCargandoPago(true);
+                const exito = await registrarPagoSaldo(modalPago.alquiler.id, 'tarjeta', tarjetaSeleccionada, null);
+                if (exito) setPagoExitoso(true);
+                setCargandoPago(false);
             }
-        } catch (err) {
-            console.error(err);
-            alert("Error de conexión.");
-        } finally {
+        } else {
+            // Efectivo, Yape, Transferencia
+            setCargandoPago(true);
+            const exito = await registrarPagoSaldo(modalPago.alquiler.id, metodoPagoSeleccionado, null, null);
+            if (exito) setPagoExitoso(true);
             setCargandoPago(false);
         }
     };
-
-    // --- Renderizado por Rol ---
 
     const renderKPIs = () => (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {rol !== 'mecanico' && (
                 <>
+                    {/* KPI 1: Ingreso por Servicio (Negocio Puro) */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><DollarSign size={16} /> {rol === 'cliente' ? 'Total Gastado' : 'Ingresos Totales'}</h3>
-                        <p className="text-2xl font-bold text-green-600">S/ {totalIngresos.toFixed(2)}</p>
+                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2" title="Dinero generado solo por el alquiler">
+                            <DollarSign size={16} /> Ventas (Servicio)
+                        </h3>
+                        <p className="text-2xl font-bold text-gray-700">S/ {totalServicio.toFixed(2)}</p>
                     </div>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><FileText size={16} /> Operaciones</h3>
-                        <p className="text-2xl font-bold text-blue-600">{totalOperaciones}</p>
+
+                    {/* KPI 2: Ingreso Real (Caja Final) */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 bg-green-50 border-green-200">
+                        <h3 className="text-green-800 text-sm font-medium mb-1 flex items-center gap-2" title="Dinero final en caja (Incluye garantías retenidas)">
+                            <DollarSign size={16} /> Ingreso Real (Neto)
+                        </h3>
+                        <p className="text-3xl font-bold text-green-700">S/ {totalIngresosReales.toFixed(2)}</p>
+                        {garantiaRetenidaTotal > 0 && (
+                            <p className="text-xs text-green-600 font-medium mt-1">+ S/ {garantiaRetenidaTotal.toFixed(2)} por garantías</p>
+                        )}
                     </div>
                 </>
             )}
@@ -377,8 +337,8 @@ const Reportes = ({ rol: rolProp }) => {
                         <p className="text-2xl font-bold text-orange-600">S/ {costosMantenimiento.toFixed(2)}</p>
                     </div>
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><MessageSquare size={16} /> Tickets Pendientes</h3>
-                        <p className="text-2xl font-bold text-red-600">{ticketsPendientes}</p>
+                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><FileText size={16} /> Operaciones</h3>
+                        <p className="text-2xl font-bold text-blue-600">{totalOperaciones}</p>
                     </div>
                 </>
             )}
@@ -413,8 +373,11 @@ const Reportes = ({ rol: rolProp }) => {
 
         return (
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md animate-in fade-in zoom-in duration-200">
-                    <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md p-8 animate-in zoom-in-95 slide-in-from-bottom-10 duration-500 overflow-hidden relative">
+                    {/* Decoración abstracta de fondo */}
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 opacity-50 pointer-events-none"></div>
+
+                    <div className="flex justify-between items-center mb-6 relative">
                         <h3 className="text-xl font-bold text-gray-900">Reprogramar Reserva</h3>
                         <button
                             onClick={() => setModalReprogramacion({ abierto: false, alquiler: null })}
@@ -435,10 +398,12 @@ const Reportes = ({ rol: rolProp }) => {
                         </div>
                     ) : (
                         <>
-                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex gap-3">
-                                <Info className="text-blue-600 shrink-0" size={20} />
-                                <p className="text-sm text-blue-800">
-                                    La reprogramación tiene un costo administrativo de <strong>S/ 10.00</strong>, el cual se sumará a su deuda pendiente.
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-2xl border border-blue-100 flex gap-4 mb-6 shadow-sm">
+                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                                    <Info className="text-blue-600" size={20} />
+                                </div>
+                                <p className="text-sm text-blue-900 leading-relaxed">
+                                    Esta operación tiene un costo administrativo de <strong className="text-blue-700">S/ 10.00</strong>, el cual se sumará para ser pagado junto a su saldo pendiente.
                                 </p>
                             </div>
 
@@ -456,10 +421,15 @@ const Reportes = ({ rol: rolProp }) => {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Hora Inicio</label>
                                 <input
                                     type="time"
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    className={`w-full p-2.5 border rounded-xl focus:ring-2 outline-none transition-all ${errorHorario ? 'border-red-300 focus:ring-red-200' : 'border-gray-200 focus:ring-blue-500'}`}
                                     value={nuevaHora}
                                     onChange={(e) => setNuevaHora(e.target.value)}
                                 />
+                                {errorHorario && (
+                                    <p className="text-xs font-semibold text-red-600 mt-1.5 flex items-center gap-1 animate-pulse">
+                                        <AlertCircle size={14} /> {errorHorario}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="pt-4 flex gap-3">
@@ -471,8 +441,8 @@ const Reportes = ({ rol: rolProp }) => {
                                 </button>
                                 <button
                                     onClick={confirmarReprogramacion}
-                                    disabled={cargandoReprogramacion}
-                                    className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                                    disabled={cargandoReprogramacion || errorHorario}
+                                    className="flex-[1.5] py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:grayscale shadow-lg shadow-blue-100 transition-all transform active:scale-95"
                                 >
                                     {cargandoReprogramacion ? 'Procesando...' : 'Confirmar Reprogramación'}
                                 </button>
@@ -917,7 +887,27 @@ const Reportes = ({ rol: rolProp }) => {
                                                     </span>
                                                 </td>
                                                 <td className="p-4">
-                                                    <BadgeEstado estado={a.estado_nombre || a.estado || 'pendiente'} />
+                                                    {(() => {
+                                                        const est = (a.estado_nombre || a.estado || 'pendiente').toLowerCase();
+                                                        let label = 'Pendiente';
+                                                        let colorClass = 'bg-yellow-100 text-yellow-800';
+
+                                                        if (est === 'listo_para_entrega' || est === 'confirmado' || est === 'en_preparacion') {
+                                                            label = 'Confirmado';
+                                                            colorClass = 'bg-green-100 text-green-800';
+                                                        } else if (est === 'en_uso') {
+                                                            label = 'En Curso';
+                                                            colorClass = 'bg-blue-100 text-blue-800 animate-pulse';
+                                                        } else if (est === 'limpieza' || est === 'finalizado' || est === 'en_mantenimiento' || est === 'devuelto') {
+                                                            label = 'Finalizado';
+                                                            colorClass = 'bg-gray-100 text-gray-800';
+                                                        } else if (est === 'cancelado') {
+                                                            label = 'Cancelado';
+                                                            colorClass = 'bg-red-100 text-red-800';
+                                                        }
+
+                                                        return <span className={`px-2 py-1 rounded-full text-xs font-bold ${colorClass}`}>{label}</span>;
+                                                    })()}
                                                 </td>
                                                 <td className="p-4 text-right">
                                                     <div className="flex flex-col items-end gap-1">
@@ -1291,7 +1281,7 @@ const Reportes = ({ rol: rolProp }) => {
                                         onClick={() => setPestanaActiva('ventas')}
                                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'ventas' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
                                     >
-                                        {rol === 'cliente' ? 'Mis Reportes' : 'Ventas'}
+                                        {rol === 'cliente' ? 'Mis Alquileres' : 'Ventas'}
                                     </button>
                                     <button
                                         onClick={() => setPestanaActiva('soporte')}
@@ -1318,73 +1308,23 @@ const Reportes = ({ rol: rolProp }) => {
             {
                 (rol === 'admin' || rol === 'dueno') && (
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex flex-col md:flex-row gap-4 items-end">
-                            <div className="w-full md:w-auto">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Reporte</label>
-                                <select
-                                    className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
-                                    value={modoReporte}
-                                    onChange={(e) => setModoReporte(e.target.value)}
-                                >
-                                    <option value="general">General</option>
-                                    <option value="individual">Individual</option>
-                                </select>
+                        {/* Búsqueda por Texto (DNI/Nombre) */}
+                        <div className="w-full flex-1">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Buscar (DNI / Nombre / ID) <span className="text-xs font-normal text-gray-500 ml-1">
+                                    ({rol === 'dueno' ? 'Todas las Sedes' : (usuario?.sede ? usuario.sede.charAt(0).toUpperCase() + usuario.sede.slice(1) : 'Sede Actual')}: Clientes, Vendedores y Mecánicos)
+                                </span>
+                            </label>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar..."
+                                    className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                    value={filtro}
+                                    onChange={(e) => setFiltro(e.target.value)}
+                                />
                             </div>
-
-                            <div className="w-full md:w-auto">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Rol</label>
-                                <select
-                                    className="w-full md:w-48 p-2 border rounded-lg text-sm bg-gray-50"
-                                    value={rolFiltro}
-                                    onChange={(e) => {
-                                        setRolFiltro(e.target.value);
-                                        setUsuarioFiltroId(''); // Reset user selection when role changes
-                                    }}
-                                >
-                                    <option value="todos">Todos</option>
-                                    <option value="cliente">Clientes</option>
-                                    <option value="vendedor">Vendedores</option>
-                                    <option value="mecanico">Mecánicos</option>
-                                    {rol === 'dueno' && <option value="admin">Administradores</option>}
-                                </select>
-                            </div>
-
-                            {/* Filtro de Sede (Solo Dueño) */}
-                            {rol === 'dueno' && (
-                                <div className="w-full md:w-auto">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Sede</label>
-                                    <select
-                                        className="w-full md:w-32 p-2 border rounded-lg text-sm bg-gray-50"
-                                        value={sedeFiltro}
-                                        onChange={(e) => setSedeFiltro(e.target.value)}
-                                    >
-                                        <option value="todas">Todas</option>
-                                        <option value="costa">Costa</option>
-                                        <option value="rural">Rural</option>
-                                    </select>
-                                </div>
-                            )}
-
-                            {modoReporte === 'individual' && (
-                                <div className="w-full md:w-auto flex-1">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Usuario</label>
-                                    <select
-                                        className="w-full p-2 border rounded-lg text-sm bg-gray-50"
-                                        value={usuarioFiltroId}
-                                        onChange={(e) => setUsuarioFiltroId(e.target.value)}
-                                    >
-                                        <option value="">-- Seleccione un usuario --</option>
-                                        {usuarios
-                                            .filter(u => rolFiltro === 'todos' ? true : u.rol === rolFiltro)
-                                            .map(u => (
-                                                <option key={u.id} value={u.id}>
-                                                    {u.nombre} ({u.rol}) - {u.email}
-                                                </option>
-                                            ))
-                                        }
-                                    </select>
-                                </div>
-                            )}
                         </div>
                     </div>
                 )
@@ -1396,7 +1336,6 @@ const Reportes = ({ rol: rolProp }) => {
             {pestanaActiva === 'ventas' && renderTablaVentas()}
             {pestanaActiva === 'soporte' && renderTablaSoporte()}
             {pestanaActiva === 'inventario' && (rol === 'admin' || rol === 'dueno') && renderTablaInventario()}
-
 
             {/* Vistas de Mecánico */}
             {(pestanaActiva === 'trabajos_activos' || pestanaActiva === 'historial_mantenimiento') && renderTablaVentas()}

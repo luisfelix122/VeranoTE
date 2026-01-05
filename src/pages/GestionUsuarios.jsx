@@ -116,10 +116,13 @@ const GestionUsuarios = () => {
         setUsuarioAEliminar(u);
 
         // Verificar dependencias
-        const alquileresActivos = alquileres.filter(a =>
-            (a.clienteId === u.id || a.vendedorId === u.id) &&
-            ['pendiente', 'en_uso', 'retrasado', 'en_mantenimiento'].includes(a.estado)
-        );
+        const alquileresActivos = alquileres.filter(a => {
+            const esUsuarioRelacionado = a.clienteId === u.id || a.vendedorId === u.id;
+            // Bloqueamos si el estado NO es uno de los terminales
+            const estadoId = a.estado_id || a.estado;
+            const esEstadoActivo = !['finalizado', 'cancelado', 'no_show'].includes(estadoId);
+            return esUsuarioRelacionado && esEstadoActivo;
+        });
 
         const historialCompleto = alquileres.filter(a => a.clienteId === u.id || a.vendedorId === u.id);
 
@@ -441,9 +444,12 @@ const GestionUsuarios = () => {
                             <Boton variante="secundario" onClick={() => setMostrarModalEliminar(false)} className="flex-1">Cancelar</Boton>
                             <button
                                 onClick={confirmarEliminacion}
-                                className="flex-1 bg-red-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-red-700 transition-colors"
+                                disabled={advertenciaEliminar?.tipo === 'critico'}
+                                className={`flex-1 font-medium py-2 px-4 rounded-lg transition-all ${advertenciaEliminar?.tipo === 'critico'
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                                    : 'bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-100'}`}
                             >
-                                Sí, Eliminar
+                                {advertenciaEliminar?.tipo === 'critico' ? 'Bloqueado' : 'Sí, Eliminar'}
                             </button>
                         </div>
                     </div>

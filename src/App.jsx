@@ -46,7 +46,14 @@ function App() {
 }
 
 function AppContenido() {
-    const { usuario, iniciarSesion, registrarUsuario, recuperarPregunta, verificarRespuesta, restablecerPassword, cargando } = useContext(ContextoAutenticacion);
+    const auth = useContext(ContextoAutenticacion);
+
+    // Safety check for context availability
+    if (!auth) {
+        return <div className="min-h-screen flex items-center justify-center">Error: Contexto de Autenticación no disponible.</div>;
+    }
+
+    const { usuario, iniciarSesion, registrarUsuario, recuperarPregunta, verificarRespuesta, restablecerPassword, cargando } = auth;
     const { carrito, removerDelCarrito, esVisible, setEsVisible, total, limpiarCarrito } = useContext(ContextoCarrito);
     const { registrarAlquiler, verificarDisponibilidad, calcularStockDisponible, fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva, calcularCotizacion, configuracion } = useContext(ContextoInventario);
     const { calcularDescuentos } = useContext(ContextoPromociones);
@@ -315,16 +322,20 @@ function AppContenido() {
 
     // Auto-switch tipoReserva based on date
     React.useEffect(() => {
-        const hoy = new Date().toISOString().split('T')[0];
+        const fechaLocal = new Date();
+        fechaLocal.setMinutes(fechaLocal.getMinutes() - fechaLocal.getTimezoneOffset());
+        const hoy = fechaLocal.toISOString().split('T')[0];
         if (fechaReserva !== hoy) {
             setTipoReserva('anticipada');
+            // UX: Si cambiamos a futuro y la hora actual es "cierre" (ej noche), resetear a apertura
+            if (horaReserva > horaCierre || horaReserva < horaApertura) {
+                setHoraReserva(horaApertura);
+            }
         } else {
             setTipoReserva('inmediata');
         }
-    }, [fechaReserva]);
+    }, [fechaReserva, horaApertura, horaCierre, horaReserva]);
 
-    // Create router
-    const router = crearRouterApp();
 
     const manejarLogin = (e) => {
         e.preventDefault();
@@ -450,7 +461,10 @@ function AppContenido() {
         }
 
         // Validar Hora Pasada (No permitir reservas retroactivas hoy)
-        const hoyStr = new Date().toISOString().split('T')[0];
+        // Fix: Usar fecha LOCAL para validación
+        const fechaLocalVal = new Date();
+        fechaLocalVal.setMinutes(fechaLocalVal.getMinutes() - fechaLocalVal.getTimezoneOffset());
+        const hoyStr = fechaLocalVal.toISOString().split('T')[0];
         if (fechaReserva === hoyStr) {
             const ahora = new Date();
             const [hReserva, mReserva] = horaReserva.split(':').map(Number);
@@ -664,7 +678,7 @@ function AppContenido() {
                                 setCompraExitosa(false);
                                 limpiarCarrito();
                                 window.location.href = '/mis-gastos'; // O usar navigate si router disponible
-                            }}>Ver Mis Reportes</Boton>
+                            }}>Ver Mis Alquileres</Boton>
                         </div>
                     </div>
                 ) : carrito.length === 0 ? (
@@ -727,14 +741,14 @@ function AppContenido() {
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Reserva</label>
                                     <div className="flex gap-4">
-                                        <label className={`flex items-center gap-2 text-sm ${fechaReserva !== new Date().toISOString().split('T')[0] ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                        <label className={`flex items-center gap-2 text-sm ${fechaReserva !== new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0] ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
                                             <input
                                                 type="radio"
                                                 name="tipoReserva"
                                                 value="inmediata"
                                                 checked={tipoReserva === 'inmediata'}
                                                 onChange={() => setTipoReserva('inmediata')}
-                                                disabled={fechaReserva !== new Date().toISOString().split('T')[0]}
+                                                disabled={fechaReserva !== new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]}
                                             />
                                             Inmediata (100%)
                                         </label>
@@ -749,7 +763,7 @@ function AppContenido() {
                                             Anticipada (60%)
                                         </label>
                                     </div>
-                                    {fechaReserva !== new Date().toISOString().split('T')[0] && (
+                                    {fechaReserva !== new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0] && (
                                         <p className="text-xs text-orange-600 mt-1">Reservas para fechas futuras son automáticamente anticipadas.</p>
                                     )}
                                     <p className="text-[10px] text-gray-500 italic mt-1">* Este tipo de reserva aplica a todos los items de la orden actual.</p>

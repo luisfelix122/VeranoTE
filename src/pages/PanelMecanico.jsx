@@ -132,16 +132,35 @@ const PanelMecanico = () => {
                 </div>
             </div>
 
-            {/* 2. Limpieza y Triaje (Nuevo) */}
+            {/* 2. Limpieza y Triaje Post-Devolución */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2"><Sparkles className="text-cyan-600" /> 2. Limpieza y Triaje Post-Devolución</h2>
                 <div className="grid gap-4">
                     {enLimpieza.length === 0 ? <p className="text-gray-500">Sin equipos en limpieza.</p> : enLimpieza.map(a => (
-                        <div key={a.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border border-gray-200">
-                            <div><p className="font-bold text-gray-900">{a.cliente}</p><p className="text-sm text-gray-600">Devuelto: {formatearFecha(a.fechaDevolucionReal)}</p></div>
-                            <div className="flex gap-2">
-                                <Boton variante="exito" onClick={() => finalizarLimpiezaAlquiler(a.id)}>Todo OK (Habilitar)</Boton>
-                                <Boton variante="secundario" onClick={() => enviarAMantenimiento(a.id)}>Requiere Mantenimiento</Boton>
+                        <div key={a.id} className="flex flex-col p-4 bg-gray-50 rounded-lg border border-gray-200 gap-3">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="font-bold text-gray-900">{a.cliente}</p>
+                                    <p className="text-xs text-gray-500">Devuelto: {formatearFecha(a.fechaDevolucionReal)}</p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {a.items.map(i => (
+                                            <span key={i.id} className="text-[10px] bg-white border border-gray-200 px-2 py-0.5 rounded text-gray-600">
+                                                {i.cantidad}x {i.nombre}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Boton variante="exito" className="text-sm px-6" onClick={() => finalizarLimpiezaAlquiler(a.id)}>
+                                        Habilitar Stock ✅
+                                    </Boton>
+                                    <Boton variante="secundario" className="text-sm" onClick={() => enviarAMantenimiento(a.id)}>
+                                        <Wrench size={14} /> Mantenimiento
+                                    </Boton>
+                                </div>
+                            </div>
+                            <div className="text-[10px] text-blue-600 italic">
+                                * Al habilitar, estos {a.items.reduce((acc, i) => acc + i.cantidad, 0)} items volverán a aparecer como disponibles en la tienda automáticamente.
                             </div>
                         </div>
                     ))}

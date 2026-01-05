@@ -12,10 +12,12 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
     "clsx": "^2.1.0",
+    "dotenv": "^17.2.3",
     "i18next": "^25.7.2",
     "i18next-browser-languagedetector": "^8.2.0",
     "i18next-http-backend": "^3.0.2",
-    "dotenv": "^17.2.3",
+    "jspdf": "^4.0.0",
+    "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

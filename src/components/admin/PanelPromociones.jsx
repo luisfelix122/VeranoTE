@@ -1,11 +1,13 @@
 import React, { useState, useContext } from 'react';
-import { Plus, Trash2, Tag, Clock, Package, ToggleLeft, ToggleRight, Pencil } from 'lucide-react';
+import { Plus, Trash2, Tag, Clock, Package, ToggleLeft, ToggleRight, Pencil, Filter } from 'lucide-react';
 import { ContextoPromociones } from '../../contexts/ContextoPromociones';
+import { ContextoInventario } from '../../contexts/ContextoInventario';
 import Boton from '../ui/Boton';
 import Modal from '../ui/Modal';
 
 const PanelPromociones = () => {
     const { promociones, agregarPromocion, togglePromocion, eliminarPromocion, editarPromocion } = useContext(ContextoPromociones);
+    const { categorias, inventarioCompleto } = useContext(ContextoInventario);
     const [mostrarForm, setMostrarForm] = useState(false);
     const [modoEdicion, setModoEdicion] = useState(false);
     const [busqueda, setBusqueda] = useState('');
@@ -15,7 +17,7 @@ const PanelPromociones = () => {
         nombre: '',
         descripcion: '',
         tipo: 'regla_tiempo', // regla_tiempo, regla_cantidad
-        condicion: { minHoras: 3, minCantidad: 3, categoria: '' },
+        condicion: { minHoras: 3, minCantidad: 3, categoria_id: '', recurso_id: '' },
         beneficio: { tipo: 'porcentaje', valor: 10 },
         activo: true,
         es_automatico: true,
@@ -40,7 +42,7 @@ const PanelPromociones = () => {
             nombre: '',
             descripcion: '',
             tipo: 'regla_tiempo',
-            condicion: { minHoras: 3, minCantidad: 3, categoria: '' },
+            condicion: { minHoras: 3, minCantidad: 3, categoria_id: '', recurso_id: '' },
             beneficio: { tipo: 'porcentaje', valor: 10 },
             activo: true,
             es_automatico: true,
@@ -200,23 +202,65 @@ const PanelPromociones = () => {
                         </div>
                     </div>
 
-                    {nuevaPromo.tipo === 'regla_tiempo' ? (
-                        <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Mínimo de Horas</label>
-                            <input required type="number" className="w-full p-2 border rounded" value={nuevaPromo.condicion.minHoras} onChange={e => setNuevaPromo({ ...nuevaPromo, condicion: { ...nuevaPromo.condicion, minHoras: Number(e.target.value) } })} />
+                    <div className="bg-blue-50 p-3 rounded-lg space-y-3">
+                        <div className="flex items-center gap-2 text-blue-800 font-bold text-xs mb-1">
+                            <Filter size={14} /> Aplicar a:
                         </div>
-                    ) : (
-                        <div className="grid grid-cols-2 gap-4">
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-[10px] font-bold text-blue-700 uppercase mb-1">Por Categoría</label>
+                                <select
+                                    className="w-full p-2 border rounded text-xs bg-white"
+                                    value={nuevaPromo.condicion.categoria_id || ''}
+                                    onChange={e => setNuevaPromo({
+                                        ...nuevaPromo,
+                                        condicion: { ...nuevaPromo.condicion, categoria_id: e.target.value, recurso_id: '' }
+                                    })}
+                                >
+                                    <option value="">Todas las Categorías</option>
+                                    {categorias.map(cat => (
+                                        <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-blue-700 uppercase mb-1">Recurso Específico</label>
+                                <select
+                                    className="w-full p-2 border rounded text-xs bg-white"
+                                    value={nuevaPromo.condicion.recurso_id || ''}
+                                    onChange={e => setNuevaPromo({
+                                        ...nuevaPromo,
+                                        condicion: { ...nuevaPromo.condicion, recurso_id: e.target.value, categoria_id: '' }
+                                    })}
+                                >
+                                    <option value="">Cualquier Recurso</option>
+                                    {inventarioCompleto.map(prod => (
+                                        <option key={prod.id} value={prod.id}>{prod.nombre} ({prod.sede_id})</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-blue-600 italic">Si selecciona un recurso, la categoría se ignorará.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        {nuevaPromo.tipo === 'regla_tiempo' ? (
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Mínimo de Horas</label>
+                                <input required type="number" className="w-full p-2 border rounded" value={nuevaPromo.condicion.minHoras} onChange={e => setNuevaPromo({ ...nuevaPromo, condicion: { ...nuevaPromo.condicion, minHoras: Number(e.target.value) } })} />
+                            </div>
+                        ) : (
                             <div>
                                 <label className="block text-xs font-medium text-gray-700 mb-1">Cantidad Mínima</label>
                                 <input required type="number" className="w-full p-2 border rounded" value={nuevaPromo.condicion.minCantidad} onChange={e => setNuevaPromo({ ...nuevaPromo, condicion: { ...nuevaPromo.condicion, minCantidad: Number(e.target.value) } })} />
                             </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Categoría (Opcional)</label>
-                                <input placeholder="Ej: Motor" className="w-full p-2 border rounded" value={nuevaPromo.condicion.categoria} onChange={e => setNuevaPromo({ ...nuevaPromo, condicion: { ...nuevaPromo.condicion, categoria: e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1) } })} />
-                            </div>
+                        )}
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Valor Descuento (%)</label>
+                            <input required type="number" className="w-full p-2 border rounded" value={nuevaPromo.beneficio.valor} onChange={e => setNuevaPromo({ ...nuevaPromo, beneficio: { ...nuevaPromo.beneficio, valor: Number(e.target.value) } })} />
                         </div>
-                    )}
+                    </div>
 
                     <Boton type="submit" className="w-full">Crear Promoción</Boton>
                 </form>
