@@ -56,8 +56,11 @@ export const ProveedorInventario = ({ children }) => {
     };
 
     // Cargar datos iniciales
-    const recargarDatos = async () => {
+    const recargarDatos = async (fechaTarget = null) => {
         try {
+            // Si no se pasa fechaTarget, usar la fecha seleccionada global (o hoy)
+            const targetDate = fechaTarget || (fechaSeleccionada ? new Date(fechaSeleccionada + 'T12:00:00').toISOString() : new Date().toISOString());
+
             const [recursosData, categoriasData, sedesData, alquileresData, horariosData, contenidoData, configData] = await Promise.all([
                 obtenerRecursos(),
                 obtenerCategorias(),
@@ -73,7 +76,7 @@ export const ProveedorInventario = ({ children }) => {
             const inventarioConDisponibilidad = await Promise.all(recursosData.map(async (item) => {
                 let disponibilidad = null;
                 try {
-                    disponibilidad = await obtenerDisponibilidadRecursoDB(item.id);
+                    disponibilidad = await obtenerDisponibilidadRecursoDB(item.id, targetDate);
                 } catch (e) {
                     console.error("Error disponibilidad", e);
                 }
@@ -134,6 +137,7 @@ export const ProveedorInventario = ({ children }) => {
         recargarDatos();
 
         // 🟢 SUSCRIPCIÓN REALTIME (El "Noticiero")
+        // ... (resto de la suscripción)
         // Escuchar cambios en alquileres para actualizar stock al instante
         const canal = supabase
             .channel('cambios-inventario')
@@ -174,7 +178,7 @@ export const ProveedorInventario = ({ children }) => {
         return () => {
             supabase.removeChannel(canal);
         };
-    }, []);
+    }, [fechaSeleccionada]); // Recargar cada vez que cambie la fecha seleccionada
 
 
 
@@ -294,19 +298,22 @@ export const ProveedorInventario = ({ children }) => {
             // Actualización optimista para feedback inmediato en UI
             setAlquileres(prev => [...prev, {
                 ...nuevoAlquiler,
-                ...nuevoAlquiler,
-                id: 'temp-' + Date.now(), // ID temporal
-                estado: nuevoAlquiler.estado || 'pendiente',
-                estado_id: nuevoAlquiler.estado || 'pendiente' // Asegurar consistencia ID
+                id: respuesta.id || ('temp-' + Date.now()), // Usar ID real de DB si disponible
+                monto_pagado: nuevoAlquiler.montoPagado || 0,
+                saldo_pendiente: nuevoAlquiler.saldoPendiente || 0,
+                estado_id: (nuevoAlquiler.saldo_pendiente === 0 || nuevoAlquiler.saldoPendiente === 0) ? 'confirmado' : 'pendiente',
+                tipo_comprobante: nuevoAlquiler.tipoComprobante,
+                datos_factura: nuevoAlquiler.datosFactura,
+                cliente: usuario?.nombre || 'Mi Reserva'
             }]);
 
             // Recargar todos los datos para asegurar consistencia (stock, alquileres, etc)
             await recargarDatos();
-            return true;
+            return respuesta;
         } else {
             const mensajeError = respuesta?.error || "Error al registrar la reserva.";
             alert(mensajeError);
-            return false;
+            return respuesta;
         }
     };
 

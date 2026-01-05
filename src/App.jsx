@@ -16,6 +16,9 @@ import Modal from './components/ui/Modal';
 import Boton from './components/ui/Boton';
 import ModalInfoGlobal from './components/ui/ModalInfoGlobal';
 
+// Utils
+import { generarComprobante } from './utils/pdfGenerator';
+
 // Router
 import { crearRouterApp } from './router';
 
@@ -55,7 +58,11 @@ function AppContenido() {
 
     const { usuario, iniciarSesion, registrarUsuario, recuperarPregunta, verificarRespuesta, restablecerPassword, cargando } = auth;
     const { carrito, removerDelCarrito, esVisible, setEsVisible, total, limpiarCarrito } = useContext(ContextoCarrito);
-    const { registrarAlquiler, verificarDisponibilidad, calcularStockDisponible, fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva, calcularCotizacion, configuracion } = useContext(ContextoInventario);
+    const {
+        registrarAlquiler, verificarDisponibilidad, calcularStockDisponible,
+        fechaSeleccionada: fechaReserva, setFechaSeleccionada: setFechaReserva,
+        calcularCotizacion, configuracion, alquileres
+    } = useContext(ContextoInventario);
     const { calcularDescuentos } = useContext(ContextoPromociones);
     const { mostrarLogin, setMostrarLogin, modoRegistro, setModoRegistro, abrirModalInfo } = usarUI();
     const { sedeActual, setSedeActual, sedes } = useContext(ContextoInventario);
@@ -115,6 +122,9 @@ function AppContenido() {
     const [codigoCuponInput, setCodigoCuponInput] = useState(''); // Estado para el input
     const [aplicandoCupon, setAplicandoCupon] = useState(false);
     const [mensajeCupon, setMensajeCupon] = useState(null); // { tipo: 'exito' | 'error', texto: '' }
+
+    // Nuevo: Estado para manejar la impresión post-compra
+    const [ultimoAlquilerId, setUltimoAlquilerId] = useState(null);
 
     // Manejar aplicación manual del cupón
     const manejarAplicarCupon = async () => {
@@ -543,6 +553,8 @@ function AppContenido() {
                 sedeId: sedeActual || 'costa',
                 items: carrito.map(i => ({
                     id: Number(i.id),
+                    nombre: i.nombre,
+                    imagen: i.imagen,
                     cantidad: Number(i.cantidad),
                     horas: Number(i.horas),
                     precioPorHora: Number(i.precioPorHora),
@@ -560,8 +572,9 @@ function AppContenido() {
             setAceptaTerminos(false); // UI Loader
 
             try {
-                const exito = await registrarAlquiler(datosReserva);
-                if (exito) {
+                const respuesta = await registrarAlquiler(datosReserva);
+                if (respuesta && respuesta.success) {
+                    setUltimoAlquilerId(respuesta.id);
                     setCompraExitosa(true);
                 } else {
                     setAceptaTerminos(true);
@@ -667,18 +680,37 @@ function AppContenido() {
                             Hemos enviado los detalles de tu reserva a tu correo electrónico.
                             Puedes ver el contrato y el estado en tu perfil.
                         </p>
-                        <div className="flex gap-4 justify-center">
+                        <div className="flex flex-wrap gap-3 justify-center">
                             <Boton variante="secundario" onClick={() => {
                                 setEsVisible(false);
                                 setCompraExitosa(false);
+                                setUltimoAlquilerId(null);
                                 limpiarCarrito();
                             }}>Cerrar</Boton>
+
                             <Boton onClick={() => {
                                 setEsVisible(false);
                                 setCompraExitosa(false);
+                                setUltimoAlquilerId(null);
                                 limpiarCarrito();
-                                window.location.href = '/mis-gastos'; // O usar navigate si router disponible
-                            }}>Ver Mis Alquileres</Boton>
+                                window.location.href = '/mis-gastos';
+                            }}>Mis Alquileres</Boton>
+
+                            <Boton
+                                variante="exito"
+                                onClick={() => {
+                                    const alq = alquileres.find(a => a.id === ultimoAlquilerId);
+                                    if (alq) {
+                                        generarComprobante(alq, alq.tipo_comprobante || 'boleta');
+                                    } else {
+                                        alert("Preparando comprobante... intentalo en un segundo.");
+                                    }
+                                }}
+                                className="bg-green-600 text-white hover:bg-green-700"
+                            >
+                                <FileText size={16} className="mr-2" />
+                                {tipoComprobante === 'factura' ? 'Imprimir Factura' : 'Imprimir Boleta'}
+                            </Boton>
                         </div>
                     </div>
                 ) : carrito.length === 0 ? (
