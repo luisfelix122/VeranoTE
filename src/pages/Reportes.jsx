@@ -341,7 +341,9 @@ const Reportes = ({ rol: rolProp }) => {
                     setMisGastos(nuevosGastos || []);
                 }
             } else {
-                alert(res.error || "Error al procesar el pago.");
+                console.error("Error pago reportes:", res.error);
+                const msg = res.error?.message || (typeof res.error === 'object' ? JSON.stringify(res.error) : res.error) || "Error al procesar el pago.";
+                alert("Error: " + msg);
             }
         } catch (err) {
             console.error(err);

@@ -48,7 +48,7 @@ const BarraLateralPanel = () => {
 
     const enlacesVendedor = [
         { to: '/vendedor/operaciones', icon: TrendingUp, label: 'Operaciones' },
-        { to: '/vendedor/reservas', icon: Calendar, label: 'Reservas' },
+        { to: '/vendedor/reservas', icon: Calendar, label: 'Cobros' },
         { to: '/vendedor/punto-venta', icon: ShoppingCart, label: 'Punto de Venta' },
         { to: '/vendedor/reportes', icon: FileText, label: 'Reportes' }
     ];

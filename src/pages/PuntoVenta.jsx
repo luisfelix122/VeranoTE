@@ -1,12 +1,13 @@
-import React, { useState, useContext } from 'react';
-import { CreditCard, UserPlus, Search, X, Clock, Calendar } from 'lucide-react';
+import React, { useState, useContext, useEffect } from 'react';
+import { CreditCard, UserPlus, Search, X, Clock, Calendar, AlertTriangle } from 'lucide-react'; // Agregado AlertTriangle
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
-import Boton from '../components/ui/Boton';
+import Boton from '../components/ui/Boton'; // Se asegura import
 import Modal from '../components/ui/Modal';
+import { supabase } from '../supabase/client'; // Importar supabase directo para RPC si no está en contexto
 
 const PuntoVenta = () => {
-    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva, horarios } = useContext(ContextoInventario);
+    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva, horarios } = useContext(ContextoInventario); // cotizarReserva usaría la nueva logica
     const { usuario } = useContext(ContextoAutenticacion);
     const [carritoVenta, setCarritoVenta] = useState([]);
     const [clienteNombre, setClienteNombre] = useState('');
@@ -41,36 +42,79 @@ const PuntoVenta = () => {
         totalServicio: 0,
         garantia: 0,
         totalFinal: 0,
-        totalFinal: 0,
         descuento: 0
     });
 
-    // Cupones
+    // Cupones y Upselling
     const [codigoCupon, setCodigoCupon] = useState('');
+    const [codigoCuponInput, setCodigoCuponInput] = useState('');
+    const [aplicandoCupon, setAplicandoCupon] = useState(false);
+    const [mensajeCupon, setMensajeCupon] = useState(null);
+    const [alertas, setAlertas] = useState([]);
+
+    // Efecto para feedback del cupón
+    useEffect(() => {
+        if (!codigoCupon) return;
+        if (totales.descuento > 0) {
+            setMensajeCupon({ tipo: 'exito', texto: `Ahorro: S/ ${totales.descuento.toFixed(2)}` });
+        } else if (totales && codigoCupon) {
+            setMensajeCupon({ tipo: 'error', texto: 'No aplicable' });
+        }
+    }, [totales, codigoCupon]);
+
+    const manejarAplicarCupon = async () => {
+        if (!codigoCuponInput.trim()) {
+            setMensajeCupon({ tipo: 'error', texto: 'Ingrese un código' });
+            return;
+        }
+        setAplicandoCupon(true);
+        setMensajeCupon(null);
+        await new Promise(r => setTimeout(r, 500));
+        setCodigoCupon(codigoCuponInput.toUpperCase());
+        setAplicandoCupon(false);
+    };
 
     // Efecto para cotizar cada vez que cambia el carrito
     React.useEffect(() => {
         const actualizarCotizacion = async () => {
             if (carritoVenta.length === 0) {
                 setTotales({ totalServicio: 0, garantia: 0, totalFinal: 0, descuento: 0 });
+                setAlertas([]);
                 return;
             }
 
-            // Llamar al backend para calcular
-            const resultado = await cotizarReserva(carritoVenta, new Date(), codigoCupon); // Usar fecha actual o la del primer item
+            // Construir payload para RPC
+            const itemsParaBD = carritoVenta.map(item => ({
+                id: item.id,
+                cantidad: item.cantidad,
+                horas: item.horas,
+                categoria: item.categoria
+            }));
 
-            if (resultado) {
+            // Usamos supabase RPC direct to get full data (alerts, etc)
+            // IMPORTANTE: Asegurarse de importar supabase en este archivo
+            const { data, error } = await supabase.rpc('calcular_descuento_simulado', {
+                p_items: itemsParaBD,
+                p_fecha_inicio: new Date().toISOString(),
+                p_tipo_reserva: 'inmediata', // Asumido por defecto en POS
+                p_cliente_id: clienteSeleccionado?.id || null,
+                p_cupon: codigoCupon
+            });
+
+            if (data) {
                 setTotales({
-                    totalServicio: resultado.total_servicio || 0,
-                    garantia: resultado.garantia || 0,
-                    totalFinal: resultado.total_a_pagar || 0,
-                    descuento: resultado.descuento_total || 0
+                    totalServicio: data.total_servicio || 0,
+                    garantia: data.garantia || 0,
+                    totalFinal: data.total_a_pagar || 0,
+                    descuento: data.descuento || 0
                 });
+                setAlertas(data.alertas || []);
             }
         };
 
-        actualizarCotizacion();
-    }, [carritoVenta, cotizarReserva, codigoCupon]);
+        const timeout = setTimeout(actualizarCotizacion, 300);
+        return () => clearTimeout(timeout);
+    }, [carritoVenta, codigoCupon, clienteSeleccionado]);
 
     const manejarBusquedaCliente = async (texto) => {
         setClienteNombre(texto);
@@ -177,8 +221,10 @@ const PuntoVenta = () => {
         // Si TODOS son inmediata, entonces 'en_uso'.
 
         const tieneAnticipada = carritoVenta.some(i => i.tipoReserva === 'anticipada');
-        const tieneMotor = carritoVenta.some(i => i.categoria === 'Motor');
-        const estadoFinal = (tieneAnticipada || tieneMotor) ? 'confirmado' : 'en_uso';
+        // NOTA: El status 'confirmado' inicia el flujo con el Mecánico para revisión.
+        // La DB lo forzará a 'confirmado' si está pagado, o 'pendiente' si hay deuda.
+        // Aquí alineamos la lógica local.
+        const estadoFinal = 'confirmado';
 
         // Calcular montos
         const totalPagar = totales.totalFinal;
@@ -423,16 +469,43 @@ const PuntoVenta = () => {
                             <span>S/ {(Number(totales.totalServicio) || 0).toFixed(2)}</span>
                         </div>
 
-                        {/* Input Cupón */}
-                        <div className="flex items-center gap-2 py-1">
-                            <input
-                                type="text"
-                                placeholder="CUPÓN"
-                                className="w-full text-xs p-1 border rounded uppercase"
-                                value={codigoCupon}
-                                onChange={e => setCodigoCupon(e.target.value.toUpperCase())}
-                            />
+                        {/* Input Cupón Mejorado */}
+                        <div className="py-2 border-b border-gray-100 mb-2">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Cupón / Promoción</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="CÓDIGO"
+                                    className="w-full text-xs p-2 border rounded uppercase font-bold"
+                                    value={codigoCuponInput}
+                                    onChange={e => setCodigoCuponInput(e.target.value.toUpperCase())}
+                                />
+                                <button
+                                    className={`px-3 py-1 text-xs rounded font-bold text-white transition-colors ${aplicandoCupon ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                    onClick={manejarAplicarCupon}
+                                    disabled={aplicandoCupon}
+                                >
+                                    {aplicandoCupon ? '...' : 'Aplicar'}
+                                </button>
+                            </div>
+                            {mensajeCupon && (
+                                <p className={`text-xs mt-1 font-medium ${mensajeCupon.tipo === 'exito' ? 'text-green-600' : 'text-red-500'}`}>
+                                    {mensajeCupon.texto}
+                                </p>
+                            )}
                         </div>
+
+                        {/* Alertas de Upselling */}
+                        {alertas.length > 0 && (
+                            <div className="mb-2 space-y-1">
+                                {alertas.map((alerta, index) => (
+                                    <div key={index} className="bg-yellow-50 border border-yellow-200 rounded p-2 flex items-start gap-2">
+                                        <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
+                                        <p className="text-xs text-yellow-800 font-bold">{alerta}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
                         <div className="flex justify-between items-center text-sm text-gray-600">
                             <span className="">IGV (18%)</span>

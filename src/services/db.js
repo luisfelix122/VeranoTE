@@ -57,19 +57,30 @@ export const obtenerHorarios = async () => {
 // Función para calcular cotización en el servidor
 export const calcularCotizacion = async (items, fechaInicio, tipoReserva, clienteId, cupon = null) => {
     // Usamos el mismo RPC robusto que para descuentos
+    // Proporcionar defaults seguros para evitar 404 por firma incompleta
     const { data, error } = await supabase.rpc('calcular_descuento_simulado', {
         p_items: items,
-        p_fecha_inicio: fechaInicio,
-        p_tipo_reserva: tipoReserva,
-        p_cliente_id: clienteId,
-        p_cupon: cupon // Nuevo parámetro
+        p_fecha_inicio: fechaInicio || new Date().toISOString(),
+        p_tipo_reserva: tipoReserva || 'inmediata',
+        p_cliente_id: clienteId || null,
+        p_cupon: cupon
     });
 
     if (error) {
         console.error('Error calculando cotización:', error);
         return null;
     }
-    return data;
+    return {
+        subtotal_base: Number(data.subtotal_base) || 0,
+        igv: Number(data.igv) || 0,
+        subtotal: Number(data.subtotal) || 0,
+        garantia: Number(data.garantia) || 0,
+        total: Number(data.total_a_pagar) || 0,
+        descuento: Number(data.descuento) || 0,
+        alertas: data.alertas || [],
+        promocionesAplicadas: data.promocionesAplicadas || [],
+        total_dolares: data.total_dolares
+    };
 };
 
 export const obtenerConfiguracion = async () => {
@@ -258,7 +269,9 @@ export const calcularDescuentosDB = async (items, fechaInicio, cupon = null) => 
         .rpc('calcular_descuento_simulado', {
             p_items: itemsRPC,
             p_fecha_inicio: fechaInicio || new Date().toISOString(),
-            p_cupon: cupon // Agregado: Soporte para cupones
+            p_tipo_reserva: 'inmediata', // Default en DB pero explicito para evitar ambiguacion
+            p_cliente_id: null,
+            p_cupon: cupon
         });
 
     if (error || !data) {
@@ -274,18 +287,17 @@ export const calcularDescuentosDB = async (items, fechaInicio, cupon = null) => 
         };
     }
 
-    // 3. Fusionar resultados con seguridad
-    const descuento = Number(data.descuentoTotal) || 0;
-    const totalServicio = totalBase;
-    const totalFinal = totalServicio + garantia - descuento;
-
+    // 3. Retornar datos directamente del RPC (ahora es la fuente de verdad)
     return {
-        total_servicio: totalServicio,
-        garantia: garantia,
-        total_a_pagar: isNaN(totalFinal) ? (totalBase + garantia) : totalFinal,
-        descuento_total: isNaN(descuento) ? 0 : descuento,
+        subtotal_base: Number(data.subtotal_base) || 0,
+        igv: Number(data.igv) || 0,
+        subtotal: Number(data.subtotal) || 0, // Total Servicio (Base + IGV)
+        garantia: Number(data.garantia) || 0,
+        total: Number(data.total_a_pagar) || 0, // Total Final
+        descuento: Number(data.descuento) || 0,
         alertas: data.alertas || [],
-        promocionesAplicadas: data.promocionesAplicadas || []
+        promocionesAplicadas: data.promocionesAplicadas || [],
+        total_dolares: data.total_dolares
     };
 };
 
@@ -587,8 +599,8 @@ export const registrarPagoSaldoDB = async (alquilerId, metodoPagoId = 'tarjeta',
         p_token_tarjeta: tarjetaId
     });
     if (error) {
-        console.error('Error al registrar pago:', error);
-        return { success: false, error };
+        console.error('Error al registrar pago (DB):', error);
+        return { success: false, error: error }; // Returning full error object
     }
     return data;
 };

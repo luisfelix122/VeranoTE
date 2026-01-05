@@ -11,7 +11,7 @@ const BarraNavegacionPanel = () => {
     const navigate = useNavigate();
     const { usuario, cerrarSesion } = useContext(ContextoAutenticacion);
     const { tickets } = useContext(ContextoSoporte);
-    const { sedes, sedeActual } = useContext(ContextoInventario);
+    const { sedes, sedeActual, setSedeActual } = useContext(ContextoInventario);
     const [mostrarMenuUsuario, setMostrarMenuUsuario] = useState(false);
     const [mostrarBandeja, setMostrarBandeja] = useState(false);
     const menuRef = useRef(null);
@@ -72,6 +72,7 @@ const BarraNavegacionPanel = () => {
                                     </span>
                                 </>
                             )}
+
                         </span>
                     </div>
 

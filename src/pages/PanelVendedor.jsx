@@ -6,7 +6,7 @@ import { formatearFecha } from '../utils/formatters';
 import Boton from '../components/ui/Boton';
 
 const PanelVendedor = () => {
-    const { alquileres, entregarAlquiler, devolverAlquiler, aprobarParaEntrega, sedeActual } = useContext(ContextoInventario);
+    const { alquileres, entregarAlquiler, devolverAlquiler, aprobarParaEntrega, solicitarPreparacion, sedeActual } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
 
     // Filtrar por ID de vendedor (del usuario logueado) O por Sede (si al vendedor no se le asignó pero está en la misma sede)
@@ -23,12 +23,18 @@ const PanelVendedor = () => {
         return esVendedor || esSede;
     });
 
-    // Próximas Entregas: Confirmado o Listo para Entrega (Filtrado)
-    const entregasPendientes = misAlquileres.filter(a => a.estado === 'listo_para_entrega' || a.estado === 'confirmado');
+    // Próximas Entregas: Confirmado, Pendiente (Cobros) o Listo para Entrega
+    const entregasPendientes = misAlquileres.filter(a => {
+        const est = String(a.estado_id || a.estado || '').toLowerCase();
+        return est === 'listo_para_entrega' ||
+            est === 'confirmado' ||
+            est === 'en_preparacion' ||
+            est.includes('pendiente'); // Mostrar también pendientes de pago para iniciar gestión
+    }).sort((a, b) => new Date(a.fechaInicio) - new Date(b.fechaInicio));
 
     // Devoluciones: En Uso (Filtrado)
     const enUso = misAlquileres.filter(a => {
-        const est = String(a.estado).toLowerCase();
+        const est = String(a.estado_id || a.estado).toLowerCase();
         return est === 'en_uso' || est === 'en uso';
     });
 
@@ -39,10 +45,17 @@ const PanelVendedor = () => {
         sedeActualContext: sedeActual,
         totalAlquileres: alquileres.length,
         misAlquileresCount: misAlquileres.length,
-        estadosEncontrados: [...new Set(alquileres.map(a => a.estado))],
+        estadosEncontrados: [...new Set(alquileres.map(a => a.estado_id || a.estado))],
         sedesEncontradas: [...new Set(alquileres.map(a => a.sedeId))],
         vendedorIdsEncontrados: [...new Set(alquileres.map(a => a.vendedorId))],
         ejemploAlquiler: alquileres[0] || 'No hay alquileres'
+    };
+
+    // Función para manejar la solicitud de preparación
+    const handleSolicitarPreparacion = async (id) => {
+        if (window.confirm("¿Solicitar al Mecánico que prepare los equipos?")) {
+            await solicitarPreparacion(id);
+        }
     };
 
     return (
@@ -52,32 +65,62 @@ const PanelVendedor = () => {
             </h1>
 
             {/* DEBUG SECTION - REMOVE AFTER FIXING */}
-            <details className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-xs font-mono overflow-auto max-h-60">
+            {/* <details className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-xs font-mono overflow-auto max-h-60">
                 <summary className="cursor-pointer font-bold text-yellow-700">DEBUG INFO (Click para ver por qué no salen datos)</summary>
                 <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-            </details>
+            </details> */}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Próximas Entregas */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2"><Truck className="text-blue-600" /> Próximas Entregas</h2>
                     <div className="grid gap-4">
-                        {entregasPendientes.length === 0 ? <p className="text-gray-500">No hay entregas pendientes.</p> : entregasPendientes.map(a => (
-                            <div key={a.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                <div>
-                                    <p className="font-bold text-gray-900">{a.cliente}</p>
-                                    <p className="text-sm text-gray-600">{a.items.length} items</p>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${a.estado === 'listo_para_entrega' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                        {a.estado === 'listo_para_entrega' ? 'Listo para Entregar' : 'Pendiente de Revisión'}
-                                    </span>
+                        {entregasPendientes.length === 0 ? <p className="text-gray-500">No hay entregas pendientes.</p> : entregasPendientes.map(a => {
+                            const est = String(a.estado_id || a.estado || '').toLowerCase();
+                            const esListo = est === 'listo_para_entrega';
+                            const esPreparacion = est === 'en_preparacion';
+                            const debePlata = a.saldoPendiente > 0 || est.includes('pendiente');
+
+                            return (
+                                <div key={a.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                    <div>
+                                        <p className="font-bold text-gray-900">{a.cliente}</p>
+                                        <p className="text-sm text-gray-600">
+                                            {a.items.length} items • <span className="font-mono text-xs">{formatearFecha(a.fechaInicio)}</span>
+                                        </p>
+                                        <div className="flex gap-2 mt-1">
+                                            <span className={`text-xs px-2 py-1 rounded-full ${esListo ? 'bg-green-100 text-green-800' : esPreparacion ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                {esListo ? 'Listo para Entregar' : esPreparacion ? 'En Preparación (Mec)' : 'Pendiente de Revisión'}
+                                            </span>
+                                            {debePlata && (
+                                                <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-bold flex items-center gap-1">
+                                                    ⚠️ Falta Pago
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1 items-end">
+                                        {esListo ? (
+                                            <Boton variante="primario" onClick={() => entregarAlquiler(a.id, usuario?.id)}>Entregar Cliente</Boton>
+                                        ) : esPreparacion ? (
+                                            <span className="text-xs text-gray-400 italic text-center">Esperando Mecánico...</span>
+                                        ) : (
+                                            <Boton
+                                                variante={debePlata ? 'deshabilitado' : 'secundario'}
+                                                className={debePlata ? 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500' : ''}
+                                                disabled={debePlata}
+                                                onClick={() => !debePlata && handleSolicitarPreparacion(a.id)}
+                                            >
+                                                Solicitar Revisión
+                                            </Boton>
+                                        )}
+                                        {debePlata && !esListo && !esPreparacion && (
+                                            <span className="text-[10px] text-red-600 font-medium">Cobrar antes de solicitar</span>
+                                        )}
+                                    </div>
                                 </div>
-                                {a.estado === 'confirmado' ? (
-                                    <Boton variante="secundario" onClick={() => aprobarParaEntrega(a.id)}>Confirmar Revisión</Boton>
-                                ) : (
-                                    <Boton variante="primario" onClick={() => entregarAlquiler(a.id, usuario?.id)}>Entregar Cliente</Boton>
-                                )}
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">

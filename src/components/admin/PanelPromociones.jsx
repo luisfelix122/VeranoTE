@@ -151,7 +151,7 @@ const PanelPromociones = () => {
             <Modal titulo={modoEdicion ? "Editar Promoción" : "Crear Nueva Promoción"} abierto={mostrarForm} alCerrar={cerrarModal}>
                 <form onSubmit={manejarSubmit} className="space-y-4">
                     <input required placeholder="Nombre de la Promoción" className="w-full p-2 border rounded" value={nuevaPromo.nombre} onChange={e => setNuevaPromo({ ...nuevaPromo, nombre: e.target.value })} />
-                    <input required placeholder="Nombre de la Promoción" className="w-full p-2 border rounded" value={nuevaPromo.nombre} onChange={e => setNuevaPromo({ ...nuevaPromo, nombre: e.target.value })} />
+
 
                     <div className="flex items-center gap-4 bg-gray-50 p-2 rounded border">
                         <label className="flex items-center gap-2 cursor-pointer">
@@ -213,7 +213,7 @@ const PanelPromociones = () => {
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-700 mb-1">Categoría (Opcional)</label>
-                                <input placeholder="Ej: Motor" className="w-full p-2 border rounded" value={nuevaPromo.condicion.categoria} onChange={e => setNuevaPromo({ ...nuevaPromo, condicion: { ...nuevaPromo.condicion, categoria: e.target.value } })} />
+                                <input placeholder="Ej: Motor" className="w-full p-2 border rounded" value={nuevaPromo.condicion.categoria} onChange={e => setNuevaPromo({ ...nuevaPromo, condicion: { ...nuevaPromo.condicion, categoria: e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1) } })} />
                             </div>
                         </div>
                     )}

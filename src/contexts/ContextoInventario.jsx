@@ -232,8 +232,10 @@ export const ProveedorInventario = ({ children }) => {
             // Actualización optimista para feedback inmediato en UI
             setAlquileres(prev => [...prev, {
                 ...nuevoAlquiler,
+                ...nuevoAlquiler,
                 id: 'temp-' + Date.now(), // ID temporal
-                estado: 'pendiente'
+                estado: nuevoAlquiler.estado || 'pendiente',
+                estado_id: nuevoAlquiler.estado || 'pendiente' // Asegurar consistencia ID
             }]);
 
             // Recargar todos los datos para asegurar consistencia (stock, alquileres, etc)
@@ -259,7 +261,7 @@ export const ProveedorInventario = ({ children }) => {
                     .from('alquileres')
                     .update({
                         fecha_inicio: nuevaFechaInicio.toISOString(),
-                        estado: 'listo_para_entrega'
+                        estado_id: 'listo_para_entrega'
                     })
                     .eq('id', idAlquiler);
 
@@ -268,6 +270,7 @@ export const ProveedorInventario = ({ children }) => {
                 setAlquileres(prev => prev.map(a => a.id === idAlquiler ? {
                     ...a,
                     estado: 'listo_para_entrega',
+                    estado_id: 'listo_para_entrega',
                     fechaInicio: nuevaFechaInicio.toISOString()
                 } : a));
 
@@ -436,6 +439,7 @@ export const ProveedorInventario = ({ children }) => {
                         montoPagado: a.totalFinal,
                         saldoPendiente: 0,
                         estado: a.estado === 'pendiente' ? 'confirmado' : a.estado,
+                        estado_id: a.estado_id === 'pendiente' ? 'confirmado' : a.estado_id,
                         vendedorId: vendedorId || a.vendedorId, // Actualizar localmente también
                     };
                 }
@@ -444,7 +448,9 @@ export const ProveedorInventario = ({ children }) => {
             await recargarDatos(); // Asegurar consistencia total
             return true;
         } else {
-            alert(resultado.error);
+            console.error("Error al registrar pago (Contexto):", resultado.error);
+            const msg = resultado.error?.message || (typeof resultado.error === 'object' ? JSON.stringify(resultado.error) : resultado.error) || "Error desconocido";
+            alert("Error al registrar pago: " + msg);
             return false;
         }
     };
@@ -452,7 +458,7 @@ export const ProveedorInventario = ({ children }) => {
     const entregarAlquiler = async (idAlquiler, vendedorId) => {
         const resultado = await entregarAlquilerDB(idAlquiler, vendedorId);
         if (resultado.success) {
-            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_uso', fechaEntrega: new Date() } : a));
+            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_uso', estado_id: 'en_uso', fechaEntrega: new Date() } : a));
             return true;
         } else {
             alert(resultado.error || "Error al entregar alquiler");
@@ -493,7 +499,7 @@ export const ProveedorInventario = ({ children }) => {
             // 2. Cambiar estado del alquiler a 'finalizado'
             const { error: errorAlquiler } = await supabase
                 .from('alquileres')
-                .update({ estado: 'finalizado' })
+                .update({ estado_id: 'finalizado' })
                 .eq('id', idAlquiler);
 
             if (errorAlquiler) throw errorAlquiler;
@@ -503,7 +509,7 @@ export const ProveedorInventario = ({ children }) => {
                 await gestionarMantenimientoDB(item.id, 'finalizar');
             }
 
-            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'finalizado' } : a));
+            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'finalizado', estado_id: 'finalizado' } : a));
             await recargarDatos();
             return true;
         } catch (err) {
@@ -516,7 +522,7 @@ export const ProveedorInventario = ({ children }) => {
     const marcarNoShow = async (idAlquiler) => {
         const resultado = await registrarNoShowDB(idAlquiler);
         if (resultado.success) {
-            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'no_show' } : a));
+            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'no_show', estado_id: 'no_show' } : a));
             return true;
         } else {
             alert(resultado.error);
@@ -532,6 +538,7 @@ export const ProveedorInventario = ({ children }) => {
                     return {
                         ...a,
                         estado: 'limpieza',
+                        estado_id: 'limpieza',
                         fechaDevolucionReal: new Date(),
                         penalizacion: resultado.penalizacion,
                         totalFinal: resultado.nuevo_total
@@ -542,6 +549,24 @@ export const ProveedorInventario = ({ children }) => {
             return true;
         } else {
             alert(resultado.error || "Error al registrar devolución");
+            return false;
+        }
+    };
+
+    const solicitarPreparacion = async (idAlquiler) => {
+        try {
+            const { error } = await supabase
+                .from('alquileres')
+                .update({ estado_id: 'en_preparacion' }) // Corregido: estado -> estado_id
+                .eq('id', idAlquiler);
+
+            if (error) throw error;
+
+            setAlquileres(prev => prev.map(a => a.id === idAlquiler ? { ...a, estado: 'en_preparacion', estado_id: 'en_preparacion' } : a));
+            return true;
+        } catch (err) {
+            console.error("Error en solicitarPreparacion:", err);
+            alert("Error al solicitar preparación: " + err.message);
             return false;
         }
     };
@@ -560,10 +585,15 @@ export const ProveedorInventario = ({ children }) => {
 
 
 
-    // Sincronizar sedeActual con el perfil del usuario (Admin/Vendedor)
+    // Sincronizar sedeActual con el perfil del usuario, pero permitir cambio manual si es dueño
     useEffect(() => {
+        // Si ya hay una sede seleccionada manualmente (por el dueño), no la sobrescribimos con el perfil
+        // a menos que sea el primer render o si el usuario no tiene permiso para ver otra.
         if (usuario?.sede && (usuario.rol === 'admin' || usuario.rol === 'vendedor')) {
             setSedeActual(usuario.sede);
+        } else if (usuario?.rol === 'dueno' && !sedeActual) {
+            // Default para dueño si no hay nada seleccionado aún
+            setSedeActual('costa');
         }
     }, [usuario]);
 
@@ -597,6 +627,7 @@ export const ProveedorInventario = ({ children }) => {
             aplicarDescuentoMantenimiento,
             registrarPagoSaldo,
             estaAbierto,
+            solicitarPreparacion, // Nuevo
             contenido,
             configuracion,
             buscarClientes,

@@ -104,7 +104,44 @@ function AppContenido() {
     const [metodoPago, setMetodoPago] = useState('transferencia');
     const [tipoComprobante, setTipoComprobante] = useState('boleta');
     const [datosFactura, setDatosFactura] = useState({ ruc: '', razonSocial: '', direccion: '' });
-    const [codigoCupon, setCodigoCupon] = useState(''); // Estado para cupón
+    const [codigoCupon, setCodigoCupon] = useState('');
+    const [codigoCuponInput, setCodigoCuponInput] = useState(''); // Estado para el input
+    const [aplicandoCupon, setAplicandoCupon] = useState(false);
+    const [mensajeCupon, setMensajeCupon] = useState(null); // { tipo: 'exito' | 'error', texto: '' }
+
+    // Manejar aplicación manual del cupón
+    const manejarAplicarCupon = async () => {
+        if (!codigoCuponInput.trim()) {
+            setMensajeCupon({ tipo: 'error', texto: 'Ingresa un código' });
+            return;
+        }
+        setAplicandoCupon(true);
+        setMensajeCupon(null);
+
+        // Simulamos espera para UX
+        await new Promise(r => setTimeout(r, 500));
+
+        // Actualizamos el cupón "oficial" que dispara el recalculo
+        setCodigoCupon(codigoCuponInput);
+        setAplicandoCupon(false);
+    };
+
+    // Estado para totales calculados por backend (Declarado aquí para evitar ReferenceError)
+    const [totalesServer, setTotalesServer] = useState(null);
+    const [promocionesAplicadas, setPromocionesAplicadas] = useState([]); // Aunque no se usa arriba, agrupamos para claridad
+    const [alertas, setAlertas] = useState([]);
+
+    // Efecto para dar feedback del cupón tras recalculo
+    React.useEffect(() => {
+        if (!codigoCupon) return;
+
+        if (totalesServer && totalesServer.descuento > 0) {
+            setMensajeCupon({ tipo: 'exito', texto: `¡Cupón aplicado! Ahorras S/ ${totalesServer.descuento.toFixed(2)}` });
+        } else if (totalesServer && codigoCupon) {
+            // ...
+            setMensajeCupon({ tipo: 'error', texto: 'Cupón no válido o condiciones no cumplidas' });
+        }
+    }, [totalesServer, codigoCupon]); // Estado para cupón
 
     // New UX State
     const [erroresRegistro, setErroresRegistro] = useState({});
@@ -214,10 +251,7 @@ function AppContenido() {
     const refTarjeta = React.useRef(null);
 
     // Estados para descuentos y promociones en el carrito
-    // const [descuentoTotal, setDescuentoTotal] = useState(0); // REMOVED to avoid conflict with calculated const
-    const [promocionesAplicadas, setPromocionesAplicadas] = useState([]);
-    const [alertas, setAlertas] = useState([]);
-    const [totalesServer, setTotalesServer] = useState(null);
+    // (Movidos arriba para solucionar ReferenceError)
 
     // Calcular descuentos cuando cambie el carrito
     React.useEffect(() => {
@@ -363,13 +397,13 @@ function AppContenido() {
             console.log("DEBUG: Resultado Cotización:", resultado);
 
             setTotalesServer({
-                subtotal_base: resultado.total_servicio,
-                igv: resultado.total_servicio * 0.18,
-                subtotal: resultado.total_servicio * 1.18, // Aprox, si backend ya trae IGV ajustar
-                descuento: resultado.descuento || 0, // Capturamos el descuento
+                subtotal_base: resultado.subtotal_base, // Directo del DB (con default 0)
+                igv: resultado.igv,
+                subtotal: resultado.subtotal, // Esto es Total Servicio (Base + IGV)
+                descuento: resultado.descuento,
                 garantia: resultado.garantia,
-                total: resultado.total_a_pagar,
-                total_dolares: resultado.total_a_pagar / (configuracion?.tipo_cambio || 3.8)
+                total: resultado.total,
+                total_dolares: resultado.total_dolares
             });
             setAlertas(resultado.alertas || []);
         };
@@ -737,13 +771,24 @@ function AppContenido() {
                                             <input
                                                 type="text"
                                                 placeholder="EJ: VERANO2025"
-                                                className="flex-1 p-2 border rounded text-sm uppercase"
-                                                value={codigoCupon}
-                                                onChange={e => setCodigoCupon(e.target.value.toUpperCase())}
+                                                className="flex-1 p-2 border rounded text-sm uppercase font-bold tracking-wide"
+                                                value={codigoCuponInput}
+                                                onChange={e => setCodigoCuponInput(e.target.value.toUpperCase())}
+                                                onKeyDown={e => e.key === 'Enter' && manejarAplicarCupon()}
                                             />
+                                            <button
+                                                className={`px-4 py-2 text-xs font-bold text-white rounded transition-colors ${aplicandoCupon ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                onClick={manejarAplicarCupon}
+                                                disabled={aplicandoCupon}
+                                                type="button"
+                                            >
+                                                {aplicandoCupon ? '...' : 'Aplicar'}
+                                            </button>
                                         </div>
-                                        {promocionesAplicadas.length > 0 && (
-                                            <p className="text-xs text-green-600 mt-1 font-bold">¡Cupón aplicado!</p>
+                                        {mensajeCupon && (
+                                            <p className={`text-xs mt-2 font-bold ${mensajeCupon.tipo === 'exito' ? 'text-green-600' : 'text-red-500'}`}>
+                                                {mensajeCupon.texto}
+                                            </p>
                                         )}
                                     </div>
 
