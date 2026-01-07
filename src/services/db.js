@@ -38,6 +38,46 @@ export const obtenerCategorias = async () => {
     return data;
 };
 
+export const crearCategoriaDB = async (nombre, sedeId = null) => {
+    const { data, error } = await supabase
+        .from('categorias')
+        .insert([{ nombre, sede_id: sedeId }])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error al crear categoría:', error);
+        throw error;
+    }
+    return data;
+};
+
+export const eliminarCategoriaDB = async (id) => {
+    const { error } = await supabase
+        .from('categorias')
+        .update({ activo: false })
+        .eq('id', id);
+
+    if (error) {
+        console.error('Error al desactivar categoría:', error);
+        return { success: false, error };
+    }
+    return { success: true };
+};
+
+export const reactivarCategoriaDB = async (id) => {
+    const { error } = await supabase
+        .from('categorias')
+        .update({ activo: true })
+        .eq('id', id);
+
+    if (error) {
+        console.error('Error al reactivar categoría:', error);
+        return { success: false, error };
+    }
+    return { success: true };
+};
+
 export const obtenerSedes = async () => {
     // Join con SEDE_SERVICIOS y SERVICIOS
     const { data, error } = await supabase

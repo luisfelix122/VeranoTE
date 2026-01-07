@@ -14,7 +14,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 
 const Reportes = ({ rol: rolProp }) => {
-    const { alquileres, inventario, reprogramarAlquiler, marcarNoShow, aplicarDescuentoMantenimiento, registrarPagoSaldo, estaAbierto } = useContext(ContextoInventario);
+    const { alquileres, inventario, reprogramarAlquiler, marcarNoShow, aplicarDescuentoMantenimiento, registrarPagoSaldo, estaAbierto, configuracion } = useContext(ContextoInventario);
     const { usuario, usuarios } = useContext(ContextoAutenticacion);
     const location = useLocation();
     const navigate = useNavigate();
@@ -767,7 +767,7 @@ const Reportes = ({ rol: rolProp }) => {
                                     </div>
                                 )}
                                 <div className="flex justify-between text-sm text-gray-600">
-                                    <span>IGV (18%):</span>
+                                    <span>IGV ({((configuracion?.IGV || 0.18) * 100).toFixed(0)}%):</span>
                                     <span>S/ {Number(igv).toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm font-bold text-gray-800 pt-2 border-t border-dashed">

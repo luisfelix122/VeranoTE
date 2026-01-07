@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal';
 import { supabase } from '../supabase/client'; // Importar supabase directo para RPC si no está en contexto
 
 const PuntoVenta = () => {
-    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva, horarios, estaAbierto } = useContext(ContextoInventario); // cotizarReserva usaría la nueva logica
+    const { inventario, registrarAlquiler, buscarClientes, registrarCliente, cotizarReserva, horarios, estaAbierto, configuracion } = useContext(ContextoInventario); // cotizarReserva usaría la nueva logica
     const { usuario } = useContext(ContextoAutenticacion);
     const [carritoVenta, setCarritoVenta] = useState([]);
     const [clienteNombre, setClienteNombre] = useState('');
@@ -134,6 +134,8 @@ const PuntoVenta = () => {
 
             if (data) {
                 setTotales({
+                    subtotal_base: data.subtotal_base || 0,
+                    igv: data.igv || 0,
                     totalServicio: data.total_servicio || 0,
                     garantia: data.garantia || 0,
                     totalFinal: data.total_a_pagar || 0,
@@ -310,7 +312,7 @@ const PuntoVenta = () => {
 
         // Calcular montos
         const totalPagar = totales.totalFinal;
-        const adelanto = tieneAnticipada ? totalPagar * 0.60 : totalPagar;
+        const adelanto = tieneAnticipada ? totalPagar * (configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60) : totalPagar;
         const saldo = totalPagar - adelanto;
 
         const nuevoAlquiler = {
@@ -549,7 +551,7 @@ const PuntoVenta = () => {
                     <div className="flex-shrink-0 pt-4 space-y-2 px-2 pb-4">
                         <div className="flex justify-between items-center text-sm text-gray-600">
                             <span className="">Subtotal Base</span>
-                            <span>S/ {(Number(totales.totalServicio) || 0).toFixed(2)}</span>
+                            <span>S/ {(Number(totales.subtotal_base) || 0).toFixed(2)}</span>
                         </div>
 
                         {/* Input Cupón Mejorado */}
@@ -591,21 +593,21 @@ const PuntoVenta = () => {
                         )}
 
                         <div className="flex justify-between items-center text-sm text-gray-600">
-                            <span className="">IGV (18%)</span>
-                            <span>S/ {((Number(totales.totalServicio) || 0) * 0.18).toFixed(2)}</span>
+                            <span className="">IGV ({((configuracion?.IGV || 0.18) * 100).toFixed(0)}%)</span>
+                            <span>S/ {(Number(totales.igv) || 0).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center text-sm text-gray-600 font-bold border-t border-gray-100 pt-1">
                             <span className="">Total Servicio</span>
                             <span>S/ {(Number(totales.totalServicio) || 0).toFixed(2)}</span>
                         </div>
                         {totales.descuento > 0 && <div className="flex justify-between items-center text-sm text-green-600"><span className="">Descuento</span><span>- S/ {totales.descuento.toFixed(2)}</span></div>}
-                        <div className="flex justify-between items-center text-sm text-green-600"><span className="">Garantía (20% Reembolsable)</span><span>S/ {totales.garantia.toFixed(2)}</span></div>
+                        <div className="flex justify-between items-center text-sm text-green-600"><span className="">Garantía ({((configuracion?.GARANTIA_PORCENTAJE || 0.20) * 100).toFixed(0)}% Reembolsable)</span><span>S/ {totales.garantia.toFixed(2)}</span></div>
 
                         <div className="flex justify-between items-center border-t border-dashed pt-2 mt-2">
                             <span className="font-bold text-lg">Total a Pagar</span>
                             <div className="text-right">
                                 <span className="text-2xl font-bold text-blue-600">S/ {totales.totalFinal.toFixed(2)}</span>
-                                <p className="text-xs text-gray-400">approx. $ {(totales.totalFinal / 3.8).toFixed(2)}</p>
+                                <p className="text-xs text-gray-400">approx. $ {(totales.totalFinal / (configuracion?.TIPO_CAMBIO || 3.8)).toFixed(2)}</p>
                             </div>
                         </div>
 
@@ -613,19 +615,19 @@ const PuntoVenta = () => {
                         {carritoVenta.some(i => i.tipoReserva === 'anticipada') && (
                             <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 space-y-1 mt-2">
                                 <div className="flex justify-between text-sm font-bold text-blue-800">
-                                    <span>Adelanto a Pagar (60%)</span>
-                                    <span>S/ {(totales.totalFinal * 0.60).toFixed(2)}</span>
+                                    <span>Adelanto a Pagar ({((configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60) * 100).toFixed(0)}%)</span>
+                                    <span>S/ {(totales.totalFinal * (configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60)).toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm font-bold text-orange-800">
-                                    <span>Saldo Pendiente (40%)</span>
-                                    <span>S/ {(totales.totalFinal * 0.40).toFixed(2)}</span>
+                                    <span>Saldo Pendiente ({((1 - (configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60)) * 100).toFixed(0)}%)</span>
+                                    <span>S/ {(totales.totalFinal * (1 - (configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60))).toFixed(2)}</span>
                                 </div>
                             </div>
                         )}
 
                         <Boton className="w-full mt-4 py-3 text-lg" onClick={procesarVenta} disabled={carritoVenta.length === 0}>
                             {carritoVenta.some(i => i.tipoReserva === 'anticipada')
-                                ? `Pagar Adelanto S/ ${(totales.totalFinal * 0.60).toFixed(2)}`
+                                ? `Pagar Adelanto S/ ${(totales.totalFinal * (configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60)).toFixed(2)}`
                                 : `Cobrar S/ ${totales.totalFinal.toFixed(2)}`
                             }
                         </Boton>
@@ -895,7 +897,7 @@ const PuntoVenta = () => {
                         </section>
                         <section>
                             <h4 className="font-bold text-gray-800">3. Garantía Reembolsable</h4>
-                            <p>Se requiere un depósito del 20% sobre el valor del servicio como garantía. Este monto será devuelto íntegramente al momento de la entrega del recurso en las mismas condiciones en que fue recibido.</p>
+                            <p>Se requiere un depósito del {((configuracion?.GARANTIA_PORCENTAJE || 0.20) * 100).toFixed(0)}% sobre el valor del servicio como garantía. Este monto será devuelto íntegramente al momento de la entrega del recurso en las mismas condiciones en que fue recibido.</p>
                         </section>
                         <section>
                             <h4 className="font-bold text-gray-800">4. Horarios y Penalidades</h4>

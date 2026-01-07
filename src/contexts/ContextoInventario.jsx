@@ -6,7 +6,8 @@ import {
     gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
     aplicarDescuentoManualDB, registrarPagoSaldoDB, registrarUsuarioDB, aprobarReservaDB,
     obtenerDisponibilidadRecursoDB, buscarClientesDB, actualizarTipoCambioReal,
-    calcularDescuentosDB, verificarDisponibilidadDB, calcularCotizacion
+    calcularDescuentosDB, verificarDisponibilidadDB, calcularCotizacion, crearCategoriaDB,
+    eliminarCategoriaDB, reactivarCategoriaDB
 } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 import { ContextoAutenticacion } from './ContextoAutenticacion';
@@ -23,6 +24,7 @@ export const ProveedorInventario = ({ children }) => {
     const [contenido, setContenido] = useState({});
     const [configuracion, setConfiguracion] = useState({});
     const [sedeActual, setSedeActual] = useState('costa'); // Default ID
+    const estaCargandoRef = React.useRef(false); // Lock para evitar bucles de Realtime
     // Fix: Usar fecha LOCAL, no UTC (para evitar salto de día en la noche)
     const fechaLocal = new Date();
     fechaLocal.setMinutes(fechaLocal.getMinutes() - fechaLocal.getTimezoneOffset());
@@ -57,6 +59,8 @@ export const ProveedorInventario = ({ children }) => {
 
     // Cargar datos iniciales
     const recargarDatos = async (fechaTarget = null) => {
+        if (estaCargandoRef.current) return;
+        estaCargandoRef.current = true;
         try {
             // Determinar si la fecha seleccionada es hoy (en horario local)
             const hoyStr = new Date().toISOString().split('T')[0];
@@ -171,6 +175,8 @@ export const ProveedorInventario = ({ children }) => {
             })));
         } catch (error) {
             console.error("Error al recargar datos:", error);
+        } finally {
+            estaCargandoRef.current = false;
         }
     };
 
@@ -178,41 +184,16 @@ export const ProveedorInventario = ({ children }) => {
     useEffect(() => {
         recargarDatos();
 
-        // 🟢 SUSCRIPCIÓN REALTIME (El "Noticiero")
-        // ... (resto de la suscripción)
-        // Escuchar cambios en alquileres para actualizar stock al instante
+        // 🟢 SUSCRIPCIÓN REALTIME GLOBAL (El "Noticiero")
         const canal = supabase
-            .channel('cambios-inventario')
+            .channel('cambios-globales')
             .on(
                 'postgres_changes',
-                { event: '*', schema: 'public', table: 'alquiler_detalles' },
+                { event: '*', schema: 'public' },
                 (payload) => {
-                    console.log('Cambio detectado en alquileres (Realtime):', payload);
-                    setTimeout(() => recargarDatos(), 500);
-                }
-            )
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'alquileres' },
-                (payload) => {
-                    // También escuchar cambios de estado (cancelaciones, entregas)
-                    setTimeout(() => recargarDatos(), 500);
-                }
-            )
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'recursos' },
-                (payload) => {
-                    console.log('Cambio detectado en recursos (Stock/Activo):', payload);
-                    setTimeout(() => recargarDatos(), 300);
-                }
-            )
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'mantenimientos' },
-                (payload) => {
-                    console.log('Cambio detectado en mantenimientos:', payload);
-                    setTimeout(() => recargarDatos(), 300);
+                    console.log('Cambio detectado en:', payload.table, payload.eventType);
+                    // Pequeño delay para dejar que la DB asiente el cambio
+                    setTimeout(() => recargarDatos(), 400);
                 }
             )
             .subscribe();
@@ -243,10 +224,17 @@ export const ProveedorInventario = ({ children }) => {
         const minutosApertura = hA * 60 + mA;
         const minutosCierre = hC * 60 + mC;
 
-        if (minutosActuales < minutosApertura || minutosActuales >= minutosCierre) {
+        if (minutosActuales < minutosApertura) {
             return {
                 abierto: false,
-                mensaje: `Horario de atención: ${horarioHoy.hora_apertura.slice(0, 5)} - ${horarioHoy.hora_cierre.slice(0, 5)}`
+                mensaje: `Abrimos a las ${horarioHoy.hora_apertura.slice(0, 5)}`
+            };
+        }
+
+        if (minutosActuales >= minutosCierre) {
+            return {
+                abierto: false,
+                mensaje: `Cerrado por hoy (Atendimos hasta las ${horarioHoy.hora_cierre.slice(0, 5)})`
             };
         }
 
@@ -317,6 +305,55 @@ export const ProveedorInventario = ({ children }) => {
             return true;
         } else {
             alert("❌ Error al reactivar: " + (resultado.error?.message || "Error desconocido"));
+            return false;
+        }
+    };
+
+    const crearCategoria = async (nombre) => {
+        try {
+            const nombreNormalizado = nombre.trim();
+
+            // Verificar si ya existe localmente (evitar error de DB)
+            const existe = categorias.find(c => c.nombre.toLowerCase() === nombreNormalizado.toLowerCase());
+            if (existe) {
+                console.log("La categoría ya existe, usando la existente.");
+                return true;
+            }
+
+            await crearCategoriaDB(nombreNormalizado, sedeActual);
+            await recargarDatos();
+            return true;
+        } catch (error) {
+            console.error("Error al crear categoría context:", error);
+            return false;
+        }
+    };
+
+    const eliminarCategoria = async (id) => {
+        const categoria = categorias.find(c => c.id === id);
+
+        const confirmacion = window.confirm(`¿Estás seguro de desactivar la categoría "${categoria?.nombre}"? Los productos existentes mantendrán esta categoría, pero no podrás seleccionarla para nuevos productos.`);
+        if (!confirmacion) return false;
+
+        const resultado = await eliminarCategoriaDB(id);
+        if (resultado.success) {
+            await recargarDatos();
+            alert("🗑️ Categoría desactivada con éxito.");
+            return true;
+        } else {
+            alert("Error al desactivar categoría.");
+            return false;
+        }
+    };
+
+    const reactivarCategoria = async (id) => {
+        const resultado = await reactivarCategoriaDB(id);
+        if (resultado.success) {
+            await recargarDatos();
+            alert("✅ Categoría reactivada con éxito.");
+            return true;
+        } else {
+            alert("Error al reactivar categoría.");
             return false;
         }
     };
@@ -766,6 +803,9 @@ export const ProveedorInventario = ({ children }) => {
             calcularDisponibilidadDetallada,
             agregarProducto,
             editarProducto,
+            crearCategoria,
+            eliminarCategoria,
+            reactivarCategoria,
             eliminarProducto,
             reactivarProducto,
             registrarAlquiler,

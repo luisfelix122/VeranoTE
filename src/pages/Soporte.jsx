@@ -1,15 +1,43 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { Phone, Shield, FileText, AlertTriangle, LifeBuoy, ChevronDown, ChevronUp, Info, Search, Smartphone } from 'lucide-react';
 import Boton from '../components/ui/Boton';
-import { ContextoSoporte } from '../contexts/ContextoSoporte';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { obtenerGuiasSeguridad } from '../services/db';
 
 const Soporte = () => {
     const [seccionActiva, setSeccionActiva] = useState('contacto'); // 'contacto', 'seguridad', 'emergencia'
-    const { usuario } = useContext(ContextoAutenticacion);
+    const { usuario, usuarios } = useContext(ContextoAutenticacion);
     const { sedes } = useContext(ContextoInventario);
+
+    // Helpers para encontrar contactos dinámicos
+    const adminCosta = usuarios.find(u => u.rol === 'admin' && u.sede === 'costa');
+    const vendorsCosta = usuarios.filter(u => u.rol === 'vendedor' && u.sede === 'costa');
+    const adminRural = usuarios.find(u => u.rol === 'admin' && u.sede === 'rural');
+    const vendorsRural = usuarios.filter(u => u.rol === 'vendedor' && u.sede === 'rural');
+
+    const formatPhone = (phone) => {
+        if (!phone) return 'N/A';
+        const clean = phone.replace(/\D/g, '');
+        if (clean.length === 9) {
+            return `+51 ${clean.slice(0, 3)} ${clean.slice(3, 6)} ${clean.slice(6)}`;
+        }
+        return phone;
+    };
+
+    const getWaLink = (phone, text) => {
+        if (!phone) return '#';
+        const clean = phone.replace(/\D/g, '');
+        const full = clean.startsWith('51') ? clean : '51' + clean;
+        return `https://wa.me/${full}?text=${encodeURIComponent(text)}`;
+    };
+
+    const nombreCorto = (nombre) => {
+        if (!nombre) return '';
+        const partes = nombre.split(' ');
+        if (partes.length > 2) return `${partes[0]} ${partes[1]}`;
+        return nombre;
+    };
 
 
     const [guiasSeguridad, setGuiasSeguridad] = useState([]);
@@ -88,11 +116,11 @@ const Soporte = () => {
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Administrador</p>
-                                                <p className="text-sm font-medium text-gray-700">+51 999 111 222</p>
+                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Administrador ({nombreCorto(adminCosta?.nombre) || 'Costa'})</p>
+                                                <p className="text-sm font-medium text-gray-700">{formatPhone(adminCosta?.telefono || '999111222')}</p>
                                             </div>
                                             <a
-                                                href="https://wa.me/51999111222?text=Hola,%20necesito%20asistencia%20en%20Sede%20Costa"
+                                                href={getWaLink(adminCosta?.telefono || '999111222', 'Hola, necesito asistencia en Sede Costa')}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
@@ -100,20 +128,34 @@ const Soporte = () => {
                                                 <Smartphone size={18} />
                                             </a>
                                         </div>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Vendedores</p>
-                                                <p className="text-sm font-medium text-gray-700">+51 999 222 111</p>
+                                        {vendorsCosta.map(v => (
+                                            <div key={v.id} className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Vendedor ({nombreCorto(v.nombre)})</p>
+                                                    <p className="text-sm font-medium text-gray-700">{formatPhone(v.telefono || '999222111')}</p>
+                                                </div>
+                                                <a
+                                                    href={getWaLink(v.telefono || '999222111', `Hola ${v.nombre}, tengo una consulta sobre mi alquiler en Costa`)}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
+                                                >
+                                                    <Smartphone size={18} />
+                                                </a>
                                             </div>
-                                            <a
-                                                href="https://wa.me/51999222111?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20alquiler%20en%20Costa"
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
-                                            >
-                                                <Smartphone size={18} />
-                                            </a>
-                                        </div>
+                                        ))}
+
+                                        {vendorsCosta.length === 0 && (
+                                            <div className="flex items-center justify-between opacity-50">
+                                                <div>
+                                                    <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Vendedores</p>
+                                                    <p className="text-sm font-medium text-gray-700">+51 999 222 111</p>
+                                                </div>
+                                                <div className="bg-gray-300 text-white p-2 rounded-lg cursor-not-allowed">
+                                                    <Smartphone size={18} />
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -126,11 +168,11 @@ const Soporte = () => {
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Administrador</p>
-                                                <p className="text-sm font-medium text-gray-700">+51 999 111 333</p>
+                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Administrador ({nombreCorto(adminRural?.nombre) || 'Sierra'})</p>
+                                                <p className="text-sm font-medium text-gray-700">{formatPhone(adminRural?.telefono || '999111333')}</p>
                                             </div>
                                             <a
-                                                href="https://wa.me/51999111333?text=Hola,%20necesito%20asistencia%20en%20Sede%20Sierra"
+                                                href={getWaLink(adminRural?.telefono || '999111333', 'Hola, necesito asistencia en Sede Sierra')}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
@@ -138,20 +180,34 @@ const Soporte = () => {
                                                 <Smartphone size={18} />
                                             </a>
                                         </div>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Vendedores</p>
-                                                <p className="text-sm font-medium text-gray-700">+51 999 222 333</p>
+                                        {vendorsRural.map(v => (
+                                            <div key={v.id} className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Vendedor ({nombreCorto(v.nombre)})</p>
+                                                    <p className="text-sm font-medium text-gray-700">{formatPhone(v.telefono || '999222333')}</p>
+                                                </div>
+                                                <a
+                                                    href={getWaLink(v.telefono || '999222333', `Hola ${v.nombre}, tengo una consulta sobre mi alquiler en Sierra`)}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
+                                                >
+                                                    <Smartphone size={18} />
+                                                </a>
                                             </div>
-                                            <a
-                                                href="https://wa.me/51999222333?text=Hola,%20tengo%20una%20consulta%20sobre%20mi%20alquiler%20en%20Sierra"
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors shadow-sm"
-                                            >
-                                                <Smartphone size={18} />
-                                            </a>
-                                        </div>
+                                        ))}
+
+                                        {vendorsRural.length === 0 && (
+                                            <div className="flex items-center justify-between opacity-50">
+                                                <div>
+                                                    <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Vendedores</p>
+                                                    <p className="text-sm font-medium text-gray-700">+51 999 222 333</p>
+                                                </div>
+                                                <div className="bg-gray-300 text-white p-2 rounded-lg cursor-not-allowed">
+                                                    <Smartphone size={18} />
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

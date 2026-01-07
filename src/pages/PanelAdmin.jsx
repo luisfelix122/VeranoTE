@@ -5,22 +5,39 @@ import Boton from '../components/ui/Boton';
 import Modal from '../components/ui/Modal';
 
 const PanelAdmin = () => {
-    const { inventario, agregarProducto, editarProducto, eliminarProducto, reactivarProducto } = useContext(ContextoInventario);
+    const { inventario, agregarProducto, editarProducto, eliminarProducto, reactivarProducto, categorias, crearCategoria, eliminarCategoria, reactivarCategoria } = useContext(ContextoInventario);
     const [mostarFormulario, setMostrarFormulario] = useState(false);
+    const [mostrarCategorias, setMostrarCategorias] = useState(false);
     const [modoEdicion, setModoEdicion] = useState(false);
     const [idEdicion, setIdEdicion] = useState(null);
     const [nuevoProducto, setNuevoProducto] = useState({ nombre: '', categoria: '', precioPorHora: '', stock: '', imagen: '' });
     const [busqueda, setBusqueda] = useState('');
+    const [nuevaCategoria, setNuevaCategoria] = useState('');
+    const [creandoNueva, setCreandoNueva] = useState(false);
 
     const inventarioFiltrado = inventario.filter(prod =>
         prod.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         prod.categoria.toLowerCase().includes(busqueda.toLowerCase())
     );
 
-    const manejarSubmit = (e) => {
+    const manejarSubmit = async (e) => {
         e.preventDefault();
+
+        let categoriaFinal = nuevoProducto.categoria;
+
+        if (creandoNueva && nuevaCategoria.trim()) {
+            const exito = await crearCategoria(nuevaCategoria.trim());
+            if (exito) {
+                categoriaFinal = nuevaCategoria.trim();
+            } else {
+                alert("Error al crear la nueva categoría");
+                return;
+            }
+        }
+
         const productoProcesado = {
             ...nuevoProducto,
+            categoria: categoriaFinal,
             precioPorHora: Number(nuevoProducto.precioPorHora),
             stock: Number(nuevoProducto.stock)
         };
@@ -46,6 +63,8 @@ const PanelAdmin = () => {
         setModoEdicion(false);
         setIdEdicion(null);
         setNuevoProducto({ nombre: '', categoria: '', precioPorHora: '', stock: '', imagen: '' });
+        setCreandoNueva(false);
+        setNuevaCategoria('');
     };
 
     return (
@@ -65,7 +84,14 @@ const PanelAdmin = () => {
                             />
                         </div>
                     </div>
-                    <Boton onClick={() => setMostrarFormulario(true)} variante="primario" className="w-full sm:w-auto shadow-lg shadow-blue-500/20"><Plus size={18} /> Nuevo Producto</Boton>
+                    <div className="flex gap-2 w-full sm:w-auto">
+                        <Boton onClick={() => setMostrarCategorias(true)} variante="secundario" className="shadow-sm">
+                            Categorías
+                        </Boton>
+                        <Boton onClick={() => setMostrarFormulario(true)} variante="primario" className="flex-1 sm:flex-none shadow-lg shadow-blue-500/20">
+                            <Plus size={18} /> Nuevo Producto
+                        </Boton>
+                    </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
@@ -142,10 +168,85 @@ const PanelAdmin = () => {
                     </table>
                 </div>
             </div>
+            <Modal titulo="Gestionar Categorías" abierto={mostrarCategorias} alCerrar={() => setMostrarCategorias(false)}>
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-500">Solo se muestran categorías de esta sede.</p>
+                    <div className="max-h-64 overflow-y-auto divide-y">
+                        {categorias.filter(c => c.sede_id === sedeActual).map(cat => (
+                            <div key={cat.id} className={`py-3 flex justify-between items-center ${cat.activo === false ? 'opacity-50 grayscale' : ''}`}>
+                                <div className="flex flex-col">
+                                    <span className="font-medium text-gray-700">{cat.nombre}</span>
+                                    {cat.activo === false && <span className="text-[10px] font-bold text-red-500 uppercase">Desactivada</span>}
+                                </div>
+                                {cat.activo === false ? (
+                                    <button
+                                        onClick={() => reactivarCategoria(cat.id)}
+                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                        title="Reactivar Categoría"
+                                    >
+                                        <RefreshCw size={16} />
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => eliminarCategoria(cat.id)}
+                                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Desactivar Categoría"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </Modal>
+
             <Modal titulo={modoEdicion ? "Editar Producto" : "Agregar Nuevo Producto"} abierto={mostarFormulario} alCerrar={cerrarModal}>
                 <form onSubmit={manejarSubmit} className="space-y-4">
                     <input required placeholder="Nombre" className="w-full p-2 border rounded" value={nuevoProducto.nombre} onChange={e => setNuevoProducto({ ...nuevoProducto, nombre: e.target.value })} />
-                    <input required placeholder="Categoría" className="w-full p-2 border rounded" value={nuevoProducto.categoria} onChange={e => setNuevoProducto({ ...nuevoProducto, categoria: e.target.value })} />
+
+                    <div className="space-y-2">
+                        {!creandoNueva ? (
+                            <select
+                                required
+                                className="w-full p-2 border rounded bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={nuevoProducto.categoria}
+                                onChange={e => {
+                                    if (e.target.value === 'ADD_NEW') {
+                                        setCreandoNueva(true);
+                                    } else {
+                                        setNuevoProducto({ ...nuevoProducto, categoria: e.target.value });
+                                    }
+                                }}
+                            >
+                                <option value="">Seleccionar Categoría</option>
+                                {categorias
+                                    .filter(c => (c.activo !== false && c.sede_id === sedeActual) || nuevoProducto.categoria === c.nombre)
+                                    .map(cat => (
+                                        <option key={cat.id} value={cat.nombre}>{cat.nombre}</option>
+                                    ))}
+                                <option value="ADD_NEW" className="font-bold text-blue-600">+ Agregar nueva categoría...</option>
+                            </select>
+                        ) : (
+                            <div className="flex gap-2">
+                                <input
+                                    autoFocus
+                                    required
+                                    placeholder="Nombre de nueva categoría"
+                                    className="flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={nuevaCategoria}
+                                    onChange={e => setNuevaCategoria(e.target.value)}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setCreandoNueva(false)}
+                                    className="px-3 text-xs font-semibold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        )}
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                         <input required type="number" placeholder="Precio/Hora" className="w-full p-2 border rounded" value={nuevoProducto.precioPorHora} onChange={e => setNuevoProducto({ ...nuevoProducto, precioPorHora: e.target.value })} />
                         <input required type="number" placeholder="Stock Inicial" className="w-full p-2 border rounded" value={nuevoProducto.stock} onChange={e => setNuevoProducto({ ...nuevoProducto, stock: e.target.value })} />

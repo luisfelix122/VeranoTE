@@ -2,10 +2,10 @@ import React, { useContext, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Package, LogOut, User, ChevronDown } from 'lucide-react';
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
-import { ContextoSoporte } from '../../contexts/ContextoSoporte';
+
 import { ContextoInventario } from '../../contexts/ContextoInventario';
 import Boton from '../ui/Boton';
-import BandejaEntrada from '../../pages/BandejaEntrada';
+
 
 const BarraNavegacionPanel = () => {
     const navigate = useNavigate();

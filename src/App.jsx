@@ -318,7 +318,7 @@ function AppContenido() {
     // Totales calculados (Fallback al cliente mientras carga el servidor)
     const totalCliente = carrito.reduce((acc, item) => acc + (item.precioPorHora * item.horas * item.cantidad), 0);
     const subtotalUI = totalesServer ? totalesServer.subtotal : totalCliente;
-    const garantiaUI = totalesServer ? totalesServer.garantia : (subtotalUI * 0.20); // 20% de garantía (configuracion.GARANTIA_PORCENTAJE || 0.20)
+    const garantiaUI = totalesServer ? totalesServer.garantia : (subtotalUI * (configuracion?.GARANTIA_PORCENTAJE || 0.20)); // 20% de garantía (configuracion.GARANTIA_PORCENTAJE || 0.20)
 
     // Descuentos se aplican sobre el subtotal del servidor
     const descuentoTotal = promocionesAplicadas.reduce((acc, promo) => {
@@ -792,7 +792,7 @@ function AppContenido() {
                                                 checked={tipoReserva === 'anticipada'}
                                                 onChange={() => setTipoReserva('anticipada')}
                                             />
-                                            Anticipada (60%)
+                                            Anticipada ({((configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60) * 100).toFixed(0)}%)
                                         </label>
                                     </div>
                                     {fechaReserva !== new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0] && (
@@ -1045,7 +1045,7 @@ function AppContenido() {
                             </div>
 
                             <div className="flex justify-between items-center text-gray-500 text-sm">
-                                <span>IGV (18%)</span>
+                                <span>IGV ({((configuracion?.IGV || 0.18) * 100).toFixed(0)}%)</span>
                                 <span>S/ {totalesServer?.igv?.toFixed(2) || '0.00'}</span>
                             </div>
 
@@ -1078,12 +1078,12 @@ function AppContenido() {
                             {tipoReserva === 'anticipada' && (
                                 <div className="bg-orange-50 p-2 rounded text-sm space-y-1 mt-2">
                                     <div className="flex justify-between items-center text-blue-800">
-                                        <span className="font-medium">Adelanto a Pagar (60%)</span>
-                                        <span className="font-bold">S/ {(totalesServer?.total * 0.60)?.toFixed(2) || '0.00'}</span>
+                                        <span className="font-medium">Adelanto a Pagar ({((configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60) * 100).toFixed(0)}%)</span>
+                                        <span className="font-bold">S/ {(totalesServer?.total * (configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60))?.toFixed(2) || '0.00'}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-orange-800">
-                                        <span className="font-medium">Saldo Pendiente (40%)</span>
-                                        <span className="font-bold">S/ {(totalesServer?.total * 0.40)?.toFixed(2) || '0.00'}</span>
+                                        <span className="font-medium">Saldo Pendiente ({((1 - (configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60)) * 100).toFixed(0)}%)</span>
+                                        <span className="font-bold">S/ {(totalesServer?.total * (1 - (configuracion?.ADELANTO_RESERVA_ANTICIPADA || 0.60)))?.toFixed(2) || '0.00'}</span>
                                     </div>
                                 </div>
                             )}

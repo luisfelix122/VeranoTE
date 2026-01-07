@@ -262,7 +262,9 @@ const PanelPromociones = () => {
                         </div>
                     </div>
 
-                    <Boton type="submit" className="w-full">Crear Promoción</Boton>
+                    <Boton type="submit" className="w-full">
+                        {modoEdicion ? "Guardar Cambios" : "Crear Promoción"}
+                    </Boton>
                 </form>
             </Modal>
         </div>

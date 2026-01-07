@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 const Tienda = () => {
     const { t } = useTranslation();
     const navigate = useNavigate();
-    const { inventario, sedeActual, setSedeActual, sedes, estaAbierto, contenido, fechaSeleccionada, setFechaSeleccionada, calcularStockDisponible, calcularDisponibilidadDetallada } = useContext(ContextoInventario);
+    const { inventario, categorias: categoriasDB, sedeActual, setSedeActual, sedes, estaAbierto, contenido, fechaSeleccionada, setFechaSeleccionada, calcularStockDisponible, calcularDisponibilidadDetallada } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
     const [busqueda, setBusqueda] = useState('');
     const [sedeSeleccionada, setSedeSeleccionada] = useState(null);
@@ -36,7 +36,9 @@ const Tienda = () => {
         }
     }, [usuario, navigate]);
 
-    const categorias = ['Todas', ...new Set(inventario.map(p => p.categoria))];
+    const categorias = ['Todas', ...categoriasDB
+        .filter(c => c.activo !== false && c.sede_id === sedeActual)
+        .map(c => c.nombre)];
 
     // Map inventory - Ya viene con stock real del backend
     const inventarioConStock = inventario;

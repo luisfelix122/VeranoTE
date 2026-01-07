@@ -12,11 +12,8 @@ const GestionUsuarios = () => {
     const [busqueda, setBusqueda] = useState('');
     const esDueno = usuario.rol === 'dueno';
 
-    const { crearTicket } = useContext(ContextoSoporte);
-    const [mostrarModalContacto, setMostrarModalContacto] = useState(false);
     const [mostrarModalDetalle, setMostrarModalDetalle] = useState(false);
     const [usuarioSeleccionado, setUsuarioSeleccionado] = useState(null);
-    const [mensaje, setMensaje] = useState('');
     const navigate = useNavigate();
 
     const [filtroRol, setFiltroRol] = useState('todos');
@@ -57,9 +54,9 @@ const GestionUsuarios = () => {
 
         if (!coincideBusqueda || !coincideRol || !coincideSede) return false;
 
-        // Restricción para Admin: No ver otros Admins ni Dueños
+        // Restricción para Admin: Ver todos los roles excepto Dueños y a sí mismo
         if (usuario.rol === 'admin') {
-            return u.rol === 'cliente' || u.rol === 'vendedor' || u.rol === 'mecanico';
+            return u.id !== usuario.id && u.rol !== 'dueno';
         }
 
         // Restricción para Dueño: No verse a sí mismo ni a otros dueños
@@ -70,41 +67,12 @@ const GestionUsuarios = () => {
         return true;
     });
 
-    const abrirModalContacto = (u, e) => {
-        if (e) e.stopPropagation();
-        setUsuarioSeleccionado(u);
-        setMensaje('');
-        setMostrarModalContacto(true);
-    };
-
     const abrirModalDetalle = (u) => {
         setUsuarioSeleccionado(u);
         setMostrarModalDetalle(true);
     };
 
-    const enviarMensaje = (e) => {
-        e.preventDefault();
-        if (!mensaje.trim()) return;
 
-        crearTicket({
-            asunto: `Mensaje de ${usuario.nombre} (${usuario.rol})`,
-            mensaje: mensaje,
-            telefono: usuario.telefono || 'N/A',
-            remitente: {
-                id: usuario.id,
-                nombre: usuario.nombre,
-                rol: usuario.rol
-            },
-            destinatario: {
-                id: usuarioSeleccionado.id,
-                nombre: usuarioSeleccionado.nombre,
-                rol: usuarioSeleccionado.rol
-            }
-        });
-
-        alert(`Mensaje enviado a ${usuarioSeleccionado.nombre} correctamente.`);
-        setMostrarModalContacto(false);
-    };
 
     const verReporteIndividual = () => {
         navigate('/admin/reportes', { state: { usuarioId: usuarioSeleccionado.id } });
@@ -278,7 +246,6 @@ const GestionUsuarios = () => {
                                         </td>
                                     )}
                                     <td className="p-4 flex gap-2 flex-nowrap items-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                        <Boton variante="fantasma" className="text-xs py-1" onClick={(e) => abrirModalContacto(u, e)}>Contactar</Boton>
                                         {esDueno && u.rol !== 'dueno' && (
                                             <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'dueno', e)}>Dueño</Boton>
                                         )}
@@ -291,7 +258,7 @@ const GestionUsuarios = () => {
                                         {u.rol !== 'mecanico' && (
                                             <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'mecanico', e)}>Mecánico</Boton>
                                         )}
-                                        {u.rol !== 'cliente' && u.rol !== 'dueno' && (
+                                        {u.rol !== 'cliente' && u.rol !== 'dueno' && (u.rol !== 'admin' || esDueno) && (
                                             <Boton variante="fantasma" className="text-xs py-1 text-red-600 hover:bg-red-50" onClick={(e) => iniciarCambioRol(u, 'cliente', e)}>Degradar</Boton>
                                         )}
                                         {/* Botón Eliminar */}
@@ -312,34 +279,7 @@ const GestionUsuarios = () => {
                 </div>
             </div>
 
-            {/* Modal de Contacto */}
-            {mostrarModalContacto && usuarioSeleccionado && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl p-6 w-full max-w-md">
-                        <h3 className="text-xl font-bold mb-4">Contactar a {usuarioSeleccionado.nombre}</h3>
-                        <div className="mb-4 text-sm text-gray-600">
-                            <p><strong>Rol:</strong> <span className="capitalize">{usuarioSeleccionado.rol}</span></p>
-                            <p><strong>Email:</strong> {usuarioSeleccionado.email}</p>
-                        </div>
-                        <form onSubmit={enviarMensaje} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Mensaje</label>
-                                <textarea
-                                    className="w-full p-2 border rounded-lg h-32 resize-none"
-                                    placeholder="Escribe tu mensaje aquí..."
-                                    value={mensaje}
-                                    onChange={(e) => setMensaje(e.target.value)}
-                                    required
-                                ></textarea>
-                            </div>
-                            <div className="flex gap-3">
-                                <Boton type="button" variante="secundario" onClick={() => setMostrarModalContacto(false)} className="flex-1">Cancelar</Boton>
-                                <Boton type="submit" variante="primario" className="flex-1">Enviar Mensaje</Boton>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+
 
             {/* Modal de Detalle de Usuario */}
             {mostrarModalDetalle && usuarioSeleccionado && (
@@ -404,11 +344,6 @@ const GestionUsuarios = () => {
 
                             <div className="flex gap-3 pt-2">
                                 <Boton variante="secundario" onClick={() => setMostrarModalDetalle(false)} className="flex-1">Cerrar</Boton>
-                                <Boton variante="primario" onClick={() => {
-                                    setMostrarModalDetalle(false);
-                                    setMensaje('');
-                                    setMostrarModalContacto(true);
-                                }} className="flex-1">Contactar</Boton>
                                 <Boton variante="fantasma" onClick={verReporteIndividual} className="flex-1 text-sm">Ver Reporte</Boton>
                             </div>
                         </div>

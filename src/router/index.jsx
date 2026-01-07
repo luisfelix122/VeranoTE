@@ -12,7 +12,6 @@ import DetalleProducto from '../pages/DetalleProducto';
 import Perfil from '../pages/Perfil';
 import Reportes from '../pages/Reportes';
 import Soporte from '../pages/Soporte';
-import BandejaEntrada from '../pages/BandejaEntrada';
 import PanelAdmin from '../pages/PanelAdmin';
 import GestionReservas from '../pages/GestionReservas';
 import GestionUsuarios from '../pages/GestionUsuarios';
@@ -64,7 +63,7 @@ export const crearRouterApp = () => {
                 },
                 {
                     path: 'soporte',
-                    element: <RutaProtegida rolesPermitidos={['cliente']}><Soporte /></RutaProtegida>
+                    element: <RutaProtegida rolesPermitidos={['cliente', 'vendedor', 'admin', 'dueno', 'mecanico']}><Soporte /></RutaProtegida>
                 },
                 {
                     path: 'mis-gastos',
@@ -74,14 +73,7 @@ export const crearRouterApp = () => {
                         </RutaProtegida>
                     )
                 },
-                {
-                    path: 'bandeja-entrada',
-                    element: (
-                        <RutaProtegida rolesPermitidos={['cliente', 'vendedor', 'admin', 'dueno', 'mecanico']}>
-                            <BandejaEntrada />
-                        </RutaProtegida>
-                    )
-                },
+
                 {
                     path: 'ayuda',
                     element: <Ayuda />
@@ -119,10 +111,6 @@ export const crearRouterApp = () => {
                 {
                     path: 'promociones',
                     element: <GestionPromociones />
-                },
-                {
-                    path: 'mensajes',
-                    element: <BandejaEntrada />
                 },
                 {
                     path: 'reportes',

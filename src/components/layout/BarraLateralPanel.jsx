@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
     Package,
     Users,
@@ -9,7 +9,6 @@ import {
     Home,
     Wrench,
     TrendingUp,
-    MessageSquare,
 
     Mail,
     Calendar
@@ -68,30 +67,7 @@ const BarraLateralPanel = () => {
     const enlaces = obtenerEnlaces();
 
 
-    const manejarContacto = () => {
-        if (!usuario) return;
 
-        let destino = null;
-        let rolBuscado = '';
-
-        if (usuario.rol === 'vendedor') {
-            rolBuscado = 'admin';
-            // Buscar admin de la misma sede
-            destino = usuarios.find(u => u.rol === 'admin' && u.sede_id === usuario.sede_id);
-        } else if (usuario.rol === 'admin') {
-            rolBuscado = 'dueno';
-            // Buscar dueño
-            destino = usuarios.find(u => u.rol === 'dueno');
-        }
-
-        if (destino && destino.telefono) {
-            const numero = destino.telefono.replace(/\s+/g, '');
-            const mensajeWa = encodeURIComponent(`¡Hola ${destino.nombre}! Soy ${usuario.nombre} (${usuario.rol}) de la sede ${usuario.sede_id || 'Principal'}. Necesito soporte con el sistema.`);
-            window.open(`https://wa.me/51${numero}?text=${mensajeWa}`, '_blank');
-        } else {
-            alert(`No se encontró un número de WhatsApp para el ${rolBuscado === 'dueno' ? 'Dueño' : 'Administrador'}. Por favor, contacte soporte técnico.`);
-        }
-    };
 
     return (
         <aside className="w-64 bg-white border-r border-gray-200 p-4 flex flex-col h-full">
@@ -108,20 +84,7 @@ const BarraLateralPanel = () => {
                 ))}
             </nav>
 
-            {(usuario?.rol === 'vendedor' || usuario?.rol === 'admin') && (
-                <div className="mt-auto pt-4 border-t border-gray-100">
-                    <button
-                        onClick={manejarContacto}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-green-50 hover:text-green-600 transition-all font-medium"
-                    >
-                        <MessageSquare size={20} />
-                        <span>Contactar {usuario.rol === 'vendedor' ? 'Admin' : 'Dueño'}</span>
-                    </button>
-                    <p className="text-[10px] text-gray-400 mt-2 text-center px-2">
-                        Redirección directa a WhatsApp para soporte inmediato.
-                    </p>
-                </div>
-            )}
+
         </aside>
     );
 };

@@ -4,10 +4,9 @@ import { Package, ShoppingCart, LogOut, MapPin, User, ChevronDown, CreditCard, S
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
 import { ContextoCarrito } from '../../contexts/ContextoCarrito';
 import { ContextoInventario } from '../../contexts/ContextoInventario';
-import { ContextoSoporte } from '../../contexts/ContextoSoporte';
 
 import Boton from '../ui/Boton';
-import BandejaEntrada from '../../pages/BandejaEntrada';
+
 import { useTranslation } from 'react-i18next';
 
 
