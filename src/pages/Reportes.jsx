@@ -1222,6 +1222,122 @@ const Reportes = ({ rol: rolProp }) => {
 
     // --- Vista Principal ---
 
+    // --- Gestión de Sedes (Nuevo) ---
+    const [modalSede, setModalSede] = useState(false);
+    const [nuevaSede, setNuevaSede] = useState({ nombre: '', direccion: '', telefono: '', hora_apertura: '08:00', hora_cierre: '18:00' });
+    const { sedes, crearSede } = useContext(ContextoInventario);
+
+    const handleCrearSede = async () => {
+        if (!nuevaSede.nombre || !nuevaSede.direccion) return alert('Nombre y Dirección son obligatorios');
+
+        if (confirm('¿Crear nueva sede?')) {
+            const exito = await crearSede(nuevaSede);
+            if (exito) {
+                alert('Sede creada exitosamente');
+                setModalSede(false);
+                setNuevaSede({ nombre: '', direccion: '', telefono: '', hora_apertura: '08:00', hora_cierre: '18:00' });
+            } else {
+                alert('Error al crear sede');
+            }
+        }
+    };
+
+    const renderTablaSedes = () => (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 className="font-bold text-gray-800">Gestión de Sedes</h3>
+                <Boton onClick={() => setModalSede(true)} className="bg-blue-600 text-white text-sm py-2 px-4 rounded-lg hover:bg-blue-700">
+                    + Nueva Sede
+                </Boton>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-gray-700">
+                        <tr>
+                            <th className="p-3">ID</th>
+                            <th className="p-3">Nombre</th>
+                            <th className="p-3">Dirección</th>
+                            <th className="p-3">Teléfono</th>
+                            <th className="p-3 text-center">Horario</th>
+                            <th className="p-3 text-center">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {sedes.map(s => (
+                            <tr key={s.id} className="hover:bg-gray-50">
+                                <td className="p-3 font-mono text-xs text-gray-500">{s.id}</td>
+                                <td className="p-3 font-bold text-gray-900">{s.nombre}</td>
+                                <td className="p-3 text-gray-600">{s.direccion}</td>
+                                <td className="p-3 text-gray-600">{s.telefono || '-'}</td>
+                                <td className="p-3 text-center text-xs bg-gray-50 rounded-lg border border-gray-100 m-1">
+                                    {s.hora_apertura?.slice(0, 5)} - {s.hora_cierre?.slice(0, 5)}
+                                </td>
+                                <td className="p-3 text-center">
+                                    <span className="text-green-600 text-xs font-bold flex items-center justify-center gap-1">
+                                        <CheckCircle size={12} /> Activo
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Modal Nueva Sede */}
+            {modalSede && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+                        <h3 className="text-lg font-bold mb-4">Nueva Sede</h3>
+                        <div className="space-y-3">
+                            <input
+                                type="text" placeholder="Nombre (ej. Playa Norte)"
+                                className="w-full p-2 border rounded-lg"
+                                value={nuevaSede.nombre}
+                                onChange={e => setNuevaSede({ ...nuevaSede, nombre: e.target.value })}
+                            />
+                            <input
+                                type="text" placeholder="Dirección"
+                                className="w-full p-2 border rounded-lg"
+                                value={nuevaSede.direccion}
+                                onChange={e => setNuevaSede({ ...nuevaSede, direccion: e.target.value })}
+                            />
+                            <input
+                                type="text" placeholder="Teléfono"
+                                className="w-full p-2 border rounded-lg"
+                                value={nuevaSede.telefono}
+                                onChange={e => setNuevaSede({ ...nuevaSede, telefono: e.target.value })}
+                            />
+                            <div className="flex gap-2">
+                                <div className="flex-1">
+                                    <label className="text-xs text-gray-500">Apertura</label>
+                                    <input
+                                        type="time"
+                                        className="w-full p-2 border rounded-lg"
+                                        value={nuevaSede.hora_apertura}
+                                        onChange={e => setNuevaSede({ ...nuevaSede, hora_apertura: e.target.value })}
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-xs text-gray-500">Cierre</label>
+                                    <input
+                                        type="time"
+                                        className="w-full p-2 border rounded-lg"
+                                        value={nuevaSede.hora_cierre}
+                                        onChange={e => setNuevaSede({ ...nuevaSede, hora_cierre: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-6">
+                            <button onClick={() => setModalSede(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+                            <button onClick={handleCrearSede} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Guardar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+
     return (
         <div className="px-4 sm:px-6 lg:px-8 space-y-6 py-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1233,7 +1349,7 @@ const Reportes = ({ rol: rolProp }) => {
                 <div className="flex gap-2 items-center">
                     {/* Tabs para Admin/Dueño/Cliente/Mecánico */}
                     {(rol === 'admin' || rol === 'dueno' || rol === 'cliente' || rol === 'mecanico') && (
-                        <div className="flex bg-gray-100 p-1 rounded-lg">
+                        <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto">
                             {rol === 'mecanico' ? (
                                 <>
                                     <button
@@ -1258,12 +1374,20 @@ const Reportes = ({ rol: rolProp }) => {
                                         {rol === 'cliente' ? 'Mis Alquileres' : 'Ventas'}
                                     </button>
                                     {(rol === 'admin' || rol === 'dueno') && (
-                                        <button
-                                            onClick={() => setPestanaActiva('inventario')}
-                                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'inventario' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
-                                        >
-                                            Inventario
-                                        </button>
+                                        <>
+                                            <button
+                                                onClick={() => setPestanaActiva('inventario')}
+                                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'inventario' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                            >
+                                                Inventario
+                                            </button>
+                                            <button
+                                                onClick={() => setPestanaActiva('sedes')}
+                                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${pestanaActiva === 'sedes' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                                            >
+                                                Sedes
+                                            </button>
+                                        </>
                                     )}
                                 </>
                             )}
@@ -1272,8 +1396,8 @@ const Reportes = ({ rol: rolProp }) => {
                 </div>
             </div>
 
-            {/* Controles de Reporte Avanzado (Admin/Dueño/Vendedor) */}
-            {(rol === 'admin' || rol === 'dueno' || rol === 'vendedor') && (
+            {/* Controles de Reporte Avanzado (Admin/Dueño/Vendedor) - Solo si NO estamos en Sedes */}
+            {(rol === 'admin' || rol === 'dueno' || rol === 'vendedor') && pestanaActiva !== 'sedes' && (
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                     <div className="flex flex-col md:flex-row gap-4">
                         {/* Selector de Tipo de Reporte (Admin, Dueño, Vendedor) */}
@@ -1396,7 +1520,7 @@ const Reportes = ({ rol: rolProp }) => {
                 </div>
             )}
 
-            {renderKPIs()}
+            {pestanaActiva !== 'sedes' && renderKPIs()}
 
             {/* Renderizado Condicional de Pestañas */}
             {tipoReporte === 'usuarios' && pestanaActiva === 'ventas'
@@ -1405,6 +1529,7 @@ const Reportes = ({ rol: rolProp }) => {
                     <>
                         {pestanaActiva === 'ventas' && renderTablaVentas()}
                         {pestanaActiva === 'inventario' && (rol === 'admin' || rol === 'dueno') && renderTablaInventario()}
+                        {pestanaActiva === 'sedes' && (rol === 'admin' || rol === 'dueno') && renderTablaSedes()}
                     </>
                 )
             }

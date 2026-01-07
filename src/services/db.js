@@ -526,8 +526,9 @@ export const registrarUsuarioDB = async (datosUsuario) => {
         licencia_conducir: datosUsuario.licenciaConducir,
         tipo_documento: datosUsuario.tipoDocumento || 'DNI',
         nacionalidad: datosUsuario.nacionalidad || 'Nacional',
-        nacionalidad: datosUsuario.nacionalidad || 'Nacional',
-        rol_id: 'cliente',
+        telefono: datosUsuario.telefono,
+        rol_id: datosUsuario.rol || 'cliente',
+        sede_id: datosUsuario.sede || datosUsuario.sede_id || null,
         pregunta_secreta: datosUsuario.preguntaSecreta,
         respuesta_secreta: datosUsuario.respuestaSecreta
     };
@@ -552,6 +553,10 @@ export const actualizarUsuarioDB = async (id, datos) => {
     if ('rol' in datosParaActualizar) {
         datosParaActualizar.rol_id = datosParaActualizar.rol;
         delete datosParaActualizar.rol;
+    }
+    if ('sede' in datosParaActualizar) {
+        datosParaActualizar.sede_id = datosParaActualizar.sede;
+        delete datosParaActualizar.sede;
     }
     if ('licenciaConducir' in datosParaActualizar) {
         datosParaActualizar.licencia_conducir = datosParaActualizar.licenciaConducir;
@@ -1187,6 +1192,51 @@ export const actualizarTipoCambioReal = async () => {
     }
 };
 
+
+
+
+export const crearSedeDB = async (sede) => {
+    // sede: { nombre, direccion, telefono, hora_apertura, hora_cierre }
+    const { data, error } = await supabase
+        .from('sedes')
+        .insert([sede])
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Error creating sede:", error);
+        throw error;
+    }
+    return data;
+};
+
+export const actualizarSedeDB = async (id, datos) => {
+    const { data, error } = await supabase
+        .from('sedes')
+        .update(datos)
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Error updating sede:", error);
+        throw error;
+    }
+    return data;
+};
+
+export const eliminarSedeDB = async (id) => {
+    const { error } = await supabase
+        .from('sedes')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error("Error deleting sede:", error);
+        return { success: false, error };
+    }
+    return { success: true };
+};
 
 export const obtenerFaqs = async () => {
     const { data, error } = await supabase

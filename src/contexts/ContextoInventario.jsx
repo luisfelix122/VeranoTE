@@ -7,7 +7,7 @@ import {
     aplicarDescuentoManualDB, registrarPagoSaldoDB, registrarUsuarioDB, aprobarReservaDB,
     obtenerDisponibilidadRecursoDB, buscarClientesDB, actualizarTipoCambioReal,
     calcularDescuentosDB, verificarDisponibilidadDB, calcularCotizacion, crearCategoriaDB,
-    eliminarCategoriaDB, reactivarCategoriaDB
+    eliminarCategoriaDB, reactivarCategoriaDB, crearSedeDB, actualizarSedeDB, eliminarSedeDB
 } from '../services/db';
 import { calcularPenalizacion } from '../utils/formatters';
 import { ContextoAutenticacion } from './ContextoAutenticacion';
@@ -154,7 +154,7 @@ export const ProveedorInventario = ({ children }) => {
             // setConfiguracion(configData); // Assuming configData needs to be added to Promise.all above!
 
             // AUTO-FIX: Set default sede ID if string 'costa' is used
-            if (sedesData.length > 0) {
+            if (sedesData.length > 0 && !sedeActual) {
                 const sedeDefault = sedesData.find(s => s.nombre.toLowerCase().includes('costa')) || sedesData[0];
                 setSedeActual(sedeDefault.id);
             }
@@ -787,6 +787,55 @@ export const ProveedorInventario = ({ children }) => {
         }
     }, [usuario]);
 
+    const agregarSede = async (nuevaSede) => {
+        try {
+            const sedeCreada = await crearSedeDB(nuevaSede);
+            if (sedeCreada) {
+                // Recargar sedes
+                const sedesActualizadas = await obtenerSedes();
+                setSedes(sedesActualizadas);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error("Error al agregar sede context:", error);
+            return false;
+        }
+    };
+
+    const editarSede = async (id, datos) => {
+        try {
+            const sedeEditada = await actualizarSedeDB(id, datos);
+            if (sedeEditada) {
+                const sedesActualizadas = await obtenerSedes();
+                setSedes(sedesActualizadas);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error("Error al editar sede context:", error);
+            return false;
+        }
+    };
+
+    const eliminarSede = async (id) => {
+        if (!window.confirm("¿Estás seguro de eliminar esta sede?")) return false;
+        try {
+            const resultado = await eliminarSedeDB(id);
+            if (resultado.success) {
+                const sedesActualizadas = await obtenerSedes();
+                setSedes(sedesActualizadas);
+                return true;
+            } else {
+                alert("Error: " + (resultado.error?.message || "No se pudo eliminar"));
+                return false;
+            }
+        } catch (error) {
+            console.error("Error al eliminar sede context:", error);
+            return false;
+        }
+    };
+
     return (
         <ContextoInventario.Provider value={{
             inventario: inventarioVisible,
@@ -829,7 +878,10 @@ export const ProveedorInventario = ({ children }) => {
             buscarClientes,
             registrarCliente,
             cotizarReserva: calcularDescuentosDB,
-            calcularCotizacion
+            calcularCotizacion,
+            agregarSede,
+            editarSede,
+            eliminarSede
         }}>
             {children}
         </ContextoInventario.Provider>

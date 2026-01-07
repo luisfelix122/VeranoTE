@@ -70,12 +70,19 @@ export const ProveedorAutenticacion = ({ children }) => {
         // No necesitamos mapear manualmente a snake_case aquí, porque registrarUsuarioDB en db.js ya hace el mapeo.
         const datosParaDB = {
             ...datos,
-            rol: 'cliente'
+            rol: datos.rol || 'cliente',
+            sede_id: datos.sede || datos.sede_id || null
         };
 
         const resultado = await registrarUsuarioDB(datosParaDB);
         if (resultado.success) {
-            const nuevoUsuario = { ...resultado.data, ...datos, id: resultado.data.id, rol: 'cliente' };
+            const nuevoUsuario = {
+                ...resultado.data,
+                ...datos,
+                id: resultado.data.id,
+                rol: datosParaDB.rol,
+                sede: datosParaDB.sede_id
+            };
             setUsuarios(prev => [...prev, nuevoUsuario]);
             setUsuario(nuevoUsuario);
             localStorage.setItem('usuario_verano_id', nuevoUsuario.id);

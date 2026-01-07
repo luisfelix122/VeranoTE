@@ -546,7 +546,7 @@ function AppContenido() {
         const completarReserva = async (tokenTarjeta = null) => {
             const fechaInicio = new Date(`${fechaReserva}T${horaReserva}`);
 
-            // Preparar datos para la reserva con saneamiento
+            console.log("DEBUG: Procesando reserva para usuario:", usuario?.id, usuario?.nombre);
             const datosReserva = {
                 clienteId: usuario.id,
                 vendedorId: null, // Si es online, va null

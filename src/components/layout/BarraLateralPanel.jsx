@@ -11,7 +11,8 @@ import {
     TrendingUp,
 
     Mail,
-    Calendar
+    Calendar,
+    MapPin
 } from 'lucide-react';
 import { ContextoAutenticacion } from '../../contexts/ContextoAutenticacion';
 import Boton from '../ui/Boton';
@@ -34,13 +35,15 @@ const BarraLateralPanel = () => {
         { to: '/admin/usuarios', icon: Users, label: 'Usuarios' },
         { to: '/admin/promociones', icon: Tag, label: 'Promociones' },
         { to: '/admin/punto-venta', icon: ShoppingCart, label: 'Punto de Venta', adminOnly: true },
-        { to: '/admin/reportes', icon: FileText, label: 'Reportes' }
+        { to: '/admin/reportes', icon: FileText, label: 'Reportes' },
+        { to: '/admin/sedes', icon: MapPin, label: 'Sedes' }
     ];
 
     const enlacesDueno = [
         { to: '/admin/reportes', icon: FileText, label: 'Reportes' },
         { to: '/admin/usuarios', icon: Users, label: 'Usuarios' },
-        { to: '/admin/promociones', icon: Tag, label: 'Promociones' }
+        { to: '/admin/promociones', icon: Tag, label: 'Promociones' },
+        { to: '/admin/sedes', icon: MapPin, label: 'Sedes' }
     ];
 
     const enlacesVendedor = [

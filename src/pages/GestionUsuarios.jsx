@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { Users, Search, Filter, Trash2, AlertTriangle } from 'lucide-react';
+import { Users, Search, Filter, Trash2, AlertTriangle, Plus, Pencil } from 'lucide-react';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import Boton from '../components/ui/Boton';
 import { ContextoSoporte } from '../contexts/ContextoSoporte';
@@ -31,6 +31,21 @@ const GestionUsuarios = () => {
 
     // Estado para Verificación de Cambio de Rol
     const [verificacionRol, setVerificacionRol] = useState(null); // { u, rol }
+
+    // Estados para Creación/Edición
+    const [mostrarModalFormulario, setMostrarModalFormulario] = useState(false);
+    const [modoEdicion, setModoEdicion] = useState(false);
+    const [datosFormUsuario, setDatosFormUsuario] = useState({
+        nombre: '',
+        email: '',
+        password: '',
+        rol: 'cliente',
+        sede: 'costa',
+        telefono: '',
+        tipoDocumento: 'DNI',
+        numeroDocumento: '',
+        nacionalidad: 'Perú'
+    });
 
     const [filtroSede, setFiltroSede] = useState('todos');
 
@@ -162,11 +177,62 @@ const GestionUsuarios = () => {
         setUsuarioARol(null);
     };
 
+    const abrirModalNuevo = () => {
+        setModoEdicion(false);
+        setDatosFormUsuario({
+            nombre: '',
+            email: '',
+            password: '',
+            rol: 'cliente',
+            sede: usuario.rol === 'admin' ? usuario.sede : 'costa',
+            telefono: '',
+            tipoDocumento: 'DNI',
+            numeroDocumento: '',
+            nacionalidad: 'Perú'
+        });
+        setMostrarModalFormulario(true);
+    };
+
+    const abrirModalEdicion = (u, e) => {
+        if (e) e.stopPropagation();
+        setModoEdicion(true);
+        setUsuarioSeleccionado(u);
+        setDatosFormUsuario({
+            ...u,
+            password: '' // No cargar password actual por seguridad
+        });
+        setMostrarModalFormulario(true);
+    };
+
+    const handleGuardarUsuario = async (e) => {
+        e.preventDefault();
+        try {
+            if (modoEdicion) {
+                await actualizarPerfil(usuarioSeleccionado.id, datosFormUsuario);
+                alert("✅ Usuario actualizado correctamente.");
+            } else {
+                const resultado = await registrarUsuario(datosFormUsuario);
+                if (resultado === true) {
+                    alert("✅ Usuario creado correctamente.");
+                } else {
+                    alert("❌ Error: " + resultado);
+                }
+            }
+            setMostrarModalFormulario(false);
+        } catch (error) {
+            console.error("Error al guardar usuario:", error);
+            alert("❌ Ocurrió un error al procesar la solicitud.");
+        }
+    };
+
     return (
         <div className="px-4 sm:px-6 lg:px-8 space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <h2 className="text-2xl font-bold flex items-center gap-2"><Users /> Gestión de Usuarios</h2>
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <Boton onClick={abrirModalNuevo} className="flex items-center gap-2">
+                        <Plus size={18} /> Nuevo Usuario
+                    </Boton>
                     {/* Filtro de Roles */}
                     <div className="relative w-full sm:w-48">
                         <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
@@ -249,9 +315,15 @@ const GestionUsuarios = () => {
                                         {esDueno && u.rol !== 'dueno' && (
                                             <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'dueno', e)}>Dueño</Boton>
                                         )}
-                                        {esDueno && u.rol !== 'admin' && (
-                                            <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'admin', e)}>Admin</Boton>
-                                        )}
+                                        {/* Botón Editar (Pencil) */}
+                                        <button
+                                            onClick={(e) => abrirModalEdicion(u, e)}
+                                            className="p-1 text-blue-500 hover:bg-blue-50 rounded transition-colors"
+                                            title="Editar Datos"
+                                        >
+                                            <Pencil size={16} />
+                                        </button>
+
                                         {u.rol !== 'vendedor' && (
                                             <Boton variante="secundario" className="text-xs py-1" onClick={(e) => iniciarCambioRol(u, 'vendedor', e)}>Vendedor</Boton>
                                         )}
@@ -472,6 +544,130 @@ const GestionUsuarios = () => {
                             <Boton variante="secundario" onClick={() => setMostrarModalRol(false)} className="flex-1">Cancelar</Boton>
                             <Boton variante="primario" onClick={confirmarCambioRolConSede} className="flex-1">Confirmar</Boton>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Formulario (Nuevo / Editar) */}
+            {mostrarModalFormulario && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-2xl font-bold text-gray-800">
+                                {modoEdicion ? 'Editar Usuario' : 'Nuevo Usuario'}
+                            </h3>
+                            <button onClick={() => setMostrarModalFormulario(false)} className="text-gray-400 hover:text-gray-600">
+                                <span className="text-2xl">&times;</span>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleGuardarUsuario} className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={datosFormUsuario.nombre}
+                                        onChange={(e) => setDatosFormUsuario({ ...datosFormUsuario, nombre: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                    <input
+                                        type="email"
+                                        required
+                                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={datosFormUsuario.email}
+                                        onChange={(e) => setDatosFormUsuario({ ...datosFormUsuario, email: e.target.value })}
+                                    />
+                                </div>
+                                {!modoEdicion && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                                        <input
+                                            type="password"
+                                            required={!modoEdicion}
+                                            placeholder="Mínimo 6 caracteres"
+                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                            value={datosFormUsuario.password}
+                                            onChange={(e) => setDatosFormUsuario({ ...datosFormUsuario, password: e.target.value })}
+                                        />
+                                    </div>
+                                )}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+                                    <select
+                                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={datosFormUsuario.rol}
+                                        onChange={(e) => setDatosFormUsuario({ ...datosFormUsuario, rol: e.target.value })}
+                                    >
+                                        <option value="cliente">Cliente</option>
+                                        <option value="vendedor">Vendedor</option>
+                                        <option value="mecanico">Mecánico</option>
+                                        <option value="admin">Administrador</option>
+                                    </select>
+                                </div>
+
+                                {(datosFormUsuario.rol === 'admin' || datosFormUsuario.rol === 'vendedor' || datosFormUsuario.rol === 'mecanico') && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Sede</label>
+                                        <select
+                                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                            value={datosFormUsuario.sede}
+                                            onChange={(e) => setDatosFormUsuario({ ...datosFormUsuario, sede: e.target.value })}
+                                            disabled={usuario.rol === 'admin' && modoEdicion} // Admin no puede cambiar sede de otros una vez creada? O sí?
+                                        >
+                                            <option value="costa">Sede Costa</option>
+                                            <option value="rural">Sede Rural</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                                    <input
+                                        type="tel"
+                                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={datosFormUsuario.telefono}
+                                        onChange={(e) => setDatosFormUsuario({ ...datosFormUsuario, telefono: e.target.value })}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Documento</label>
+                                    <select
+                                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={datosFormUsuario.tipoDocumento}
+                                        onChange={(e) => setDatosFormUsuario({ ...datosFormUsuario, tipoDocumento: e.target.value })}
+                                    >
+                                        <option value="DNI">DNI</option>
+                                        <option value="Pasaporte">Pasaporte</option>
+                                        <option value="CE">Carnet de Extranjería</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Número de Documento</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={datosFormUsuario.numeroDocumento}
+                                        onChange={(e) => setDatosFormUsuario({ ...datosFormUsuario, numeroDocumento: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-8">
+                                <Boton type="button" variante="secundario" onClick={() => setMostrarModalFormulario(false)} className="flex-1">
+                                    Cancelar
+                                </Boton>
+                                <Boton type="submit" className="flex-1">
+                                    {modoEdicion ? 'Guardar Cambios' : 'Crear Usuario'}
+                                </Boton>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

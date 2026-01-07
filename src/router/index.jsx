@@ -12,6 +12,7 @@ import DetalleProducto from '../pages/DetalleProducto';
 import Perfil from '../pages/Perfil';
 import Reportes from '../pages/Reportes';
 import Soporte from '../pages/Soporte';
+import GestionSedes from '../pages/GestionSedes';
 import PanelAdmin from '../pages/PanelAdmin';
 import GestionReservas from '../pages/GestionReservas';
 import GestionUsuarios from '../pages/GestionUsuarios';
@@ -115,6 +116,10 @@ export const crearRouterApp = () => {
                 {
                     path: 'reportes',
                     element: <Reportes />
+                },
+                {
+                    path: 'sedes',
+                    element: <GestionSedes />
                 },
                 {
                     path: 'punto-venta',
