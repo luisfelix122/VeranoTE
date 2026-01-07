@@ -5,7 +5,7 @@ import Boton from '../components/ui/Boton';
 import Modal from '../components/ui/Modal';
 
 const PanelAdmin = () => {
-    const { inventario, agregarProducto, editarProducto, eliminarProducto, reactivarProducto, categorias, crearCategoria, eliminarCategoria, reactivarCategoria } = useContext(ContextoInventario);
+    const { inventario, agregarProducto, editarProducto, eliminarProducto, reactivarProducto, categorias, crearCategoria, eliminarCategoria, reactivarCategoria, sedeActual } = useContext(ContextoInventario);
     const [mostarFormulario, setMostrarFormulario] = useState(false);
     const [mostrarCategorias, setMostrarCategorias] = useState(false);
     const [modoEdicion, setModoEdicion] = useState(false);
