@@ -39,7 +39,8 @@ const BarraLateralPanel = () => {
 
     const enlacesDueno = [
         { to: '/admin/reportes', icon: FileText, label: 'Reportes' },
-        { to: '/admin/usuarios', icon: Users, label: 'Usuarios' }
+        { to: '/admin/usuarios', icon: Users, label: 'Usuarios' },
+        { to: '/admin/promociones', icon: Tag, label: 'Promociones' }
     ];
 
     const enlacesVendedor = [
