@@ -3,7 +3,7 @@ import { Phone, Shield, FileText, AlertTriangle, LifeBuoy, ChevronDown, ChevronU
 import Boton from '../components/ui/Boton';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import { ContextoInventario } from '../contexts/ContextoInventario';
-import { obtenerGuiasSeguridad } from '../services/db';
+import { obtenerGuiasSeguridad, obtenerEmergencias } from '../services/db';
 
 const Soporte = () => {
     const [seccionActiva, setSeccionActiva] = useState('contacto'); // 'contacto', 'seguridad', 'emergencia'
@@ -41,16 +41,23 @@ const Soporte = () => {
 
 
     const [guiasSeguridad, setGuiasSeguridad] = useState([]);
+    const [emergencias, setEmergencias] = useState([]);
     const [cargandoGuias, setCargandoGuias] = useState(true);
+    const [cargandoEmergencias, setCargandoEmergencias] = useState(true);
     const [busqueda, setBusqueda] = useState('');
 
     useEffect(() => {
-        const cargarGuias = async () => {
-            const guias = await obtenerGuiasSeguridad();
+        const cargarDatos = async () => {
+            const [guias, ems] = await Promise.all([
+                obtenerGuiasSeguridad(),
+                obtenerEmergencias()
+            ]);
             setGuiasSeguridad(guias);
+            setEmergencias(ems);
             setCargandoGuias(false);
+            setCargandoEmergencias(false);
         };
-        cargarGuias();
+        cargarDatos();
     }, []);
 
     // Limpiar búsqueda al cambiar de pestaña
@@ -274,54 +281,40 @@ const Soporte = () => {
 
                 {seccionActiva === 'emergencia' && (
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in zoom-in duration-300">
-                        <div className="bg-red-50 border border-red-100 p-8 rounded-xl flex flex-col items-center text-center hover:shadow-lg transition-all transform hover:-translate-y-1">
-                            <div className="bg-red-100 p-4 rounded-full mb-4 text-red-600 shadow-sm">
-                                <AlertTriangle size={40} />
-                            </div>
-                            <h3 className="font-bold text-red-900 text-lg mb-1">Bomberos</h3>
-                            <p className="text-4xl font-black text-red-600 mb-3 tracking-tight">116</p>
-                            <p className="text-sm text-red-700 font-medium">Emergencias médicas y rescate</p>
-                        </div>
-                        <div className="bg-blue-50 border border-blue-100 p-8 rounded-xl flex flex-col items-center text-center hover:shadow-lg transition-all transform hover:-translate-y-1">
-                            <div className="bg-blue-100 p-4 rounded-full mb-4 text-blue-600 shadow-sm">
-                                <Shield size={40} />
-                            </div>
-                            <h3 className="font-bold text-blue-900 text-lg mb-1">Policía Nacional</h3>
-                            <p className="text-4xl font-black text-blue-600 mb-3 tracking-tight">105</p>
-                            <p className="text-sm text-blue-700 font-medium">Seguridad y denuncias</p>
-                        </div>
-                        <div className="bg-orange-50 border border-orange-100 p-8 rounded-xl flex flex-col items-center text-center hover:shadow-lg transition-all transform hover:-translate-y-1">
-                            <div className="bg-orange-100 p-4 rounded-full mb-4 text-orange-600 shadow-sm">
-                                <LifeBuoy size={40} />
-                            </div>
-                            <h3 className="font-bold text-orange-900 text-lg mb-1">Salvavidas</h3>
-                            <p className="text-4xl font-black text-orange-600 mb-3 tracking-tight">106</p>
-                            <p className="text-sm text-orange-700 font-medium">Rescate en mar y playa</p>
-                        </div>
-                        <div className="bg-white border border-red-200 p-8 rounded-xl flex flex-col items-center text-center hover:shadow-lg transition-all transform hover:-translate-y-1">
-                            <div className="bg-red-50 p-4 rounded-full mb-4 text-red-500 shadow-sm">
-                                <AlertTriangle size={40} />
-                            </div>
-                            <h3 className="font-bold text-gray-900 text-lg mb-1">Cruz Roja</h3>
-                            <p className="text-4xl font-black text-red-500 mb-3 tracking-tight">115</p>
-                            <p className="text-sm text-gray-600 font-medium">Ayuda humanitaria y socorro</p>
-                        </div>
-                        <div className="bg-indigo-50 border border-indigo-100 p-8 rounded-xl flex flex-col items-center text-center hover:shadow-lg transition-all transform hover:-translate-y-1">
-                            <div className="bg-indigo-100 p-4 rounded-full mb-4 text-indigo-600 shadow-sm">
-                                <Shield size={40} />
-                            </div>
-                            <h3 className="font-bold text-indigo-900 text-lg mb-1">Serenazgo</h3>
-                            <p className="text-4xl font-black text-indigo-600 mb-3 tracking-tight">(01) 555-1234</p>
-                            <p className="text-sm text-indigo-700 font-medium">Seguridad ciudadana local</p>
-                        </div>
-                        <div className="bg-green-50 border border-green-100 p-8 rounded-xl flex flex-col items-center text-center hover:shadow-lg transition-all transform hover:-translate-y-1">
-                            <div className="bg-green-100 p-4 rounded-full mb-4 text-green-600 shadow-sm">
-                                <Phone size={40} />
-                            </div>
-                            <h3 className="font-bold text-green-900 text-lg mb-1">Soporte SummerRent</h3>
-                            <p className="text-3xl font-black text-green-600 mb-3 tracking-tight">(01) 555-0123</p>
-                            <p className="text-sm text-green-700 font-medium">Asistencia técnica y reservas</p>
-                        </div>
+                        {cargandoEmergencias ? (
+                            <p className="text-center col-span-full text-gray-500 py-10">Cargando teléfonos de emergencia...</p>
+                        ) : emergencias.length === 0 ? (
+                            <p className="text-center col-span-full text-gray-500 py-10">No hay teléfonos de emergencia registrados.</p>
+                        ) : (
+                            emergencias.map((em) => {
+                                // Mapeo de iconos y clases basado en el tipo o color
+                                const Icono = em.tipo === 'bomberos' || em.tipo === 'cruz_roja' ? AlertTriangle :
+                                    em.tipo === 'policia' || em.tipo === 'serenazgo' ? Shield :
+                                        em.tipo === 'salvavidas' ? LifeBuoy : Phone;
+
+                                const baseColors = {
+                                    red: 'bg-red-50 border-red-100 text-red-900 icon-bg-red-100 icon-text-red-600 num-text-red-600 desc-text-red-700',
+                                    blue: 'bg-blue-50 border-blue-100 text-blue-900 icon-bg-blue-100 icon-text-blue-600 num-text-blue-600 desc-text-blue-700',
+                                    orange: 'bg-orange-50 border-orange-100 text-orange-900 icon-bg-orange-100 icon-text-orange-600 num-text-orange-600 desc-text-orange-700',
+                                    white: 'bg-white border-red-200 text-gray-900 icon-bg-red-50 icon-text-red-500 num-text-red-500 desc-text-gray-600',
+                                    indigo: 'bg-indigo-50 border-indigo-100 text-indigo-900 icon-bg-indigo-100 icon-text-indigo-600 num-text-indigo-600 desc-text-indigo-700',
+                                    green: 'bg-green-50 border-green-100 text-green-900 icon-bg-green-100 icon-text-green-600 num-text-green-600 desc-text-green-700'
+                                };
+
+                                const colors = baseColors[em.color_fondo] || baseColors.blue;
+
+                                return (
+                                    <div key={em.id} className={`${colors.split(' ')[0]} ${colors.split(' ')[1]} p-8 rounded-xl flex flex-col items-center text-center hover:shadow-lg transition-all transform hover:-translate-y-1`}>
+                                        <div className={`${colors.split(' ').find(c => c.startsWith('icon-bg-')).replace('icon-bg-', 'bg-')} p-4 rounded-full mb-4 ${colors.split(' ').find(c => c.startsWith('icon-text-')).replace('icon-text-', 'text-')} shadow-sm`}>
+                                            <Icono size={40} />
+                                        </div>
+                                        <h3 className={`font-bold ${colors.split(' ')[2]} text-lg mb-1`}>{em.nombre}</h3>
+                                        <p className={`text-4xl font-black ${colors.split(' ').find(c => c.startsWith('num-text-')).replace('num-text-', 'text-')} mb-3 tracking-tight`}>{em.numero}</p>
+                                        <p className={`text-sm ${colors.split(' ').find(c => c.startsWith('desc-text-')).replace('desc-text-', 'text-')} font-medium`}>{em.descripcion}</p>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 )}
             </div>

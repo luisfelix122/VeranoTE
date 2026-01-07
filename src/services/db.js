@@ -1100,6 +1100,19 @@ export const obtenerMisReclamos = async (usuarioId) => {
     return data;
 };
 
+export const obtenerEmergencias = async () => {
+    const { data, error } = await supabase
+        .from('emergencias')
+        .select('*')
+        .order('id', { ascending: true });
+
+    if (error) {
+        console.error('Error al obtener emergencias:', error);
+        return [];
+    }
+    return data;
+};
+
 export const obtenerGuiasSeguridad = async () => {
     const { data, error } = await supabase
         .from('recursos')
