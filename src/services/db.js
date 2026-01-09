@@ -228,13 +228,13 @@ export const crearReserva = async (datosReserva) => {
     }));
 
     const payload = {
-        p_cliente_id: String(datosReserva.clienteId),
-        p_vendedor_id: String(datosReserva.vendedorId),
+        p_cliente_id: datosReserva.clienteId ? String(datosReserva.clienteId) : null,
+        p_vendedor_id: datosReserva.vendedorId ? String(datosReserva.vendedorId) : null,
         p_sede_id: String(datosReserva.sedeId || 'costa'),
         p_items: itemsRPC,
         p_fecha_inicio: datosReserva.fechaInicio,
         p_tipo_reserva: datosReserva.tipoReserva,
-        p_metodo_pago_id: String(datosReserva.metodoPago),
+        p_metodo_pago_id: datosReserva.metodoPago ? String(datosReserva.metodoPago) : null,
         p_tipo_comprobante: datosReserva.tipoComprobante,
         p_datos_factura: datosReserva.datosFactura,
         p_cupon: datosReserva.cupon || null
