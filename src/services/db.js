@@ -622,75 +622,74 @@ export const eliminarContactoDB = async (id) => {
 };
 
 export const actualizarUsuarioDB = async (id, datos) => {
-    // Mapear rol a rol_id si viene en los datos
-    const datosParaActualizar = { ...datos };
+    const errors = [];
 
-    // Mapeo manual de campos camelCase a snake_case
-    if ('rol' in datosParaActualizar) {
-        datosParaActualizar.rol_id = datosParaActualizar.rol;
-        delete datosParaActualizar.rol;
-    }
-    if ('sede' in datosParaActualizar) {
-        datosParaActualizar.sede_id = datosParaActualizar.sede;
-        delete datosParaActualizar.sede;
-    }
-    if ('licenciaConducir' in datosParaActualizar) {
-        datosParaActualizar.licencia_conducir = datosParaActualizar.licenciaConducir;
-        delete datosParaActualizar.licenciaConducir;
-    }
-    if ('numeroDocumento' in datosParaActualizar) {
-        const val = datosParaActualizar.numeroDocumento;
-        datosParaActualizar.numero_documento = (!val || String(val).trim() === '') ? null : val;
-        delete datosParaActualizar.numeroDocumento;
-    }
-    if ('fechaNacimiento' in datosParaActualizar) {
-        const val = datosParaActualizar.fechaNacimiento;
-        datosParaActualizar.fecha_nacimiento = (!val || String(val).trim() === '') ? null : val;
-        delete datosParaActualizar.fechaNacimiento;
-    }
-    if ('tipoDocumento' in datosParaActualizar) {
-        datosParaActualizar.tipo_documento = datosParaActualizar.tipoDocumento;
-        delete datosParaActualizar.tipoDocumento;
-    }
-    if ('contactoEmergencia' in datosParaActualizar) {
-        const val = datosParaActualizar.contactoEmergencia;
-        datosParaActualizar.contacto_emergencia = (!val || String(val).trim() === '') ? null : val;
-        delete datosParaActualizar.contactoEmergencia;
-    }
-    if ('codigoEmpleado' in datosParaActualizar) {
-        const val = datosParaActualizar.codigoEmpleado;
-        datosParaActualizar.codigo_empleado = (!val || String(val).trim() === '') ? null : val;
-        delete datosParaActualizar.codigoEmpleado;
-    }
-    if ('preguntaSecreta' in datosParaActualizar) {
-        datosParaActualizar.pregunta_secreta = datosParaActualizar.preguntaSecreta;
-        delete datosParaActualizar.preguntaSecreta;
-    }
-    if ('respuestaSecreta' in datosParaActualizar) {
-        datosParaActualizar.respuesta_secreta = datosParaActualizar.respuestaSecreta;
-        delete datosParaActualizar.respuestaSecreta;
-    }
-    if ('email' in datosParaActualizar) {
-        const val = datosParaActualizar.email;
-        // Si es string vacío lo ignoramos o null, pero email es unique y required?
-        // Mejor si viene vacío lo volvemos null para que falle constraint NOT NULL si aplica, o UNIQUE.
-        // Pero postgres dice: UNIQUE (email). NULL != NULL. 
-        // Sin embargo, usuario.email NO debería ser null.
-        // Mantengamos lógica original para email salvo que sea ''
-        if (!val || String(val).trim() === '') delete datosParaActualizar.email;
+    // 1. Usuarios (Auth & System info)
+    const datosUsuarios = {};
+    if (datos.email) datosUsuarios.email = datos.email;
+    if (datos.password) datosUsuarios.password = datos.password;
+    if (datos.rol) datosUsuarios.rol_id = datos.rol;
+    if (datos.activo !== undefined) datosUsuarios.activo = datos.activo;
+
+    if (Object.keys(datosUsuarios).length > 0) {
+        const { error } = await supabase.from('usuarios').update(datosUsuarios).eq('id', id);
+        if (error) errors.push("Usuarios: " + error.message);
     }
 
-    const { data, error } = await supabase
-        .from('usuarios')
-        .update(datosParaActualizar)
-        .eq('id', id)
-        .select();
+    // 2. Personas (Personal info)
+    const datosPersonas = {};
+    if (datos.nombre) datosPersonas.nombre_completo = datos.nombre;
+    if (datos.numeroDocumento) datosPersonas.numero_documento = datos.numeroDocumento;
+    if (datos.tipoDocumento) datosPersonas.tipo_documento = datos.tipoDocumento;
+    if (datos.telefono) datosPersonas.telefono = datos.telefono;
+    if (datos.direccion) datosPersonas.direccion = datos.direccion;
+    if (datos.nacionalidad) datosPersonas.nacionalidad = datos.nacionalidad;
+    if (datos.fechaNacimiento) datosPersonas.fecha_nacimiento = datos.fechaNacimiento;
+    if (datos.licenciaConducir !== undefined) datosPersonas.licencia_conducir = datos.licenciaConducir;
 
-    if (error) {
-        console.error('Error al actualizar usuario:', error);
-        return { success: false, error };
+    if (Object.keys(datosPersonas).length > 0) {
+        // Try update first
+        const { error } = await supabase.from('personas').update(datosPersonas).eq('usuario_id', id);
+        if (error) {
+            // Check if it's because row doesn't exist? (unlikely for created user, but possible)
+            errors.push("Personas: " + error.message);
+        }
     }
-    return { success: true, data: data[0] };
+
+    // 3. Empleados (Sede assignment)
+    // Only if sede/sede_id is explicitly passed (e.g. by Admin or Logic)
+    const sedeId = datos.sede || datos.sede_id;
+    if (sedeId) {
+        // Upsert logic: Try update, if 0 rows modified (no error but no data), then insert?
+        // Supabase update returns data/count?
+        // Let's safe-bet upsert if constraints allow, or just check existence.
+        // Simplest: Try Update. If success matches 0 rows, Insert.
+        const { count, error } = await supabase
+            .from('empleados')
+            .update({ sede_id: sedeId })
+            .eq('usuario_id', id)
+            .select('usuario_id', { count: 'exact' });
+
+        if (error) {
+            errors.push("Empleados Update: " + error.message);
+        } else if (count === 0) {
+            // Need to insert
+            const { error: errorIns } = await supabase
+                .from('empleados')
+                .insert({ usuario_id: id, sede_id: sedeId });
+            if (errorIns) {
+                // Ignore 23505 (dup) just in case race condition
+                if (errorIns.code !== '23505') errors.push("Empleados Insert: " + errorIns.message);
+            }
+        }
+    }
+
+    if (errors.length > 0) {
+        console.error("Errores al actualizar usuario:", errors);
+        return { success: false, error: errors.join('. ') };
+    }
+
+    return { success: true };
 };
 
 export const eliminarUsuarioDB = async (id) => {
