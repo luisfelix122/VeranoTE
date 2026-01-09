@@ -55,14 +55,19 @@ export const ProveedorAutenticacion = ({ children }) => {
         inicializar();
     }, []);
 
-    const iniciarSesion = (email, password) => {
-        const usuarioEncontrado = usuarios.find(u => u.email === email && u.password === password);
-        if (usuarioEncontrado) {
-            setUsuario(usuarioEncontrado);
-            localStorage.setItem('usuario_verano_id', usuarioEncontrado.id);
+    const iniciarSesion = async (email, password) => {
+        // Usamos la nueva función loginDB segura
+        const { loginDB } = await import('../services/db');
+        const resultado = await loginDB(email, password);
+
+        if (resultado.success) {
+            setUsuario(resultado.data);
+            localStorage.setItem('usuario_verano_id', resultado.data.id);
             return true;
+        } else {
+            console.error("Login fallido:", resultado.error);
+            return false;
         }
-        return false;
     };
 
     const registrarUsuario = async (datos) => {

@@ -1,6 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { Search, UserPlus, ShoppingCart, Trash2, CreditCard, AlertTriangle, Printer, CheckCircle, Clock, X } from 'lucide-react'; // Agregado AlertTriangle y Clock y X
 import { generarComprobante } from '../utils/pdfGenerator';
+import { buscarClientes, crearClienteRapidoDB } from '../services/db'; // <--- Asegúrate de importar crearClienteRapidoDB
 import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import Boton from '../components/ui/Boton'; // Se asegura import
@@ -171,69 +172,44 @@ const PuntoVenta = () => {
         setMostrandoResultados(false);
     };
 
-    const guardarNuevoCliente = async () => {
-        // Validador robusto solicitado
-        if (!nuevoCliente.nombre || !nuevoCliente.email || !nuevoCliente.numeroDocumento) {
-            return alert("⚠️ Complete todos los campos obligatorios");
+    const guardarNuevoCliente = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+
+        if (!nuevoCliente.nombre || !nuevoCliente.numeroDocumento) {
+            alert("Por favor ingrese Nombre y DNI.");
+            return;
         }
 
-        // Validación Email (@ y .)
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(nuevoCliente.email)) {
-            return alert("⚠️ Ingrese un email válido (debe contener '@' y '.')");
-        }
+        try {
+            // Usamos la nueva función normalizada
+            const resultado = await crearClienteRapidoDB(nuevoCliente);
 
-        // Validación Documento según País
-        if (nuevoCliente.pais === 'Perú') {
-            if (!/^\d{8}$/.test(nuevoCliente.numeroDocumento)) {
-                return alert("⚠️ Para Perú, el DNI debe tener exactamente 8 dígitos numéricos.");
-            }
-        } else {
-            // Para otros países, validación básica (no vacío ya hecho arriba)
-            if (nuevoCliente.numeroDocumento.length < 3) {
-                return alert("⚠️ El número de documento parece inválido (muy corto).");
-            }
-        }
+            if (resultado.success) {
+                alert("✅ Cliente registrado correctamente");
 
-        // Auto-generar password = DNI
-        const clienteParaGuardar = {
-            ...nuevoCliente,
-            password: nuevoCliente.numeroDocumento,
-            nacionalidad: nuevoCliente.pais, // Mapeo para DB
-            // Si el usuario puso fecha, la usamos. Si no, default 2000-01-01 para desbloquear
-            fecha_nacimiento: nuevoCliente.fechaNacimiento || '2000-01-01',
-            licencia_conducir: nuevoCliente.licenciaConducir || false // Checkbox
-        };
+                // Actualizar la UI: Seleccionar al cliente recién creado
+                // Nota: resultado.data es el usuario insertado (o lo que devuelva crearClienteRapidoDB)
+                // Aseguramos tener los campos para la UI:
+                const clienteUI = {
+                    id: resultado.data.id,
+                    nombre: nuevoCliente.nombre,
+                    numero_documento: nuevoCliente.numeroDocumento,
+                    email: nuevoCliente.email || `${nuevoCliente.numeroDocumento}@cliente.sinemail.com`
+                };
 
-        // delete nuevoCliente.pais; // No borrar del state UI, pero sí cuidar mapping si DB no lo espera (db.js lo maneja o lo ignora, pero 'nacionalidad' es el campo DB)
+                // Si usamos la función de contexto, tal vez necesitemos actualizar algo global, 
+                // pero seleccionarCliente localmente funciona para el POS.
+                seleccionarCliente(clienteUI);
 
-        const res = await registrarCliente(clienteParaGuardar);
-        if (res.success) {
-            alert(`✅ Cliente creado correctamente.\n🔑 Contraseña temporal: ${clienteParaGuardar.password}`);
-            setModalCrearClienteAbierto(false);
-            setNuevoCliente({
-                nombre: '',
-                email: '',
-                password: '',
-                numeroDocumento: '',
-                pais: 'Perú',
-                fechaNacimiento: '',
-                licenciaConducir: false
-            });
-            // Auto-seleccionar
-            seleccionarCliente({ ...res.data, nombre: clienteParaGuardar.nombre });
-        } else {
-            console.error("Error detallado al crear cliente:", res.error);
-            // Detección específica de duplicados (Error 409 / 23505)
-            const esDuplicado = res.error?.code === '23505' ||
-                res.error?.message?.includes('duplicate') ||
-                res.error?.details?.includes('already exists');
-
-            if (esDuplicado) {
-                alert("⛔ El cliente ya existe.\n\nEl DNI o el Email ya están registrados en el sistema. Por favor búsquelo en la barra de búsqueda.");
+                // Cerrar modal y limpiar
+                setModalCrearClienteAbierto(false);
+                setNuevoCliente({ nombre: '', numeroDocumento: '', telefono: '', direccion: '', email: '' });
             } else {
-                alert("❌ Error al crear cliente: " + (res.error?.message || res.error?.details || "Error desconocido."));
+                alert("❌ Error: " + (resultado.error || "No se pudo crear"));
             }
+        } catch (err) {
+            console.error(err);
+            alert("Error al procesar la solicitud.");
         }
     };
 

@@ -1343,7 +1343,7 @@ const Reportes = ({ rol: rolProp }) => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
                     <BarChart3 className="text-blue-600" />
-                    Reportes: {rol === 'dueno' ? 'Dueño' : rol.charAt(0).toUpperCase() + rol.slice(1)}
+                    Reportes: {rol === 'dueno' ? 'Dueño' : (rol || '').charAt(0).toUpperCase() + (rol || '').slice(1)}
                 </h2>
 
                 <div className="flex gap-2 items-center">

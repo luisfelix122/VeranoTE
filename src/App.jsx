@@ -103,6 +103,8 @@ function AppContenido() {
     const [regDoc, setRegDoc] = useState('');
     const [regNacimiento, setRegNacimiento] = useState('');
     const [regLicencia, setRegLicencia] = useState(false);
+    const [regContactoEmergencia, setRegContactoEmergencia] = useState('');
+    const [regTelefonoEmergencia, setRegTelefonoEmergencia] = useState('');
 
     // UI Helpers
     const [showRegPass, setShowRegPass] = useState(false);
@@ -347,13 +349,21 @@ function AppContenido() {
     }, [fechaReserva, horaApertura, horaCierre, horaReserva]);
 
 
-    const manejarLogin = (e) => {
+    const manejarLogin = async (e) => {
         e.preventDefault();
-        if (iniciarSesion(email, password)) {
-            setMostrarLogin(false);
-            setErrorLogin('');
-        } else {
-            setErrorLogin('Credenciales inválidas');
+        setErrorLogin('');
+
+        try {
+            const exito = await iniciarSesion(email, password);
+            if (exito) {
+                setMostrarLogin(false);
+                setErrorLogin('');
+            } else {
+                setErrorLogin('Credenciales inválidas');
+            }
+        } catch (error) {
+            console.error("Login error handler:", error);
+            setErrorLogin('Error de conexión');
         }
     };
 
@@ -1275,7 +1285,9 @@ function AppContenido() {
                                         tipoDocumento: regTipoDocumento,
                                         nacionalidad: regNacionalidad,
                                         preguntaSecreta: regPregunta,
-                                        respuestaSecreta: regRespuesta
+                                        respuestaSecreta: regRespuesta,
+                                        contactoEmergencia: regContactoEmergencia,
+                                        telefonoEmergencia: regTelefonoEmergencia
                                     });
 
                                     setIsRegistering(false);
@@ -1434,6 +1446,31 @@ function AppContenido() {
                                                 }}
                                             />
                                             {erroresRegistro.nacimiento && <p className="text-xs text-red-500 mt-1">{erroresRegistro.nacimiento}</p>}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-2">
+                                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Contacto de Emergencia</p>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+                                                <input
+                                                    className="w-full p-2 border rounded"
+                                                    value={regContactoEmergencia}
+                                                    onChange={e => setRegContactoEmergencia(e.target.value)}
+                                                    placeholder="Nombre del contacto"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                                                <input
+                                                    type="tel"
+                                                    className="w-full p-2 border rounded"
+                                                    value={regTelefonoEmergencia}
+                                                    onChange={e => setRegTelefonoEmergencia(e.target.value)}
+                                                    placeholder="Ej. 999888777"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 

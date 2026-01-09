@@ -24,6 +24,8 @@ import PaginaLegal from '../pages/PaginaLegal';
 import Ayuda from '../pages/Ayuda';
 
 
+import ErrorPage from '../pages/ErrorPage';
+
 // Componente de Ruta Protegida
 export const RutaProtegida = ({ children, rolesPermitidos = [] }) => {
     const { usuario } = useContext(ContextoAutenticacion);
@@ -45,6 +47,7 @@ export const crearRouterApp = () => {
         {
             path: '/',
             element: <DisenoPrincipal />,
+            errorElement: <ErrorPage />,
             children: [
                 {
                     index: true,
@@ -92,6 +95,7 @@ export const crearRouterApp = () => {
                     <DisenoPanel />
                 </RutaProtegida>
             ),
+            errorElement: <ErrorPage />,
             children: [
                 {
                     index: true,
@@ -138,6 +142,7 @@ export const crearRouterApp = () => {
                     <DisenoPanel />
                 </RutaProtegida>
             ),
+            errorElement: <ErrorPage />,
             children: [
                 {
                     index: true,
@@ -168,6 +173,7 @@ export const crearRouterApp = () => {
                     <DisenoPanel />
                 </RutaProtegida>
             ),
+            errorElement: <ErrorPage />,
             children: [
                 {
                     index: true,

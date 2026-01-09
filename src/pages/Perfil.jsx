@@ -5,7 +5,7 @@ import {
     AlertTriangle, Lock, Eye, EyeOff, Calendar
 } from 'lucide-react';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
-import { obtenerContactos, agregarContacto, eliminarContacto, obtenerPerfilAlquileres, obtenerPerfilSoporte, registrarPagoSaldoDB } from '../services/db';
+import { obtenerContactosUsuario, agregarContactoDB, eliminarContactoDB, obtenerPerfilAlquileres, obtenerPerfilSoporte, registrarPagoSaldoDB } from '../services/db';
 import { obtenerTarjetas, agregarTarjeta, eliminarTarjeta } from '../services/cardService';
 import Boton from '../components/ui/Boton';
 import { PAISES } from '../constants/paises';
@@ -164,7 +164,7 @@ const Perfil = () => {
     };
 
     const cargarContactos = async () => {
-        const data = await obtenerContactos(usuario.id);
+        const data = await obtenerContactosUsuario(usuario.id);
         setContactos(data || []);
     };
 
@@ -188,7 +188,7 @@ const Perfil = () => {
             relacion: nuevoContacto.relacion
         };
 
-        const res = await agregarContacto(usuario.id, contactoFinal);
+        const res = await agregarContactoDB(usuario.id, contactoFinal);
         if (res.success) {
             cargarContactos();
             setMostrarModalContacto(false);
@@ -202,7 +202,7 @@ const Perfil = () => {
 
     const borrarContacto = async (id) => {
         if (!window.confirm('¿Eliminar este contacto?')) return;
-        const res = await eliminarContacto(id);
+        const res = await eliminarContactoDB(id);
         if (res.success) cargarContactos();
     };
 
@@ -399,7 +399,7 @@ const Perfil = () => {
             {/* Header del Perfil */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white shadow-lg mb-8 flex items-center gap-6">
                 <div className="w-24 h-24 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-4xl font-bold border-4 border-white/30">
-                    {usuario.nombre.charAt(0)}
+                    {(usuario.nombre || 'U').charAt(0)}
                 </div>
                 <div>
                     <h1 className="text-3xl font-bold">{usuario.nombre}</h1>

@@ -45,7 +45,7 @@ const BarraNavegacionPanel = () => {
                                 <>
                                     <span className="mx-1 text-blue-600">-</span>
                                     <span className="ml-1 text-blue-600 font-medium">
-                                        {sedes.find(s => s.id === usuario.sede)?.nombre || usuario.sede.charAt(0).toUpperCase() + usuario.sede.slice(1)}
+                                        {sedes.find(s => s.id === usuario.sede)?.nombre || (usuario.sede || '').charAt(0).toUpperCase() + (usuario.sede || '').slice(1)}
                                     </span>
                                 </>
                             )}

@@ -367,7 +367,7 @@ const GestionUsuarios = () => {
                         <div className="space-y-6">
                             <div className="flex items-center gap-4 pb-4 border-b border-gray-100">
                                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-2xl font-bold">
-                                    {usuarioSeleccionado.nombre.charAt(0)}
+                                    {(usuarioSeleccionado.nombre || 'U').charAt(0)}
                                 </div>
                                 <div>
                                     <h4 className="text-xl font-semibold">{usuarioSeleccionado.nombre}</h4>

@@ -176,50 +176,31 @@ export const obtenerContenidoWeb = async () => {
 };
 
 export const obtenerUsuarios = async () => {
+    // Leemos de la VISTA normalizada que ya hace los Joins
+    // Nota: La vista se llama 'v_usuarios_completos' (plural) en el esquema
     const { data, error } = await supabase
-        .from('usuarios')
-        .select(`
-            *,
-            roles ( nombre )
-        `);
+        .from('v_usuarios_completos')
+        .select('*')
+        .order('nombre', { ascending: true });
 
     if (error) {
         console.error('Error al obtener usuarios:', error);
         return [];
     }
 
-    return data.map(u => {
-        // Normalizar el nombre del rol para que coincida con los keys del frontend
-        let rolNormalizado = 'cliente';
-
-        let nombreRolDB = '';
-        if (Array.isArray(u.roles)) {
-            nombreRolDB = u.roles[0]?.nombre || '';
-        } else if (u.roles?.nombre) {
-            nombreRolDB = u.roles.nombre;
-        }
-        nombreRolDB = nombreRolDB.toLowerCase();
-
-        if (nombreRolDB.includes('admin')) rolNormalizado = 'admin';
-        else if (nombreRolDB.includes('vend')) rolNormalizado = 'vendedor';
-        else if (nombreRolDB.includes('mecanic') || nombreRolDB.includes('mecánic')) rolNormalizado = 'mecanico';
-        else if (nombreRolDB.includes('dueñ') || nombreRolDB.includes('duen')) rolNormalizado = 'dueno';
-
-        return {
-            ...u,
-            rol: rolNormalizado,
-            sede: u.sede_id // Mapear sede_id a sede
-        };
-    });
+    // Mapeo ligero para asegurar compatibilidad con la UI existente
+    return data.map(u => ({
+        ...u,
+        rol: u.rol,      // La vista ya devuelve el ID del rol como 'rol'
+        sede: u.sede_id  // La vista devuelve 'sede_id'
+    }));
 };
 
 export const obtenerUsuarioPorId = async (id) => {
+    // Usamos la vista para obtener todos los datos aplanados
     const { data, error } = await supabase
-        .from('usuarios')
-        .select(`
-            *,
-            roles ( nombre )
-        `)
+        .from('v_usuarios_completos')
+        .select('*')
         .eq('id', id)
         .single();
 
@@ -228,26 +209,11 @@ export const obtenerUsuarioPorId = async (id) => {
         return null;
     }
 
-    // Normalizar rol
-    let rolNormalizado = 'cliente';
-
-    let nombreRolDB = '';
-    if (Array.isArray(data.roles)) {
-        nombreRolDB = data.roles[0]?.nombre || '';
-    } else if (data.roles?.nombre) {
-        nombreRolDB = data.roles.nombre;
-    }
-    nombreRolDB = nombreRolDB.toLowerCase();
-
-    if (nombreRolDB.includes('admin')) rolNormalizado = 'admin';
-    else if (nombreRolDB.includes('vend')) rolNormalizado = 'vendedor';
-    else if (nombreRolDB.includes('mecanic') || nombreRolDB.includes('mecánic')) rolNormalizado = 'mecanico';
-    else if (nombreRolDB.includes('dueñ') || nombreRolDB.includes('duen') || nombreRolDB.includes('owner')) rolNormalizado = 'dueno';
-
+    // Mapeo ligero
     return {
         ...data,
-        rol: rolNormalizado,
-        sede: data.sede_id // Mapear sede_id a sede
+        rol: data.rol,
+        sede: data.sede_id
     };
 };
 
@@ -400,39 +366,37 @@ export const registrarDevolucionDB = async (alquilerId, vendedorId, devolverGara
 };
 
 // Helper para transformar alquiler crudo a formato frontend
+// Helper para transformar alquiler crudo a formato frontend
 const transformarAlquiler = (a) => {
-    let vendedorInfo = null;
+    let vendedorInfo = 'Web / Auto-servicio';
     if (a.vendedor) {
-        const nombre = a.vendedor.nombre;
-        const rolObj = a.vendedor.roles;
-        let rolNombre = 'Vendedor';
-        if (Array.isArray(rolObj)) {
-            rolNombre = rolObj[0]?.nombre;
-        } else if (rolObj?.nombre) {
-            rolNombre = rolObj.nombre;
-        }
+        const nombre = a.vendedor.personas?.nombre_completo || a.vendedor.nombre || 'Vendedor'; // Fallback
+        let rolNombre = a.vendedor.roles?.nombre || 'Vendedor';
         rolNombre = rolNombre ? rolNombre.charAt(0).toUpperCase() + rolNombre.slice(1) : 'Vendedor';
         vendedorInfo = `${nombre} (${rolNombre})`;
     }
+
+    const clienteData = a.cliente || {};
+    const clientePersona = clienteData.personas || {}; // Relación anidada
 
     return {
         ...a,
         estado: a.estados_alquiler?.nombre || a.estado_id,
         vendedor: vendedorInfo,
-        clienteObj: a.cliente,
-        cliente: a.cliente?.nombre || (a.cliente_id ? `Cliente (${a.cliente_id.slice(0, 8)})` : 'Cliente No Identificado'),
-        clienteDni: a.cliente?.numero_documento || 'Sin Documento',
+        clienteObj: { ...clienteData, ...clientePersona },
+        cliente: clientePersona.nombre_completo || clienteData.nombre || (a.cliente_id ? `Cliente (${a.cliente_id.slice(0, 8)})` : 'Cliente No Identificado'),
+        clienteDni: clientePersona.numero_documento || clienteData.numero_documento || 'Sin Documento',
         items: a.alquiler_detalles.map(d => ({
             id: d.recurso_id,
             nombre: d.recursos?.nombre,
-            imagen: d.recursos?.imagen,
+            imagen: d.recursos?.imagen_url || d.recursos?.imagen,
             cantidad: d.cantidad,
             horas: d.horas,
             precioPorHora: d.precio_unitario
         })),
         cantidad_items: a.alquiler_detalles.reduce((acc, d) => acc + d.cantidad, 0),
         producto_principal: a.alquiler_detalles.map(d => `${d.cantidad}x ${d.recursos?.nombre}`).join(', '),
-        imagen_principal: a.alquiler_detalles[0]?.recursos?.imagen,
+        imagen_principal: a.alquiler_detalles[0]?.recursos?.imagen_url || a.alquiler_detalles[0]?.recursos?.imagen,
         fechaInicio: a.fecha_inicio,
         fechaFin: a.fecha_fin_estimada || a.fecha_fin,
         sedeId: a.sede_id,
@@ -442,18 +406,28 @@ const transformarAlquiler = (a) => {
 };
 
 export const obtenerAlquileres = async () => {
+    // Consulta adaptada a 3NF:
+    // usuarios -> personas (1:1)
     const { data, error } = await supabase
         .from('alquileres')
         .select(`
             *,
             alquiler_detalles (
                 *,
-                recursos ( nombre, imagen )
+                recursos ( nombre, imagen_url )
             ),
-            cliente:usuarios!cliente_id ( nombre, email, numero_documento ),
-            vendedor:usuarios!vendedor_id ( nombre, roles ( nombre ) ),
+            cliente:usuarios!cliente_id ( 
+                email, 
+                personas ( nombre_completo, numero_documento )
+            ),
+            vendedor:usuarios!vendedor_id ( 
+                email, 
+                personas ( nombre_completo ), 
+                roles ( nombre ) 
+            ),
             estados_alquiler ( nombre )
-        `);
+        `)
+        .order('created_at', { ascending: false });
 
     if (error) {
         console.error('Error al obtener alquileres:', error);
@@ -516,33 +490,135 @@ export const eliminarPromocionDB = async (id) => {
 };
 
 export const registrarUsuarioDB = async (datosUsuario) => {
-    // Mapear camelCase (Frontend) a snake_case (Base de Datos)
-    const usuarioParaInsertar = {
-        nombre: datosUsuario.nombre,
-        email: datosUsuario.email,
-        password: datosUsuario.password,
-        numero_documento: datosUsuario.numeroDocumento,
-        fecha_nacimiento: datosUsuario.fechaNacimiento,
-        licencia_conducir: datosUsuario.licenciaConducir,
-        tipo_documento: datosUsuario.tipoDocumento || 'DNI',
-        nacionalidad: datosUsuario.nacionalidad || 'Nacional',
-        telefono: datosUsuario.telefono,
-        rol_id: datosUsuario.rol || 'cliente',
-        sede_id: datosUsuario.sede || datosUsuario.sede_id || null,
-        pregunta_secreta: datosUsuario.preguntaSecreta,
-        respuesta_secreta: datosUsuario.respuestaSecreta
-    };
+    try {
+        console.log("Iniciando registro normalizado para:", datosUsuario.email);
 
+        // 1. Insertar en USUARIOS (Credenciales y Rol)
+        const { data: user, error: userError } = await supabase
+            .from('usuarios')
+            .insert([{
+                email: datosUsuario.email,
+                password_hash: datosUsuario.password, // Mapeo a columna correcta (password_hash)
+                rol_id: datosUsuario.rol || 'cliente',
+                activo: true
+            }])
+            .select()
+            .single();
+
+        if (userError) throw userError;
+
+        const nuevoId = user.id;
+
+        // 2. Insertar en PERSONAS (Datos Biográficos)
+        const { error: personaError } = await supabase
+            .from('personas')
+            .insert([{
+                usuario_id: nuevoId,
+                nombre_completo: datosUsuario.nombre,
+                numero_documento: datosUsuario.numeroDocumento,
+                tipo_documento: datosUsuario.tipoDocumento || 'DNI',
+                telefono: datosUsuario.telefono,
+                fecha_nacimiento: datosUsuario.fechaNacimiento,
+                nacionalidad: datosUsuario.nacionalidad,
+                direccion: datosUsuario.direccion
+            }]);
+
+        if (personaError) {
+            // Rollback manual: Borrar el usuario si falla la persona
+            console.error("Error al crear persona, haciendo rollback de usuario...", personaError);
+            await supabase.from('usuarios').delete().eq('id', nuevoId);
+            throw personaError;
+        }
+
+        // 3. Insertar Contacto de Emergencia Inicial (si existe)
+        if (datosUsuario.contactoEmergencia) {
+            const { error: contError } = await supabase
+                .from('contactos_usuario')
+                .insert([{
+                    usuario_id: nuevoId,
+                    nombre_completo: datosUsuario.contactoEmergencia, // Asumimos que viene el nombre
+                    telefono: datosUsuario.telefonoEmergencia || '', // Si venía, si no string vacío
+                    relacion: 'Contacto Inicial',
+                    es_principal: true
+                }]);
+            if (contError) console.warn("Error al guardar contacto de emergencia inicial:", contError);
+        }
+
+        // 4. Insertar en EMPLEADOS (Solo si tiene sede o es staff)
+        // Verificamos si es un rol de staff para crear entrada en empleados OR si tiene sede explícita
+        const rolesStaff = ['admin', 'vendedor', 'mecanico'];
+        if (rolesStaff.includes(datosUsuario.rol) || datosUsuario.sede || datosUsuario.codigoEmpleado) {
+            if (datosUsuario.sede) {
+                const { error: empError } = await supabase
+                    .from('empleados')
+                    .insert([{
+                        usuario_id: nuevoId,
+                        sede_id: datosUsuario.sede,
+                        codigo_empleado: datosUsuario.codigoEmpleado,
+                        turno: datosUsuario.turno,
+                        especialidad: datosUsuario.especialidad
+                    }]);
+
+                if (empError) console.error("Error al crear datos de empleado", empError);
+            }
+        }
+
+        // 5. Insertar en CLIENTES_DETALLES (Si es cliente o tiene licencia)
+        if (datosUsuario.rol === 'cliente' || datosUsuario.licenciaConducir !== undefined) {
+            const { error: cliError } = await supabase
+                .from('clientes_detalles')
+                .insert([{
+                    usuario_id: nuevoId,
+                    licencia_conducir: !!datosUsuario.licenciaConducir, // Forzar booleano
+                    preferencias: {} // JSONB default
+                }]);
+
+            if (cliError) console.error("Error al crear detalles de cliente", cliError);
+        }
+
+        return { success: true, data: user };
+
+    } catch (error) {
+        console.error('Error al registrar usuario completo:', error);
+        return { success: false, error };
+    }
+};
+
+export const obtenerContactosUsuario = async (usuarioId) => {
     const { data, error } = await supabase
-        .from('usuarios')
-        .insert([usuarioParaInsertar])
+        .from('contactos_usuario')
+        .select('*')
+        .eq('usuario_id', usuarioId)
+        .order('es_principal', { ascending: false }); // Principal primero
+
+    if (error) {
+        console.error('Error al obtener contactos:', error);
+        return [];
+    }
+    return data;
+};
+
+export const agregarContactoDB = async (contacto) => {
+    const { data, error } = await supabase
+        .from('contactos_usuario')
+        .insert([contacto])
         .select();
 
     if (error) {
-        console.error('Error al registrar usuario:', error);
+        console.error('Error al agregar contacto:', error);
         return { success: false, error };
     }
     return { success: true, data: data[0] };
+};
+
+export const eliminarContactoDB = async (id) => {
+    const { error } = await supabase
+        .from('contactos_usuario')
+        .delete()
+        .eq('id', id);
+
+    if (error) return { success: false, error };
+    return { success: true };
 };
 
 export const actualizarUsuarioDB = async (id, datos) => {
@@ -911,6 +987,10 @@ export const eliminarRecursoDB = async (id) => {
 
 // --- GESTIÓN DE CONTACTOS (NORMALIZADA) ---
 
+
+
+// --- AGREGAR AL FINAL DE src/services/db.js ---(NORMALIZADA) ---
+
 export const obtenerContactos = async (usuarioId) => {
     const { data, error } = await supabase
         .from('contactos_usuario')
@@ -960,7 +1040,11 @@ export const obtenerTickets = async (usuarioId) => {
         .from('soporte_tickets')
         .select(`
             *,
-            usuario:usuario_id ( nombre, rol_id, roles ( nombre ) )
+            usuario:usuarios!usuario_id ( 
+                email,
+                personas ( nombre_completo ),
+                roles ( nombre ) 
+            )
         `)
         .eq('usuario_id', usuarioId)
         .order('created_at', { ascending: false });
@@ -974,6 +1058,7 @@ export const obtenerTickets = async (usuarioId) => {
         ...t,
         usuario: {
             ...t.usuario,
+            nombre: t.usuario?.personas?.nombre_completo || 'Usuario',
             rol: t.usuario?.roles?.nombre || 'usuario'
         }
     }));
@@ -1025,8 +1110,16 @@ export const obtenerMensajes = async (usuarioId) => {
         .from('mensajes')
         .select(`
             *,
-            remitente:remitente_id ( nombre, rol_id, roles ( nombre ) ),
-            destinatario:destinatario_id ( nombre, rol_id, roles ( nombre ) )
+            remitente:usuarios!remitente_id ( 
+                email,
+                personas ( nombre_completo ), 
+                roles ( nombre ) 
+            ),
+            destinatario:usuarios!destinatario_id ( 
+                email,
+                personas ( nombre_completo ), 
+                roles ( nombre ) 
+            )
         `)
         .or(`remitente_id.eq.${usuarioId},destinatario_id.eq.${usuarioId}`)
         .order('created_at', { ascending: false });
@@ -1035,8 +1128,23 @@ export const obtenerMensajes = async (usuarioId) => {
         console.error('Error al obtener mensajes:', error);
         return [];
     }
-    return data;
+
+    // Flatten result for UI
+    return data.map(m => ({
+        ...m,
+        remitente: {
+            ...m.remitente,
+            nombre: m.remitente?.personas?.nombre_completo || 'Desconocido',
+            rol: m.remitente?.roles?.nombre
+        },
+        destinatario: {
+            ...m.destinatario,
+            nombre: m.destinatario?.personas?.nombre_completo || 'Desconocido',
+            rol: m.destinatario?.roles?.nombre
+        }
+    }));
 };
+
 
 export const obtenerMisGastos = async (usuarioId) => {
     const { data, error } = await supabase
@@ -1045,10 +1153,17 @@ export const obtenerMisGastos = async (usuarioId) => {
             *,
             alquiler_detalles (
                 *,
-                recursos ( nombre, imagen )
+                recursos ( nombre, imagen_url )
             ),
-            cliente:usuarios!cliente_id ( nombre, email, numero_documento ),
-            vendedor:usuarios!vendedor_id ( nombre, roles ( nombre ) ),
+            cliente:usuarios!cliente_id ( 
+                email,
+                personas ( nombre_completo, numero_documento )
+            ),
+            vendedor:usuarios!vendedor_id ( 
+                email,
+                personas ( nombre_completo ),
+                roles ( nombre ) 
+            ),
             estados_alquiler ( nombre )
         `)
         .eq('cliente_id', usuarioId)
@@ -1291,5 +1406,163 @@ export const buscarClientesDB = async (busqueda) => {
     return data;
 };
 
+// --- NUEVAS FUNCIONES PARA POS (NORMALIZADA) ---
+
+export const buscarClientes = async (termino) => {
+    if (!termino || termino.length < 3) return [];
+
+    // Buscamos en la vista completa normalizada
+    const { data, error } = await supabase
+        .from('v_usuarios_completos')
+        .select('*')
+        .or(`nombre.ilike.%${termino}%,numero_documento.ilike.%${termino}%`)
+        .limit(10);
+
+    if (error) {
+        console.error('Error al buscar clientes (Vista):', error);
+        return [];
+    }
+
+    // Mapeo simple para UI
+    return data.map(u => ({
+        id: u.id,
+        nombre: u.nombre,
+        numero_documento: u.numero_documento,
+        email: u.email,
+        sede: u.sede_id
+    }));
+};
+
+/**
+ * Registra un cliente rápido desde el POS.
+ */
+export const crearClienteRapidoDB = async (datos) => {
+    try {
+        // 1. Validar datos mínimos
+        if (!datos.nombre || !datos.numeroDocumento) {
+            return { success: false, error: "Nombre y DNI son obligatorios." };
+        }
+
+        // 2. Generar credenciales automáticas
+        const emailGenerado = datos.email || `${datos.numeroDocumento}@cliente.sinemail.com`;
+        const passwordGenerado = datos.numeroDocumento;
+
+        // 3. Insertar en USUARIOS
+        const { data: usuario, error: errorUsuario } = await supabase
+            .from('usuarios')
+            .insert([{
+                email: emailGenerado,
+                password_hash: passwordGenerado,
+                rol_id: 'cliente',
+                activo: true
+            }])
+            .select()
+            .single();
+
+        if (errorUsuario) {
+            if (errorUsuario.code === '23505') {
+                return { success: false, error: "Este cliente (DNI/Email) ya está registrado." };
+            }
+            throw errorUsuario;
+        }
+
+        // 4. Insertar en PERSONAS
+        const { error: errorPersona } = await supabase
+            .from('personas')
+            .insert([{
+                usuario_id: usuario.id,
+                nombre_completo: datos.nombre,
+                tipo_documento: datos.tipoDocumento || 'DNI',
+                numero_documento: datos.numeroDocumento,
+                telefono: datos.telefono || null,
+                direccion: datos.direccion || null,
+                nacionalidad: datos.nacionalidad || 'Perú'
+            }]);
+
+        if (errorPersona) {
+            await supabase.from('usuarios').delete().eq('id', usuario.id);
+            throw errorPersona;
+        }
+
+        // 5. Insertar en CLIENTES_DETALLES
+        await supabase
+            .from('clientes_detalles')
+            .insert([{
+                usuario_id: usuario.id,
+                licencia_conducir: !!datos.licenciaConducir,
+                preferencias: {}
+            }]);
+
+        return { success: true, data: usuario };
+
+    } catch (error) {
+        console.error("Error al crear cliente rápido:", error);
+        return { success: false, error: error.message || "Error desconocido" };
+    }
+};
 
 
+
+
+/**
+ * Inicia sesión verificando credenciales contra la base de datos.
+ */
+export const loginDB = async (email, password) => {
+    try {
+        // 1. Buscar usuario por email
+        const { data: usuarioAuth, error: errorAuth } = await supabase
+            .from('usuarios')
+            .select('id, password, rol_id, activo')
+            .eq('email', email)
+            .single();
+
+        if (errorAuth || !usuarioAuth) {
+            return { success: false, error: 'Usuario no encontrado' };
+        }
+
+        if (!usuarioAuth.activo) {
+            return { success: false, error: 'Usuario desactivado' };
+        }
+
+        // 2. Verificar contraseña (comparación directa por ahora, según lógica actual)
+        // Nota: En producción esto debería usar bcrypt.compare()
+        if (usuarioAuth.password !== password) {
+            return { success: false, error: 'Contraseña incorrecta' };
+        }
+
+        // 3. Obtener perfil completo para la sesión
+        // Usamos la vista que ya trae todo formateado
+        const { data: perfilCompleto, error: errorPerfil } = await supabase
+            .from('v_usuarios_completos')
+            .select('*')
+            .eq('id', usuarioAuth.id)
+            .single();
+
+        if (errorPerfil) {
+            console.error("Error cargando perfil:", errorPerfil);
+            // Fallback: usar datos básicos si falla la vista (ej: falta de permisos)
+            return {
+                success: true,
+                data: {
+                    id: usuarioAuth.id,
+                    email: email,
+                    rol: 'cliente',
+                    nombre: 'Usuario'
+                }
+            };
+        }
+
+        // Mapeo final para consistencia con frontend
+        const usuarioFormat = {
+            ...perfilCompleto,
+            rol: perfilCompleto.rol, // View already returns string 'rol'
+            sede: perfilCompleto.sede_id
+        };
+
+        return { success: true, data: usuarioFormat };
+
+    } catch (error) {
+        console.error("Login error:", error);
+        return { success: false, error: error.message };
+    }
+};
