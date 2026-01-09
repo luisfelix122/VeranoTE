@@ -36,7 +36,9 @@ export const ProveedorAutenticacion = ({ children }) => {
                             licenciaConducir: usuarioFresco.licencia_conducir,
                             tipoDocumento: usuarioFresco.tipo_documento,
                             contactoEmergencia: usuarioFresco.contacto_emergencia,
-                            codigoEmpleado: usuarioFresco.codigo_empleado
+                            codigoEmpleado: usuarioFresco.codigo_empleado,
+                            preguntaSecreta: usuarioFresco.pregunta_secreta,
+                            respuestaSecreta: usuarioFresco.respuesta_secreta
                         };
                         setUsuario(usuarioFormateado);
                     } else {

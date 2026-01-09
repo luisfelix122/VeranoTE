@@ -630,6 +630,8 @@ export const actualizarUsuarioDB = async (id, datos) => {
     if (datos.password) datosUsuarios.password = datos.password;
     if (datos.rol) datosUsuarios.rol_id = datos.rol;
     if (datos.activo !== undefined) datosUsuarios.activo = datos.activo;
+    if (datos.preguntaSecreta) datosUsuarios.pregunta_secreta = datos.preguntaSecreta;
+    if (datos.respuestaSecreta) datosUsuarios.respuesta_secreta = datos.respuestaSecreta;
 
     if (Object.keys(datosUsuarios).length > 0) {
         const { error } = await supabase.from('usuarios').update(datosUsuarios).eq('id', id);
