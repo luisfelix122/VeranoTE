@@ -228,16 +228,16 @@ export const crearReserva = async (datosReserva) => {
     }));
 
     const payload = {
-        p_cliente_id: datosReserva.clienteId,
-        p_vendedor_id: datosReserva.vendedorId,
-        p_sede_id: datosReserva.sedeId || 'costa',
+        p_cliente_id: String(datosReserva.clienteId),
+        p_vendedor_id: String(datosReserva.vendedorId),
+        p_sede_id: String(datosReserva.sedeId || 'costa'),
         p_items: itemsRPC,
         p_fecha_inicio: datosReserva.fechaInicio,
         p_tipo_reserva: datosReserva.tipoReserva,
-        p_metodo_pago_id: datosReserva.metodoPago,
+        p_metodo_pago_id: String(datosReserva.metodoPago),
         p_tipo_comprobante: datosReserva.tipoComprobante,
         p_datos_factura: datosReserva.datosFactura,
-        p_cupon: datosReserva.cupon // Agregamos el cupón al payload
+        p_cupon: datosReserva.cupon || null
     };
 
     try {
