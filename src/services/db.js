@@ -518,9 +518,9 @@ export const registrarUsuarioDB = async (datosUsuario) => {
                 numero_documento: datosUsuario.numeroDocumento,
                 tipo_documento: datosUsuario.tipoDocumento || 'DNI',
                 telefono: datosUsuario.telefono,
-                fecha_nacimiento: datosUsuario.fechaNacimiento,
-                nacionalidad: datosUsuario.nacionalidad,
-                direccion: datosUsuario.direccion
+                fecha_nacimiento: datosUsuario.fechaNacimiento || null,
+                nacionalidad: datosUsuario.nacionalidad || 'Perú',
+                direccion: datosUsuario.direccion || null
             }]);
 
         if (personaError) {
@@ -1392,12 +1392,12 @@ export const obtenerDisponibilidadRecursoDB = async (recursoId) => {
 };
 
 export const buscarClientesDB = async (busqueda) => {
-    // Reemplazamos RPC por Query estándar para asegurar que traemos todos los campos (especialmente numero_documento)
+    // Usamos la v_usuarios_completos para tener nombre y numero_documento aplanados
     const { data, error } = await supabase
-        .from('usuarios')
+        .from('v_usuarios_completos')
         .select('*')
         .or(`nombre.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%,email.ilike.%${busqueda}%`)
-        .eq('rol_id', 'cliente') // Asumiendo que buscamos solo clientes, o quitar si es general
+        .eq('rol', 'cliente') // La vista usa 'rol' como alias de 'rol_id'
         .limit(10);
 
     if (error) {
