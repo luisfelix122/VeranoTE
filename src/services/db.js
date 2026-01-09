@@ -401,7 +401,13 @@ const transformarAlquiler = (a) => {
         fechaFin: a.fecha_fin_estimada || a.fecha_fin,
         sedeId: a.sede_id,
         vendedorId: a.vendedor_id,
-        clienteId: a.cliente_id
+        clienteId: a.cliente_id,
+        // Correction: Map DB columns to frontend keys
+        totalFinal: a.total_calculado || a.total_final,
+        saldo_pendiente: a.saldo_pendiente,
+        montoPagado: a.monto_pagado,
+        totalServicio: a.total_calculado - (a.monto_garantia || 0), // Aproximate if not stored
+        garantia: a.monto_garantia
     };
 };
 

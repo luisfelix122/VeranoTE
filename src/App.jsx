@@ -571,7 +571,8 @@ function AppContenido() {
                     categoria: i.categoria
                 })),
                 fechaInicio: fechaInicio.toISOString(), // Asegurar formato ISO
-                tipoReserva: tipoReserva || 'inmediata',
+                tipoReserva: 'web', // Force 'web' so DB applies 60% advance rule
+                // tipoReservaOriginal: tipoReserva || 'inmediata', // Optional if tracked in another column
                 metodoPago: metodoPago || 'transferencia',
                 tipoComprobante: tipoComprobante || 'boleta',
                 datosFactura: tipoComprobante === 'factura' ? datosFactura : null,
