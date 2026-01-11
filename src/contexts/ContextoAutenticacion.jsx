@@ -1,5 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { obtenerUsuarios, registrarUsuarioDB, actualizarUsuarioDB, obtenerUsuarioPorId, cambiarPassword, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion } from '../services/db';
+import { obtenerUsuarios, registrarUsuarioDB, actualizarUsuarioDB, obtenerUsuarioPorId, cambiarPassword, obtenerPreguntaRecuperacion, verificarRespuestaRecuperacion, loginDB } from '../services/db';
+
+import { supabase } from '../supabase/client';
 
 export const ContextoAutenticacion = createContext();
 
@@ -8,73 +10,117 @@ export const ProveedorAutenticacion = ({ children }) => {
     const [usuario, setUsuario] = useState(null);
     const [cargando, setCargando] = useState(true);
 
-    useEffect(() => {
-        const inicializar = async () => {
-            // 1. Cargar lista de usuarios (para login simulado, idealmente esto cambiaría en prod)
-            const data = await obtenerUsuarios();
-            const usuariosFormateados = data.map(u => ({
-                ...u,
-                numeroDocumento: u.numero_documento,
-                fechaNacimiento: u.fecha_nacimiento,
-                licenciaConducir: u.licencia_conducir,
-                tipoDocumento: u.tipo_documento,
-                contactoEmergencia: u.contacto_emergencia,
-                codigoEmpleado: u.codigo_empleado
-            }));
-            setUsuarios(usuariosFormateados);
+    const formatearUsuario = (u) => ({
+        ...u,
+        numeroDocumento: u.numero_documento,
+        fechaNacimiento: u.fecha_nacimiento,
+        licenciaConducir: u.licencia_conducir,
+        tipoDocumento: u.tipo_documento,
+        contactoEmergencia: u.contacto_emergencia,
+        codigoEmpleado: u.codigo_empleado,
+        preguntaSecreta: u.pregunta_secreta,
+        respuestaSecreta: u.respuesta_secreta,
+        nombres: u.nombres,
+        apellidos: u.apellidos,
+        nacionalidad: u.nacionalidad
+    });
 
-            // 2. Restaurar sesión
-            const usuarioIdGuardado = localStorage.getItem('usuario_verano_id');
-            if (usuarioIdGuardado) {
-                try {
-                    const usuarioFresco = await obtenerUsuarioPorId(usuarioIdGuardado);
+    // 1. Efecto de Inicialización de Sesión (Capa Crítica)
+    useEffect(() => {
+        const restaurarSesion = async () => {
+            try {
+                // Restaurar sesión usando la fuente de verdad: Supabase
+                const { data: { session: sessionInicial } } = await supabase.auth.getSession();
+
+                if (sessionInicial?.user) {
+                    const usuarioFresco = await obtenerUsuarioPorId(sessionInicial.user.id);
                     if (usuarioFresco) {
-                        const usuarioFormateado = {
-                            ...usuarioFresco,
-                            numeroDocumento: usuarioFresco.numero_documento,
-                            fechaNacimiento: usuarioFresco.fecha_nacimiento,
-                            licenciaConducir: usuarioFresco.licencia_conducir,
-                            tipoDocumento: usuarioFresco.tipo_documento,
-                            contactoEmergencia: usuarioFresco.contacto_emergencia,
-                            codigoEmpleado: usuarioFresco.codigo_empleado,
-                            preguntaSecreta: usuarioFresco.pregunta_secreta,
-                            respuestaSecreta: usuarioFresco.respuesta_secreta
-                        };
-                        setUsuario(usuarioFormateado);
-                    } else {
-                        localStorage.removeItem('usuario_verano_id');
+                        setUsuario(formatearUsuario(usuarioFresco));
+                        localStorage.setItem('usuario_verano_id', sessionInicial.user.id);
                     }
-                } catch (error) {
-                    console.error("Error restaurando sesión:", error);
+                } else {
                     localStorage.removeItem('usuario_verano_id');
                 }
+            } catch (err) {
+                console.error("Error restaurando sesión:", err);
+            } finally {
+                setCargando(false);
             }
-
-            // 3. Finalizar carga
-            setCargando(false);
         };
 
-        inicializar();
+        restaurarSesion();
+
+        // Suscribirse a cambios de Auth
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            const eventosDeInicio = ['SIGNED_IN', 'INITIAL_SESSION', 'TOKEN_REFRESHED'];
+
+            if (eventosDeInicio.includes(event) && session) {
+                const usuarioFresco = await obtenerUsuarioPorId(session.user.id);
+                if (usuarioFresco) {
+                    setUsuario(formatearUsuario(usuarioFresco));
+                    localStorage.setItem('usuario_verano_id', session.user.id);
+                }
+            } else if (event === 'SIGNED_OUT') {
+                setUsuario(null);
+                localStorage.removeItem('usuario_verano_id');
+            }
+        });
+
+        return () => {
+            if (subscription) subscription.unsubscribe();
+        };
     }, []);
 
-    const iniciarSesion = async (email, password) => {
-        // Usamos la nueva función loginDB segura
-        const { loginDB } = await import('../services/db');
-        const resultado = await loginDB(email, password);
+    // 2. Efecto para cargar lista de usuarios (Capa Secundaria - No bloquea App)
+    useEffect(() => {
+        const cargarUsuarios = async () => {
+            try {
+                const data = await obtenerUsuarios();
+                const usuariosFormateados = data.map(u => ({
+                    ...u,
+                    numeroDocumento: u.numero_documento,
+                    fechaNacimiento: u.fecha_nacimiento,
+                    licenciaConducir: u.licencia_conducir,
+                    tipoDocumento: u.tipo_documento,
+                    contactoEmergencia: u.contacto_emergencia,
+                    codigoEmpleado: u.codigo_empleado
+                }));
+                setUsuarios(usuariosFormateados);
+            } catch (err) {
+                console.warn("Error no crítico cargando lista de usuarios:", err);
+            }
+        };
 
-        if (resultado.success) {
-            setUsuario(resultado.data);
-            localStorage.setItem('usuario_verano_id', resultado.data.id);
-            return true;
-        } else {
-            console.error("Login fallido:", resultado.error);
-            return false;
+        if (usuario && (usuario.rol === 'admin' || usuario.rol === 'dueno')) {
+            cargarUsuarios();
+        }
+    }, [usuario]);
+
+
+
+
+
+    const iniciarSesion = async (email, password) => {
+        console.log("Iniciando sesión (Contexto)...");
+        try {
+            const resultado = await loginDB(email, password);
+            console.log("Resultado LoginDB:", resultado);
+
+            if (resultado.success && resultado.data) {
+                // Actualización optimista inmediata
+                setUsuario(formatearUsuario(resultado.data));
+                localStorage.setItem('usuario_verano_id', resultado.data.id);
+            }
+            console.log("Resultado final de loginDB en Contexto:", resultado);
+            return resultado;
+        } catch (e) {
+            console.error("Excepcion iniciarSesion:", e);
+            return { success: false, error: e.message || 'Error inesperado' };
         }
     };
 
     const registrarUsuario = async (datos) => {
         // Mapear camelCase a snake_case para DB
-        // No necesitamos mapear manualmente a snake_case aquí, porque registrarUsuarioDB en db.js ya hace el mapeo.
         const datosParaDB = {
             ...datos,
             rol: datos.rol || 'cliente',
@@ -83,26 +129,25 @@ export const ProveedorAutenticacion = ({ children }) => {
 
         const resultado = await registrarUsuarioDB(datosParaDB);
         if (resultado.success) {
-            const nuevoUsuario = {
-                ...resultado.data,
-                ...datos,
-                id: resultado.data.id,
-                rol: datosParaDB.rol,
-                sede: datosParaDB.sede_id
-            };
-            setUsuarios(prev => [...prev, nuevoUsuario]);
-            setUsuario(nuevoUsuario);
-            localStorage.setItem('usuario_verano_id', nuevoUsuario.id);
+            // El registro exitoso a menudo hace auto-login en Supabase, lo que disparará el listener.
+            // Si no, podríamos setear manualmente, pero confiemos en el flujo.
             return true;
         } else {
-            // alert("Error al registrar usuario.");
-            return resultado.error?.message || resultado.error || 'Error desconocido';
+            return resultado.error?.message || resultado.error || 'Error';
         }
     };
 
-    const cerrarSesion = () => {
+    const cerrarSesion = async () => {
+        // 1. Limpieza local inmediata para respuesta instantánea de la UI
         setUsuario(null);
         localStorage.removeItem('usuario_verano_id');
+
+        try {
+            // 2. Notificar al servidor (sin bloquear la UI si tarda)
+            await supabase.auth.signOut();
+        } catch (error) {
+            console.error("Error al cerrar sesión formalmente:", error);
+        }
     };
 
     const actualizarPerfil = async (id, nuevosDatos) => {

@@ -40,11 +40,13 @@ const Reportes = ({ rol: rolProp }) => {
     const [misGastos, setMisGastos] = useState([]);
     const [cargando, setCargando] = useState(false);
     const [alquilerSeleccionado, setAlquilerSeleccionado] = useState(null);
-    const [modalReprogramacion, setModalReprogramacion] = useState({ abierto: false, alquiler: null }); // Store full object
+    const [modalReprogramacion, setModalReprogramacion] = useState({ abierto: false, alquiler: null });
     const [nuevaFecha, setNuevaFecha] = useState('');
     const [nuevaHora, setNuevaHora] = useState('');
     const [cargandoReprogramacion, setCargandoReprogramacion] = useState(false);
     const [exitoReprogramacion, setExitoReprogramacion] = useState(false);
+    const [motivoReprogramacion, setMotivoReprogramacion] = useState('Personal');
+    const [cargandoClima, setCargandoClima] = useState(false);
     const [errorHorario, setErrorHorario] = useState(null); // Nuevo estado para validación de horario
 
     useEffect(() => {
@@ -101,9 +103,14 @@ const Reportes = ({ rol: rolProp }) => {
         if (rol === 'cliente' && usuario?.id) {
             const cargarDatosCliente = async () => {
                 setCargando(true);
-                const gastos = await obtenerMisGastos(usuario.id);
-                setMisGastos(gastos || []);
-                setCargando(false);
+                try {
+                    const gastos = await obtenerMisGastos(usuario.id);
+                    setMisGastos(gastos || []);
+                } catch (e) {
+                    console.error('Error cargando gastos:', e);
+                } finally {
+                    setCargando(false);
+                }
             };
             cargarDatosCliente();
         }
@@ -271,23 +278,29 @@ const Reportes = ({ rol: rolProp }) => {
         if (!nuevaFecha || !nuevaHora) return alert('Seleccione fecha y hora');
         if (errorHorario) return alert('⚠️ ' + errorHorario);
 
+        if (motivoReprogramacion === 'Clima') setCargandoClima(true);
         setCargandoReprogramacion(true);
         try {
-            const fechaString = `${nuevaFecha}T${nuevaHora}:00`;
-            // Pasamos el objeto con nuevaFecha y nuevaHora al contexto
-            const exito = await reprogramarAlquiler(modalReprogramacion.alquiler.id, { nuevaFecha, nuevaHora });
+            // Pasamos el objeto con nuevaFecha y nuevaHora al contexto, más el contexto del motivo
+            const exito = await reprogramarAlquiler(
+                modalReprogramacion.alquiler.id,
+                { nuevaFecha, nuevaHora },
+                { motivo: motivoReprogramacion, usuarioId: usuario?.id }
+            );
 
             if (exito) {
                 setExitoReprogramacion(true);
                 setTimeout(() => {
                     setModalReprogramacion({ abierto: false, alquiler: null });
                     setExitoReprogramacion(false);
+                    setMotivoReprogramacion('Personal');
                 }, 3000);
             }
         } catch (error) {
             alert('Error al reprogramar: ' + error.message);
         } finally {
             setCargandoReprogramacion(false);
+            setCargandoClima(false);
         }
     };
 
@@ -345,59 +358,97 @@ const Reportes = ({ rol: rolProp }) => {
         }
     };
 
-    const renderKPIs = () => (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            {rol !== 'mecanico' && (
-                <>
-                    {/* KPI 1: Ingreso por Servicio (Negocio Puro) */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2" title="Dinero generado solo por el alquiler">
-                            <DollarSign size={16} /> Ventas (Servicio)
-                        </h3>
-                        <p className="text-2xl font-bold text-gray-700">S/ {totalServicio.toFixed(2)}</p>
-                    </div>
+    const renderKPIs = () => {
+        // Cálculos Exclusivos Cliente
+        const totalInvertido = misAlquileres.reduce((acc, curr) => acc + Number(curr.total_final || 0), 0);
+        const deudaTotal = misAlquileres.reduce((acc, curr) => acc + Number(curr.saldo_pendiente || 0), 0);
+        const alquileresActivosCount = misAlquileres.filter(a => ['pendiente', 'confirmado', 'en_uso', 'listo_para_entrega'].includes(a.estado_id)).length;
 
-                    {/* KPI 2: Ingreso Real (Caja Final) */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 bg-green-50 border-green-200">
-                        <h3 className="text-green-800 text-sm font-medium mb-1 flex items-center gap-2" title="Dinero final en caja (Incluye garantías retenidas)">
-                            <DollarSign size={16} /> Ingreso Real (Neto)
-                        </h3>
-                        <p className="text-3xl font-bold text-green-700">S/ {totalIngresosReales.toFixed(2)}</p>
-                        {garantiaRetenidaTotal > 0 && (
-                            <p className="text-xs text-green-600 font-medium mt-1">+ S/ {garantiaRetenidaTotal.toFixed(2)} por garantías</p>
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+                {/* --- KPIs CLIENTE --- */}
+                {rol === 'cliente' && (
+                    <>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2">
+                                <DollarSign size={16} /> Total Invertido
+                            </h3>
+                            <p className="text-2xl font-bold text-gray-700">S/ {totalInvertido.toFixed(2)}</p>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2">
+                                <Activity size={16} /> Alquileres Activos
+                            </h3>
+                            <p className="text-2xl font-bold text-blue-600">{alquileresActivosCount}</p>
+                        </div>
+
+                        {deudaTotal > 0 && (
+                            <div className="bg-red-50 p-6 rounded-xl shadow-sm border border-red-100 animate-pulse">
+                                <h3 className="text-red-800 text-sm font-medium mb-1 flex items-center gap-2">
+                                    <AlertCircle size={16} /> Deuda Pendiente
+                                </h3>
+                                <p className="text-2xl font-bold text-red-600">S/ {deudaTotal.toFixed(2)}</p>
+                                <p className="text-xs text-red-700 mt-1">Requiere pago inmediato</p>
+                            </div>
                         )}
-                    </div>
-                </>
-            )}
+                    </>
+                )}
 
-            {(rol === 'admin' || rol === 'dueno') && (
-                <>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><Wrench size={16} /> Costos Mantenimiento</h3>
-                        <p className="text-2xl font-bold text-orange-600">S/ {costosMantenimiento.toFixed(2)}</p>
-                    </div>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><FileText size={16} /> Operaciones</h3>
-                        <p className="text-2xl font-bold text-blue-600">{totalOperaciones}</p>
-                    </div>
-                </>
-            )}
+                {/* --- KPIs NEGOCIO (Admin, Dueño, Vendedor) --- */}
+                {(rol === 'admin' || rol === 'dueno' || rol === 'vendedor') && (
+                    <>
+                        {/* KPI 1: Ingreso por Servicio (Negocio Puro) */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2" title="Dinero generado solo por el alquiler">
+                                <DollarSign size={16} /> Ventas (Servicio)
+                            </h3>
+                            <p className="text-2xl font-bold text-gray-700">S/ {totalServicio.toFixed(2)}</p>
+                        </div>
 
-            {rol === 'mecanico' && (
-                <>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><Activity size={16} /> Trabajos Activos</h3>
-                        <p className="text-2xl font-bold text-orange-600">{trabajosActivos}</p>
-                    </div>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><CheckCircle size={16} /> Completados</h3>
-                        <p className="text-2xl font-bold text-green-600">{trabajosCompletados}</p>
-                    </div>
-                </>
-            )}
+                        {/* KPI 2: Ingreso Real (Caja Final) */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 bg-green-50 border-green-200">
+                            <h3 className="text-green-800 text-sm font-medium mb-1 flex items-center gap-2" title="Dinero final en caja (Incluye garantías retenidas)">
+                                <DollarSign size={16} /> Ingreso Real (Neto)
+                            </h3>
+                            <p className="text-3xl font-bold text-green-700">S/ {totalIngresosReales.toFixed(2)}</p>
+                            {garantiaRetenidaTotal > 0 && (
+                                <p className="text-xs text-green-600 font-medium mt-1">+ S/ {garantiaRetenidaTotal.toFixed(2)} por garantías</p>
+                            )}
+                        </div>
+                    </>
+                )}
 
-        </div>
-    );
+                {(rol === 'admin' || rol === 'dueno') && (
+                    <>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><Wrench size={16} /> Costos Mantenimiento</h3>
+                            <p className="text-2xl font-bold text-orange-600">S/ {costosMantenimiento.toFixed(2)}</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><FileText size={16} /> Operaciones</h3>
+                            <p className="text-2xl font-bold text-blue-600">{totalOperaciones}</p>
+                        </div>
+                    </>
+                )}
+
+                {rol === 'mecanico' && (
+                    <>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><Activity size={16} /> Trabajos Activos</h3>
+                            <p className="text-2xl font-bold text-orange-600">{trabajosActivos}</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-gray-500 text-sm font-medium mb-1 flex items-center gap-2"><CheckCircle size={16} /> Completados</h3>
+                            <p className="text-2xl font-bold text-green-600">{trabajosCompletados}</p>
+                        </div>
+                    </>
+                )}
+
+            </div>
+        );
+    };
 
     const renderModalReprogramacion = () => {
         if (!modalReprogramacion.abierto) return null;
@@ -438,29 +489,81 @@ const Reportes = ({ rol: rolProp }) => {
                                 </p>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Fecha</label>
-                                <input
-                                    type="date"
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={nuevaFecha}
-                                    onChange={(e) => setNuevaFecha(e.target.value)}
-                                    min={new Date().toISOString().split('T')[0]}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Hora Inicio</label>
-                                <input
-                                    type="time"
-                                    className={`w-full p-2.5 border rounded-xl focus:ring-2 outline-none transition-all ${errorHorario ? 'border-red-300 focus:ring-red-200' : 'border-gray-200 focus:ring-blue-500'}`}
-                                    value={nuevaHora}
-                                    onChange={(e) => setNuevaHora(e.target.value)}
-                                />
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Motivo de Cambio</label>
+                                    <select
+                                        className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={motivoReprogramacion}
+                                        onChange={(e) => setMotivoReprogramacion(e.target.value)}
+                                    >
+                                        <option value="Personal">Motivos Personales</option>
+                                        <option value="Retraso">Retraso en transporte</option>
+                                        <option value="Clima">Clima / Mal tiempo (Sin costo)</option>
+                                        <option value="Fuerza Mayor">Fuerza Mayor (Sin costo)</option>
+                                        <option value="Error Sistema">Error en el sistema (Sin costo)</option>
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Fecha</label>
+                                        <input
+                                            type="date"
+                                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                            value={nuevaFecha}
+                                            onChange={(e) => setNuevaFecha(e.target.value)}
+                                            min={new Date().toISOString().split('T')[0]}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Hora Inicio</label>
+                                        <input
+                                            type="time"
+                                            className={`w-full p-2 border rounded-lg focus:ring-2 outline-none transition-all ${errorHorario ? 'border-red-300 focus:ring-red-200' : 'border-gray-200 focus:ring-blue-500'}`}
+                                            value={nuevaHora}
+                                            onChange={(e) => setNuevaHora(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+
                                 {errorHorario && (
                                     <p className="text-xs font-semibold text-red-600 mt-1.5 flex items-center gap-1 animate-pulse">
                                         <AlertCircle size={14} /> {errorHorario}
                                     </p>
                                 )}
+
+                                {/* Resumen del Impacto */}
+                                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-2">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <div className="flex flex-col">
+                                            <span className="text-gray-500 font-medium">Costo de Operación:</span>
+                                            {motivoReprogramacion === 'Clima' && (
+                                                <span className="text-[10px] text-blue-500 font-bold italic animate-pulse">
+                                                    * Sujeto a validación climática
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className={`text-sm font-black ${['Clima', 'Fuerza Mayor', 'Error Sistema'].includes(motivoReprogramacion) ? 'text-green-600' : 'text-blue-600'}`}>
+                                            {['Clima', 'Fuerza Mayor', 'Error Sistema'].includes(motivoReprogramacion) ? 'S/ 0.00' : 'S/ 10.00'}
+                                        </span>
+                                    </div>
+                                    {nuevaFecha && nuevaHora && modalReprogramacion.alquiler && (
+                                        <div className="flex justify-between text-xs border-t pt-2 mt-2">
+                                            <span className="text-gray-500">Nuevo retorno estimado:</span>
+                                            <span className="font-medium text-gray-700">
+                                                {(() => {
+                                                    const ini = new Date(`${nuevaFecha}T${nuevaHora}`);
+                                                    const origIni = new Date(modalReprogramacion.alquiler.fecha_inicio);
+                                                    const origFin = new Date(modalReprogramacion.alquiler.fecha_fin_estimada);
+                                                    const dur = origFin.getTime() - origIni.getTime();
+                                                    const fin = new Date(ini.getTime() + dur);
+                                                    return fin.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                })()}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="pt-4 flex gap-3">
@@ -475,7 +578,7 @@ const Reportes = ({ rol: rolProp }) => {
                                     disabled={cargandoReprogramacion || errorHorario}
                                     className="flex-[1.5] py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:grayscale shadow-lg shadow-blue-100 transition-all transform active:scale-95"
                                 >
-                                    {cargandoReprogramacion ? 'Procesando...' : 'Confirmar Reprogramación'}
+                                    {cargandoClima ? 'Validando Clima...' : cargandoReprogramacion ? 'Procesando...' : 'Confirmar Reprogramación'}
                                 </button>
                             </div>
                         </>
@@ -762,17 +865,24 @@ const Reportes = ({ rol: rolProp }) => {
                                 </div>
                                 {Number(a.descuento_promociones) > 0 && (
                                     <div className="flex justify-between text-sm text-green-600">
-                                        <span>Descuento:</span>
+                                        <span>Descuento Promo:</span>
                                         <span>- S/ {Number(a.descuento_promociones).toFixed(2)}</span>
                                     </div>
                                 )}
+                                {Number(a.descuento_manual) !== 0 && (
+                                    <div className={`flex justify-between text-sm ${a.descuento_manual > 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                                        <span>{a.descuento_manual > 0 ? 'Descuento Manual:' : 'Recargo / Penalidad:'}</span>
+                                        <span>{a.descuento_manual > 0 ? '-' : '+'} S/ {Math.abs(a.descuento_manual).toFixed(2)}</span>
+                                    </div>
+                                )}
                                 <div className="flex justify-between text-sm text-gray-600">
-                                    <span>IGV ({((configuracion?.IGV || 0.18) * 100).toFixed(0)}%):</span>
-                                    <span>S/ {Number(igv).toFixed(2)}</span>
+                                    <span>IGV ({Number(configuracion?.IGV_PORCENTAJE || 0.18) * 100}%):</span>
+                                    {/* IGV está incluido en el Total Servicio. Desglosamos aprox. */}
+                                    <span>S/ {(Number(a.total_bruto) * (Number(configuracion?.IGV_PORCENTAJE || 0.18) / (1 + Number(configuracion?.IGV_PORCENTAJE || 0.18)))).toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm font-bold text-gray-800 pt-2 border-t border-dashed">
                                     <span>Total Servicio:</span>
-                                    <span>S/ {Number(a.total_servicio).toFixed(2)}</span>
+                                    <span>S/ {Number(a.total_final - (a.garantia || 0)).toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm text-blue-600">
                                     <span>Garantía (Reembolsable):</span>
@@ -792,57 +902,60 @@ const Reportes = ({ rol: rolProp }) => {
                                         <FileText size={18} />
                                         <span>Descargar {a.tipo_comprobante === 'factura' ? 'Factura' : 'Boleta'} Electrónica</span>
                                     </Boton>
+
+                                    {/* Botón Reprogramar desde Detalle - Solo si aplica */}
+                                    {((a.estado_id || '').toLowerCase().includes('pendiente') ||
+                                        (a.estado_id || '').toLowerCase() === 'confirmado' ||
+                                        (a.estado_id || '').toLowerCase() === 'en_uso' ||
+                                        (a.estado_id || '').toLowerCase() === 'finalizado') && (
+                                            <button
+                                                onClick={() => {
+                                                    setAlquilerSeleccionado(null);
+                                                    manejarReprogramacion(a);
+                                                }}
+                                                className="w-full mt-3 flex items-center justify-center gap-2 py-3 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 rounded-xl font-bold transition-all"
+                                            >
+                                                <Clock size={18} />
+                                                <span>Reprogramar / Extender Tiempo</span>
+                                            </button>
+                                        )}
+
                                     <p className="text-[10px] text-gray-400 text-center mt-2">
-                                        Formato PDF oficial para validez legal y control personal.
+                                        Acción rápida para cambios de horario o avisos de retraso.
                                     </p>
                                 </div>
 
-                                {/* Lógica robusta para detectar Recargos/Descuentos ocultos o explícitos */}
-                                {(() => {
-                                    const totalServicio = Number(a.total_servicio || 0);
-                                    const garantia = Number(a.garantia || 0);
-                                    const totalFinal = Number(a.total_final || 0);
-
-                                    // Calculamos la diferencia matemática
-                                    // Si TotalFinal > (Servicio + Garantia), hay un Recargo extra.
-                                    // Si TotalFinal < (Servicio + Garantia), hay un Descuento extra.
-                                    const diferencia = totalFinal - (totalServicio + garantia);
-
-                                    // Tolerancia para errores de punto flotante
-                                    const esDiferenciaSignificativa = Math.abs(diferencia) > 0.05;
-
-                                    if (!esDiferenciaSignificativa) return null;
-
-                                    const esRecargo = diferencia > 0;
-                                    const esReprogramacion = esRecargo && (a.notas?.toLowerCase().includes('reprogramación') || a.motivo_descuento?.toLowerCase().includes('reprogramación'));
-
-                                    return (
-                                        <div className={`mt-3 p-2 rounded text-xs font-semibold ${esRecargo ? 'bg-orange-50 text-orange-700 border border-orange-100' : 'bg-green-50 text-green-700'}`}>
-                                            <div className="flex justify-between items-center">
-                                                <span>{esReprogramacion ? '🔄 Cargo por Reprogramación' : (esRecargo ? '⚠️ Recargos / Penalidades' : 'Descuento Manual')}:</span>
-                                                <span>{esRecargo ? '' : '- '}S/ {Math.abs(diferencia).toFixed(2)}</span>
-                                            </div>
-                                            {(a.notas || a.motivo_descuento) && (
-                                                <p className="mt-1 font-normal opacity-75 italic">"{a.motivo_descuento || a.notas || (esRecargo ? 'Ajuste administrativo' : '')}"</p>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
                             </div>
                         </div>
 
-                        <div className="bg-blue-50 p-4 rounded-xl flex justify-between items-center text-sm">
-                            <div className="flex items-center gap-2">
-                                <DollarSign className="text-blue-600" size={18} />
-                                <span className="font-medium text-blue-800">Estado del Pago:</span>
+                        <div className="bg-blue-50 p-4 rounded-xl flex flex-col gap-3 text-sm">
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                    <DollarSign className="text-blue-600" size={18} />
+                                    <span className="font-medium text-blue-800">Estado del Pago:</span>
+                                </div>
+                                <div className="font-bold">
+                                    {Number(a.saldo_pendiente) > 0 ? (
+                                        <span className="text-red-600">Pendiente (Debe S/ {Number(a.saldo_pendiente).toFixed(2)})</span>
+                                    ) : (
+                                        <span className="text-green-600 flex items-center gap-1"><CheckCircle size={14} /> Pagado Completo</span>
+                                    )}
+                                </div>
                             </div>
-                            <div className="font-bold">
-                                {Number(a.saldo_pendiente) > 0 ? (
-                                    <span className="text-red-600">Pendiente (Debe S/ {Number(a.saldo_pendiente).toFixed(2)})</span>
-                                ) : (
-                                    <span className="text-green-600 flex items-center gap-1"><CheckCircle size={14} /> Pagado Completo</span>
-                                )}
-                            </div>
+
+                            {/* Botón Pagar Deuda - Visible si hay saldo pendiente */}
+                            {Number(a.saldo_pendiente) > 0 && (
+                                <button
+                                    onClick={() => {
+                                        setAlquilerSeleccionado(null);
+                                        setModalPago({ abierto: true, alquiler: a });
+                                    }}
+                                    className="w-full py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 animate-pulse"
+                                >
+                                    <CreditCard size={16} />
+                                    Pagar Deuda S/ {Number(a.saldo_pendiente).toFixed(2)}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -976,14 +1089,16 @@ const Reportes = ({ rol: rolProp }) => {
                                                             <Info size={14} /> Ver Detalle
                                                         </button>
 
-                                                        {/* Botón Reprogramar - Pendientes y Confirmados y NO Pasados */}
-                                                        {((a.estado_id || '').toLowerCase().includes('pendiente') || (a.estado_id || '').toLowerCase() === 'confirmado') &&
-                                                            (new Date(a.fecha_inicio || a.fechaInicio) > new Date()) && (
+                                                        {/* Botón Reprogramar - Pendientes, Confirmados, En Curso o Finalizados */}
+                                                        {((a.estado_id || '').toLowerCase().includes('pendiente') ||
+                                                            (a.estado_id || '').toLowerCase() === 'confirmado' ||
+                                                            (a.estado_id || '').toLowerCase() === 'en_uso' ||
+                                                            (a.estado_id || '').toLowerCase() === 'finalizado') && (
                                                                 <button
                                                                     onClick={() => manejarReprogramacion(a)}
-                                                                    className="text-blue-600 hover:text-blue-800 text-xs font-medium hover:underline text-center w-full"
+                                                                    className="flex items-center justify-center gap-2 py-2 px-3 bg-white text-blue-600 border border-blue-200 text-xs font-bold rounded-lg shadow-sm hover:bg-blue-50 transition-all w-full"
                                                                 >
-                                                                    Reprogramar
+                                                                    <Clock size={14} /> Reprogramar
                                                                 </button>
                                                             )}
 
@@ -1069,7 +1184,7 @@ const Reportes = ({ rol: rolProp }) => {
                                             </div>
                                         )}
                                     </td>
-                                    <td className="p-4"><BadgeEstado estado={a.estado_id} /></td>
+                                    <td className="p-4 whitespace-nowrap"><BadgeEstado estado={a.estado_id} /></td>
                                     <td className="p-3 text-center">
                                         {(rol === 'admin' || rol === 'vendedor' || rol === 'dueno') && (
                                             <div className="flex flex-col gap-1 items-center">
@@ -1087,6 +1202,13 @@ const Reportes = ({ rol: rolProp }) => {
                                                         <DollarSign size={12} /> Cobrar S/ {Number(a.saldoPendiente || a.saldo_pendiente).toFixed(2)}
                                                     </button>
                                                 )}
+
+                                                <button
+                                                    onClick={() => manejarReprogramacion(a)}
+                                                    className="text-blue-600 hover:text-blue-800 text-xs font-medium flex items-center gap-1 border border-blue-100 bg-blue-50 px-2 py-1 rounded w-full justify-center"
+                                                >
+                                                    <Clock size={12} /> Reprogramar
+                                                </button>
                                                 {a.estado_id === 'pendiente' && new Date() > new Date(new Date(a.fechaInicio).getTime() + 10 * 60000) && (
                                                     <button
                                                         className="text-red-600 hover:text-red-800 text-xs font-medium flex items-center gap-1"

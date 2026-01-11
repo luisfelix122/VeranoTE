@@ -19,12 +19,18 @@ const PuntoVenta = () => {
     const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
     const [mostrandoResultados, setMostrandoResultados] = useState(false);
     const [nuevoCliente, setNuevoCliente] = useState({
-        nombre: '',
+        nombres: '',
+        apellidos: '',
         email: '',
         password: '', // Se generará automáticamente
         numeroDocumento: '',
+        fechaNacimiento: '',
+        licenciaConducir: false,
+        telefono: '',
+        direccion: '',
         pais: 'Perú' // Default
     });
+    const [cargandoEnvio, setCargandoEnvio] = useState(false);
     const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
     const [modalCrearClienteAbierto, setModalCrearClienteAbierto] = useState(false);
     const [modalTerminosAbierto, setModalTerminosAbierto] = useState(false);
@@ -175,14 +181,33 @@ const PuntoVenta = () => {
     const guardarNuevoCliente = async (e) => {
         if (e && e.preventDefault) e.preventDefault();
 
-        if (!nuevoCliente.nombre || !nuevoCliente.numeroDocumento) {
-            alert("Por favor ingrese Nombre y DNI.");
+        if (!nuevoCliente.nombres || !nuevoCliente.apellidos || !nuevoCliente.numeroDocumento || !nuevoCliente.fechaNacimiento) {
+            alert("Por favor complete los campos obligatorios: Nombres, Apellidos, DNI y Fecha de Nacimiento.");
             return;
         }
 
+        // Validación de Teléfono (9 dígitos para Perú)
+        if (nuevoCliente.pais === 'Perú' && nuevoCliente.telefono && nuevoCliente.telefono.length !== 9) {
+            alert("El teléfono para Perú debe tener exactamente 9 dígitos.");
+            return;
+        }
+
+        // Validación de Email (Formato básico)
+        const emailAValidar = nuevoCliente.email || `${nuevoCliente.numeroDocumento}@cliente.com`;
+        if (!emailAValidar.includes('@') || !emailAValidar.includes('.')) {
+            alert("El formato del correo electrónico no es válido (debe contener @ y .)");
+            return;
+        }
+
+        setCargandoEnvio(true);
         try {
-            // Usamos la nueva función normalizada
-            const resultado = await crearClienteRapidoDB(nuevoCliente);
+            // Lógica de "Registro Rápido" solicitado por el usuario
+            const clienteData = {
+                ...nuevoCliente,
+                email: nuevoCliente.email || `${nuevoCliente.numeroDocumento}@cliente.com`,
+            };
+
+            const resultado = await crearClienteRapidoDB(clienteData);
 
             if (resultado.success) {
                 alert("✅ Cliente registrado correctamente");
@@ -192,9 +217,9 @@ const PuntoVenta = () => {
                 // Aseguramos tener los campos para la UI:
                 const clienteUI = {
                     id: resultado.data.id,
-                    nombre: nuevoCliente.nombre,
+                    nombre: `${nuevoCliente.nombres} ${nuevoCliente.apellidos}`,
                     numero_documento: nuevoCliente.numeroDocumento,
-                    email: nuevoCliente.email || `${nuevoCliente.numeroDocumento}@cliente.sinemail.com`
+                    email: nuevoCliente.email || `${nuevoCliente.numeroDocumento}@cliente.com`
                 };
 
                 // Si usamos la función de contexto, tal vez necesitemos actualizar algo global, 
@@ -203,13 +228,15 @@ const PuntoVenta = () => {
 
                 // Cerrar modal y limpiar
                 setModalCrearClienteAbierto(false);
-                setNuevoCliente({ nombre: '', numeroDocumento: '', telefono: '', direccion: '', email: '' });
+                setNuevoCliente({ nombres: '', apellidos: '', numeroDocumento: '', telefono: '', direccion: '', email: '', fechaNacimiento: '', licenciaConducir: false, pais: 'Perú' });
             } else {
                 alert("❌ Error: " + (resultado.error || "No se pudo crear"));
             }
         } catch (err) {
             console.error(err);
             alert("Error al procesar la solicitud.");
+        } finally {
+            setCargandoEnvio(false);
         }
     };
 
@@ -327,7 +354,7 @@ const PuntoVenta = () => {
     };
 
     const productosFiltrados = inventario.filter(p => {
-        const coincideSede = (usuario?.rol === 'admin' || usuario?.rol === 'vendedor') ? p.sedeId === usuario.sede : true;
+        const coincideSede = true; // El contexto ya entrega el inventario filtrado por la sede actual
         const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
             p.categoria.toLowerCase().includes(busqueda.toLowerCase());
         return coincideSede && coincideBusqueda;
@@ -402,7 +429,12 @@ const PuntoVenta = () => {
                                 variante="secundario"
                                 className="!px-2"
                                 onClick={() => {
-                                    setNuevoCliente(prev => ({ ...prev, numeroDocumento: clienteNombre.replace(/\D/g, '') }));
+                                    const soloNumeros = clienteNombre.replace(/\D/g, '');
+                                    setNuevoCliente(prev => ({
+                                        ...prev,
+                                        numeroDocumento: soloNumeros,
+                                        nombres: !isNaN(clienteNombre) ? '' : clienteNombre // Si es texto, ponerlo en nombres
+                                    }));
                                     setModalCrearClienteAbierto(true);
                                 }}
                                 title="Nuevo Cliente"
@@ -733,29 +765,25 @@ const PuntoVenta = () => {
                 {/* Modal Crear Cliente */}
                 <Modal titulo="Registrar Nuevo Cliente" abierto={modalCrearClienteAbierto} alCerrar={() => setModalCrearClienteAbierto(false)}>
                     <div className="space-y-4">
-                        <div className="flex gap-2">
-                            <div className="w-1/3">
-                                <label className="block text-sm font-medium mb-1">País</label>
+                        <div className="flex-1">
+                            <label className="block text-sm font-medium mb-1">DNI / Documento</label>
+                            <div className="flex gap-2">
                                 <select
-                                    className="w-full p-2 border rounded bg-white"
+                                    className="p-2 border rounded bg-gray-50"
                                     value={nuevoCliente.pais}
-                                    onChange={e => setNuevoCliente({ ...nuevoCliente, pais: e.target.value, numeroDocumento: '' })} // Clear doc on change
+                                    onChange={e => setNuevoCliente({ ...nuevoCliente, pais: e.target.value })}
                                 >
-                                    <option value="Perú">Perú</option>
-                                    <option value="Otro">Otro</option>
+                                    <option value="Perú">Perú (DNI)</option>
+                                    <option value="Extranjero">Extranjero</option>
                                 </select>
-                            </div>
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium mb-1">DNI / Documento</label>
                                 <input
-                                    className="w-full p-2 border rounded"
+                                    className="flex-1 p-2 border rounded"
                                     placeholder={nuevoCliente.pais === 'Perú' ? '8 dígitos' : 'Pasaporte / ID'}
                                     value={nuevoCliente.numeroDocumento}
                                     maxLength={nuevoCliente.pais === 'Perú' ? 8 : 20}
                                     onChange={e => {
                                         const val = e.target.value;
                                         if (nuevoCliente.pais === 'Perú') {
-                                            // Solo números para Perú
                                             if (/^\d*$/.test(val) && val.length <= 8) {
                                                 setNuevoCliente({ ...nuevoCliente, numeroDocumento: val });
                                             }
@@ -767,99 +795,133 @@ const PuntoVenta = () => {
                             </div>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium mb-1">Nombre Completo</label>
-                            <input
-                                className="w-full p-2 border rounded"
-                                value={nuevoCliente.nombre}
-                                onChange={e => setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })}
-                            />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Nombres</label>
+                                <input
+                                    className="w-full p-2 border rounded"
+                                    value={nuevoCliente.nombres}
+                                    placeholder="Nombres"
+                                    onChange={e => setNuevoCliente({ ...nuevoCliente, nombres: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Apellidos</label>
+                                <input
+                                    className="w-full p-2 border rounded"
+                                    value={nuevoCliente.apellidos}
+                                    placeholder="Apellidos"
+                                    onChange={e => setNuevoCliente({ ...nuevoCliente, apellidos: e.target.value })}
+                                />
+                            </div>
                         </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1 flex justify-between">
+                                    Email
+                                    {nuevoCliente.email && (!nuevoCliente.email.includes('@') || !nuevoCliente.email.includes('.')) && (
+                                        <span className="text-[10px] text-red-500 font-bold">⚠️ (@ y .)</span>
+                                    )}
+                                </label>
+                                <input
+                                    type="email"
+                                    className={`w-full p-2 border rounded ${nuevoCliente.email && (!nuevoCliente.email.includes('@') || !nuevoCliente.email.includes('.')) ? 'border-red-500 bg-red-50' : ''}`}
+                                    placeholder="ejemplo@email.com"
+                                    value={nuevoCliente.email}
+                                    onChange={e => setNuevoCliente({ ...nuevoCliente, email: e.target.value })}
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">Opcional: [DNI]@cliente.com</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Teléfono</label>
+                                <input
+                                    className="w-full p-2 border rounded"
+                                    placeholder={nuevoCliente.pais === 'Perú' ? '9 dígitos' : 'Teléfono'}
+                                    value={nuevoCliente.telefono || ''}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (nuevoCliente.pais === 'Perú') {
+                                            if (/^\d*$/.test(val) && val.length <= 9) {
+                                                setNuevoCliente({ ...nuevoCliente, telefono: val });
+                                            }
+                                        } else {
+                                            setNuevoCliente({ ...nuevoCliente, telefono: val });
+                                        }
+                                    }}
+                                />
+                                {nuevoCliente.pais === 'Perú' && nuevoCliente.telefono && nuevoCliente.telefono.length !== 9 && (
+                                    <p className="text-[10px] text-red-500 mt-1">Debe tener 9 dígitos</p>
+                                )}
+                            </div>
+                        </div>
+
                         <div>
-                            <label className="block text-sm font-medium mb-1">Email</label>
+                            <label className="block text-sm font-medium mb-1">Dirección / Hotel (Opcional)</label>
                             <input
-                                type="email"
                                 className="w-full p-2 border rounded"
-                                placeholder="ejemplo@email.com"
-                                value={nuevoCliente.email}
-                                onChange={e => setNuevoCliente({ ...nuevoCliente, email: e.target.value })}
+                                placeholder="Av. Principal 123 o Nombre del Hotel"
+                                value={nuevoCliente.direccion || ''}
+                                onChange={e => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })}
                             />
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium mb-1">Fecha Nacimiento</label>
+                                <label className="block text-sm font-medium mb-1">Fecha Nacimiento *</label>
                                 <input
                                     type="date"
                                     className="w-full p-2 border rounded"
+                                    required
                                     value={nuevoCliente.fechaNacimiento || ''}
                                     onChange={e => {
                                         const fecha = e.target.value;
                                         setNuevoCliente({ ...nuevoCliente, fechaNacimiento: fecha });
-
-                                        // Validar edad para licencia
                                         if (fecha) {
                                             const hoy = new Date();
                                             const cumple = new Date(fecha);
                                             let edad = hoy.getFullYear() - cumple.getFullYear();
                                             const m = hoy.getMonth() - cumple.getMonth();
-                                            if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) {
-                                                edad--;
-                                            }
-                                            if (edad < 18) {
-                                                setNuevoCliente(prev => ({ ...prev, licenciaConducir: false, fechaNacimiento: fecha }));
-                                            }
+                                            if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) edad--;
+                                            if (edad < 18) setNuevoCliente(prev => ({ ...prev, licenciaConducir: false }));
                                         }
                                     }}
                                 />
                             </div>
                             <div className="flex items-end pb-2">
-                                <label className={`flex items-center gap-2 select-none ${(() => {
-                                    if (!nuevoCliente.fechaNacimiento) return 'opacity-50 cursor-not-allowed';
-                                    const hoy = new Date();
-                                    const cumple = new Date(nuevoCliente.fechaNacimiento);
-                                    let edad = hoy.getFullYear() - cumple.getFullYear();
-                                    const m = hoy.getMonth() - cumple.getMonth();
-                                    if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) edad--;
-                                    return edad < 18 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
-                                })()}`}>
+                                <label className="flex items-center gap-2 cursor-pointer p-2 bg-gray-50 rounded w-full border border-dashed border-gray-300">
                                     <input
                                         type="checkbox"
-                                        className="w-5 h-5 text-blue-600 rounded disabled:bg-gray-100"
-                                        checked={nuevoCliente.licenciaConducir || false}
-                                        disabled={(() => {
-                                            if (!nuevoCliente.fechaNacimiento) return true;
-                                            const hoy = new Date();
-                                            const cumple = new Date(nuevoCliente.fechaNacimiento);
-                                            let edad = hoy.getFullYear() - cumple.getFullYear();
-                                            const m = hoy.getMonth() - cumple.getMonth();
-                                            if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) edad--;
-                                            return edad < 18;
-                                        })()}
+                                        className="w-4 h-4 text-blue-600"
+                                        checked={nuevoCliente.licenciaConducir}
                                         onChange={e => setNuevoCliente({ ...nuevoCliente, licenciaConducir: e.target.checked })}
                                     />
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-medium text-gray-700">Tiene Licencia de Conducir</span>
-                                        {nuevoCliente.fechaNacimiento && (() => {
-                                            const hoy = new Date();
-                                            const cumple = new Date(nuevoCliente.fechaNacimiento);
-                                            let edad = hoy.getFullYear() - cumple.getFullYear();
-                                            const m = hoy.getMonth() - cumple.getMonth();
-                                            if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) edad--;
-                                            return edad < 18;
-                                        })() && <span className="text-[10px] text-red-500 font-bold">⚠️ Solo para mayores de 18 años</span>}
-                                    </div>
+                                    <span className="text-sm font-medium">¿Tiene Licencia?</span>
                                 </label>
                             </div>
                         </div>
 
-                        <div className="bg-blue-50 p-2 rounded text-xs text-blue-800">
+                        <div className="bg-blue-50 p-2 rounded text-[10px] text-blue-800">
                             ℹ️ La contraseña se generará automáticamente usando el número de documento.
                         </div>
 
-                        <Boton className="w-full" onClick={guardarNuevoCliente}>Guardar Cliente</Boton>
+                        <Boton
+                            className="w-full relative overflow-hidden"
+                            onClick={guardarNuevoCliente}
+                            disabled={cargandoEnvio}
+                        >
+                            {cargandoEnvio ? (
+                                <div className="flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <span>Registrando...</span>
+                                </div>
+                            ) : (
+                                "Guardar Cliente"
+                            )}
+                        </Boton>
                     </div>
                 </Modal>
+
                 {/* Modal Términos y Condiciones */}
                 <Modal titulo="Términos y Condiciones del Servicio" abierto={modalTerminosAbierto} alCerrar={() => setModalTerminosAbierto(false)}>
                     <div className="space-y-4 text-sm text-gray-600 max-h-96 overflow-y-auto pr-2">

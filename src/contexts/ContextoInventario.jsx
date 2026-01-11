@@ -1,14 +1,16 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { supabase } from '../supabase/client';
 import {
-    obtenerRecursos, obtenerCategorias, obtenerSedes, obtenerHorarios, obtenerContenidoWeb, obtenerConfiguracion,
+    obtenerRecursos, obtenerCategorias, obtenerSedes, obtenerConfiguracion,
     crearReserva, obtenerAlquileres, registrarDevolucionDB, entregarAlquilerDB,
     gestionarMantenimientoDB, registrarNoShowDB, reprogramarAlquilerDB,
     aplicarDescuentoManualDB, registrarPagoSaldoDB, registrarUsuarioDB, aprobarReservaDB,
     obtenerDisponibilidadRecursoDB, buscarClientesDB, actualizarTipoCambioReal,
     calcularDescuentosDB, verificarDisponibilidadDB, calcularCotizacion, crearCategoriaDB,
-    eliminarCategoriaDB, reactivarCategoriaDB, crearSedeDB, actualizarSedeDB, eliminarSedeDB
+    eliminarCategoriaDB, reactivarCategoriaDB, crearSedeDB, actualizarSedeDB, eliminarSedeDB,
+    registrarAuditoriaDB, obtenerServicios
 } from '../services/db';
+import { verificarClimaAdverso } from '../services/weatherService';
 import { calcularPenalizacion } from '../utils/formatters';
 import { ContextoAutenticacion } from './ContextoAutenticacion';
 
@@ -20,10 +22,9 @@ export const ProveedorInventario = ({ children }) => {
     const [alquileres, setAlquileres] = useState([]);
     const [sedes, setSedes] = useState([]);
     const [categorias, setCategorias] = useState([]);
-    const [horarios, setHorarios] = useState([]);
-    const [contenido, setContenido] = useState({});
+    const [servicios, setServicios] = useState([]);
     const [configuracion, setConfiguracion] = useState({});
-    const [sedeActual, setSedeActual] = useState('costa'); // Default ID
+    const [sedeActual, setSedeActual] = useState(null); // Fix: Start null to auto-select from DB
     const estaCargandoRef = React.useRef(false); // Lock para evitar bucles de Realtime
     // Fix: Usar fecha LOCAL, no UTC (para evitar salto de día en la noche)
     const fechaLocal = new Date();
@@ -76,14 +77,13 @@ export const ProveedorInventario = ({ children }) => {
                 targetDate = new Date(datePart + 'T12:00:00').toISOString();
             }
 
-            const [recursosData, categoriasData, sedesData, alquileresData, horariosData, contenidoData, configData] = await Promise.all([
+            const [recursosData, categoriasData, sedesData, alquileresData, configData, serviciosData] = await Promise.all([
                 obtenerRecursos(),
                 obtenerCategorias(),
                 obtenerSedes(),
                 obtenerAlquileres(),
-                obtenerHorarios(),
-                obtenerContenidoWeb(),
                 obtenerConfiguracion(),
+                obtenerServicios(), // Cargar servicios maestros
                 actualizarTipoCambioReal() // Actualizamos tipo de cambio al iniciar
             ]);
 
@@ -138,41 +138,42 @@ export const ProveedorInventario = ({ children }) => {
                 return {
                     ...item,
                     stock: detalleFormat.disponiblesAhora,
-                    stockTotal: item.stockTotal,
+                    stockTotal: item.stockTotal || item.stock || 0,
                     sedeId: item.sede_id,
-                    precioPorHora: item.precio_por_hora,
+                    precioPorHora: item.precioPorHora || 0,
                     detalleDisponibilidad: detalleFormat
                 };
             }));
 
             setInventario(inventarioConDisponibilidad);
             setCategorias(categoriasData);
-            setSedes(sedesData);
-            setHorarios(horariosData);
-            setContenido(contenidoData);
-            setConfiguracion(configData);
-            // setConfiguracion(configData); // Assuming configData needs to be added to Promise.all above!
-
-            // AUTO-FIX: Set default sede ID if string 'costa' is used
-            if (sedesData.length > 0 && !sedeActual) {
-                const sedeDefault = sedesData.find(s => s.nombre.toLowerCase().includes('costa')) || sedesData[0];
-                setSedeActual(sedeDefault.id);
-            }
-            setAlquileres(alquileresData.map(a => ({
+            setSedes(sedesData || []);
+            setAlquileres((alquileresData || []).map(a => ({
                 ...a,
                 fechaInicio: a.fecha_inicio,
-                clienteId: a.cliente_id,
-                vendedorId: a.vendedor_id,
-                totalServicio: a.total_servicio,
-                totalFinal: a.total_final,
-                montoPagado: a.monto_pagado,
-                saldoPendiente: a.saldo_pendiente,
                 fechaFin: a.fecha_fin_estimada || a.fecha_fin,
                 fechaFinEstimada: a.fecha_fin_estimada,
-                tipoReserva: a.tipo_reserva,
+                totalFinal: Number(a.total_final || 0),
+                montoPagado: Number(a.monto_pagado || 0),
+                saldoPendiente: Number(a.saldo_pendiente || 0),
                 sedeId: a.sede_id,
-                cliente: a.cliente // Ya viene mapeado correctamente desde db.js
+                clienteId: a.cliente_id,
+                vendedorId: a.vendedor_id
             })));
+            setConfiguracion(configData || {});
+            setServicios(serviciosData || []);
+
+            // AUTO-FIX: Sincronizar Sede Actual con IDs reales y Configurables
+            if (sedesData.length > 0) {
+                // Si la sede actual es inválida o es un legacy string ('costa', 'rural')
+                const esLegacy = typeof sedeActual === 'string' && isNaN(Number(sedeActual));
+
+                if (!sedeActual || esLegacy) {
+                    const idDefecto = configData?.sedeIdDefecto || sedesData[0].id;
+                    const sedeEncontrada = sedesData.find(s => s.id === idDefecto) || sedesData[0];
+                    setSedeActual(sedeEncontrada.id);
+                }
+            }
         } catch (error) {
             console.error("Error al recargar datos:", error);
         } finally {
@@ -182,6 +183,11 @@ export const ProveedorInventario = ({ children }) => {
 
     // Cargar datos iniciales
     useEffect(() => {
+        // Ejecutar auto-reparación de DB (Estados faltantes)
+        import('../services/db').then(({ repararEstadosFaltantes }) => {
+            repararEstadosFaltantes();
+        });
+
         recargarDatos();
 
         // 🟢 SUSCRIPCIÓN REALTIME GLOBAL (El "Noticiero")
@@ -206,38 +212,8 @@ export const ProveedorInventario = ({ children }) => {
 
 
     const estaAbierto = (sedeId, fechaEspecifica = null) => {
-        if (!horarios || horarios.length === 0) return { abierto: false, mensaje: 'Horario no disponible' };
-
-        const fechaEvaluar = fechaEspecifica ? new Date(fechaEspecifica) : new Date();
-        const diaSemana = fechaEvaluar.getDay(); // 0 Domingo - 6 Sabado
-        const horarioHoy = horarios.find(h => h.sede_id === sedeId && h.dia_semana === diaSemana);
-
-        if (!horarioHoy || horarioHoy.cerrado) return { abierto: false, mensaje: 'Hoy no atendemos.' };
-
-        // Convertir hora actual/evaluar a minutos desde medianoche
-        const minutosActuales = fechaEvaluar.getHours() * 60 + fechaEvaluar.getMinutes();
-
-        // Convertir horarios de apertura/cierre
-        const [hA, mA] = horarioHoy.hora_apertura.split(':').map(Number);
-        const [hC, mC] = horarioHoy.hora_cierre.split(':').map(Number);
-
-        const minutosApertura = hA * 60 + mA;
-        const minutosCierre = hC * 60 + mC;
-
-        if (minutosActuales < minutosApertura) {
-            return {
-                abierto: false,
-                mensaje: `Abrimos a las ${horarioHoy.hora_apertura.slice(0, 5)}`
-            };
-        }
-
-        if (minutosActuales >= minutosCierre) {
-            return {
-                abierto: false,
-                mensaje: `Cerrado por hoy (Atendimos hasta las ${horarioHoy.hora_cierre.slice(0, 5)})`
-            };
-        }
-
+        // Por ahora devolvemos abierto siempre, ya que los horarios se han removido 
+        // para dar paso a una gestión de horarios más flexible o externa.
         return { abierto: true };
     };
 
@@ -268,7 +244,7 @@ export const ProveedorInventario = ({ children }) => {
         if (resultado.success) {
             setInventario(prev => prev.map(item => {
                 if (item.id === id) {
-                    return { ...item, ...datos };
+                    return { ...item, ...resultado.data };
                 }
                 return item;
             }));
@@ -309,7 +285,7 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const crearCategoria = async (nombre) => {
+    const crearCategoria = async (nombre, descripcion = '') => {
         try {
             const nombreNormalizado = nombre.trim();
 
@@ -320,7 +296,7 @@ export const ProveedorInventario = ({ children }) => {
                 return true;
             }
 
-            await crearCategoriaDB(nombreNormalizado, sedeActual);
+            await crearCategoriaDB(nombreNormalizado, descripcion);
             await recargarDatos();
             return true;
         } catch (error) {
@@ -331,17 +307,31 @@ export const ProveedorInventario = ({ children }) => {
 
     const eliminarCategoria = async (id) => {
         const categoria = categorias.find(c => c.id === id);
+        if (!categoria) return false;
 
-        const confirmacion = window.confirm(`¿Estás seguro de desactivar la categoría "${categoria?.nombre}"? Los productos existentes mantendrán esta categoría, pero no podrás seleccionarla para nuevos productos.`);
-        if (!confirmacion) return false;
+        // Comprobar si hay productos vinculados en el inventario actual
+        const productosVinculados = inventario.filter(p => p.categoria === categoria.nombre);
+        const cantidad = productosVinculados.length;
+
+        let mensaje = `¿Estás seguro de desactivar la categoría "${categoria.nombre}"?`;
+
+        if (cantidad > 0) {
+            mensaje = `⚠️ Esta categoría tiene ${cantidad} productos asociados.\n\n` +
+                `Para mantener la integridad de la base de datos (Regla 3FN), no se puede eliminar físicamente.\n\n` +
+                `¿Deseas deshabilitarla? Se mantendrá en el historial pero no podrá usarse para nuevos productos.`;
+        } else {
+            mensaje = `¿Estás seguro de desactivar la categoría "${categoria.nombre}"? No se mostrará más en los formularios.`;
+        }
+
+        if (!window.confirm(mensaje)) return false;
 
         const resultado = await eliminarCategoriaDB(id);
         if (resultado.success) {
             await recargarDatos();
-            alert("🗑️ Categoría desactivada con éxito.");
+            alert("🗑️ Categoría deshabilitada con éxito.");
             return true;
         } else {
-            alert("Error al desactivar categoría.");
+            alert("Error al desactivar categoría: " + (resultado.error?.message || "Error desconocido"));
             return false;
         }
     };
@@ -435,11 +425,14 @@ export const ProveedorInventario = ({ children }) => {
         }
     };
 
-    const reprogramarAlquiler = async (alquilerId, param) => {
+    const reprogramarAlquiler = async (alquilerId, param, contextualData = {}) => {
         try {
+            const { motivo = "General", usuarioId = null } = contextualData;
+
             // Caso 1: Reprogramación de Fecha/Hora (Nuevo flujo)
             if (typeof param === 'object' && param.nuevaFecha && param.nuevaHora) {
                 const { nuevaFecha, nuevaHora } = param;
+                const nuevoInicio = new Date(`${nuevaFecha}T${nuevaHora}:00`);
 
                 // 1. Obtener alquiler actual para calcular duración y items
                 const { data: alquilerActual, error: errorFetch } = await supabase
@@ -448,37 +441,15 @@ export const ProveedorInventario = ({ children }) => {
                     .eq('id', alquilerId)
                     .single();
 
-                if (errorFetch || !alquilerActual) throw new Error("No se pudo obtener el alquiler original.");
+                if (errorFetch) throw errorFetch;
 
-                // 2. Calcular nuevas fechas (Soporte snake_case y camelCase)
-                // Nota: DB usa 'fecha_fin_estimada' en lugar de 'fecha_fin'
-                const fechaInicioStr = alquilerActual.fecha_inicio || alquilerActual.fechaInicio;
-                const fechaFinStr = alquilerActual.fecha_fin_estimada || alquilerActual.fecha_fin || alquilerActual.fechaFin;
-
-                if (!fechaInicioStr || !fechaFinStr) throw new Error("Fechas originales corruptas en base de datos.");
-
-                const inicioOriginal = new Date(fechaInicioStr);
-                const finOriginal = new Date(fechaFinStr);
-
-                if (isNaN(inicioOriginal.getTime()) || isNaN(finOriginal.getTime())) {
-                    throw new Error("Formato de fecha inválido en base de datos.");
-                }
-
+                // 2. Calcular Nueva Fecha Fin manteniendo la duración original
+                const inicioOriginal = new Date(alquilerActual.fecha_inicio);
+                const finOriginal = new Date(alquilerActual.fecha_fin_estimada);
                 const duracionMs = finOriginal.getTime() - inicioOriginal.getTime();
-
-                const nuevoInicio = new Date(`${nuevaFecha}T${nuevaHora}`);
-                if (isNaN(nuevoInicio.getTime())) {
-                    throw new Error("Fecha/Hora seleccionada inválida.");
-                }
-
                 const nuevoFin = new Date(nuevoInicio.getTime() + duracionMs);
 
                 // 3. Verificar Disponibilidad
-                if (!alquilerActual.alquiler_detalles || alquilerActual.alquiler_detalles.length === 0) {
-                    // Si no hay detalles, asumimos que es solo reserva de tiempo o error
-                    console.warn("Alquiler sin detalles de recursos.");
-                }
-
                 const itemsParaVerificar = alquilerActual.alquiler_detalles?.map(d => ({
                     id: d.recurso_id,
                     cantidad: d.cantidad,
@@ -504,31 +475,68 @@ export const ProveedorInventario = ({ children }) => {
 
                 if (errorUpdate) throw errorUpdate;
 
-                // 5. Aplicar Penalidad (S/ 10)
-                if (alquilerActual.total_servicio > 0) {
-                    const penalidad = 10;
-                    // Asegurar que total_servicio sea número
-                    const totalServicio = Number(alquilerActual.total_servicio);
-                    const porcentajeNegativo = -((penalidad / totalServicio) * 100);
-                    await aplicarDescuentoManualDB(alquilerId, porcentajeNegativo, "Penalidad por Reprogramación");
+                // 5. Aplicar Penalidad (S/ 10) - Solo si NO es por Clima o Fuerza Mayor
+                let penalidadAplicada = 0;
+                let mensajeAuditoria = `Penalidad por Reprogramación: ${motivo}`;
+
+                if (motivo.toLowerCase() === 'clima') {
+                    const sedeId = alquilerActual.sede_id_string || (alquilerActual.sede_id === 1 ? 'costa' : 'rural');
+                    const infoClima = await verificarClimaAdverso(sedeId);
+
+                    if (infoClima.adverso) {
+                        penalidadAplicada = 0;
+                        mensajeAuditoria = `Exento por Clima Adverso (${infoClima.detalle})`;
+                    } else {
+                        penalidadAplicada = 10;
+                        mensajeAuditoria = `Penalidad aplicada: Clima no validado (${infoClima.detalle})`;
+                        alert(`🌤️ Validación de Clima: El servicio meteorológico indica que el clima está estable (${infoClima.detalle}). Se aplicará el cargo de S/ 10.`);
+                    }
+                } else if (['fuerza_mayor', 'error_sistema'].includes(motivo.toLowerCase().replace(/\s/g, '_'))) {
+                    penalidadAplicada = 0;
+                    mensajeAuditoria = `Exento por ${motivo}`;
+                } else {
+                    penalidadAplicada = 10;
                 }
 
-                await recargarDatos();
+                if (alquilerActual.total_servicio > 0 && penalidadAplicada > 0) {
+                    // Usar ajuste fijo: enviamos -10 para penalidad de 10
+                    await aplicarAjusteFijoManualDB(alquilerId, -penalidadAplicada, mensajeAuditoria);
+                }
+
+                // 6. Registro en Auditoría
+                if (usuarioId) {
+                    await registrarAuditoriaDB(usuarioId, 'alquileres', 'reprogramacion', {
+                        alquiler_id: alquilerId,
+                        motivo: motivo,
+                        fecha_inicio_anterior: alquilerActual.fecha_inicio,
+                        fecha_inicio_nueva: nuevoInicio.toISOString(),
+                        penalidad_aplicada: penalidadAplicada,
+                        motivo_detalle: mensajeAuditoria
+                    });
+                }
+
+                await recargarDatos(nuevoInicio.toISOString().split('T')[0]); // Recargar para ver cambios
                 return true;
 
             }
 
-            // Caso 2: Legacy (Solo agregar horas, param es número)
+            // Caso 2: Legacy (Mantenido por compatibilidad)
             else if (typeof param === 'number') {
                 const horasAdicionales = param;
                 const { success, data: alquilerActualizado, error } = await reprogramarAlquilerDB(alquilerId, horasAdicionales);
 
                 if (success) {
-                    if (alquilerActualizado && alquilerActualizado.total_servicio > 0) {
-                        const penalidad = 10;
-                        const porcentajeNegativo = -((penalidad / alquilerActualizado.total_servicio) * 100);
-                        await aplicarDescuentoManualDB(alquilerId, porcentajeNegativo, "Penalidad por Reprogramación");
+                    const penalidad = 10;
+                    const porcentajeNegativo = -((penalidad / alquilerActualizado.total_servicio) * 100);
+                    await aplicarDescuentoManualDB(alquilerId, porcentajeNegativo, "Penalidad por Reprogramación (Horas Extra)");
+
+                    if (contextualData.usuarioId) {
+                        await registrarAuditoriaDB(contextualData.usuarioId, 'alquileres', 'extension_horas', {
+                            alquiler_id: alquilerId,
+                            horas_adicionales: horasAdicionales
+                        });
                     }
+
                     await recargarDatos();
                     return true;
                 } else {
@@ -708,7 +716,7 @@ export const ProveedorInventario = ({ children }) => {
                         estado_id: 'limpieza',
                         fechaDevolucionReal: new Date(),
                         penalizacion: resultado.penalizacion,
-                        totalFinal: resultado.nuevo_total
+                        nuevo_total: resultado.nuevo_total
                     };
                 }
                 return a;
@@ -843,7 +851,6 @@ export const ProveedorInventario = ({ children }) => {
             alquileres,
             sedes,
             categorias,
-            horarios,
             sedeActual,
             setSedeActual,
             fechaSeleccionada,
@@ -873,7 +880,6 @@ export const ProveedorInventario = ({ children }) => {
             registrarPagoSaldo,
             estaAbierto,
             solicitarPreparacion, // Nuevo
-            contenido,
             configuracion,
             buscarClientes,
             registrarCliente,
@@ -881,7 +887,10 @@ export const ProveedorInventario = ({ children }) => {
             calcularCotizacion,
             agregarSede,
             editarSede,
-            eliminarSede
+            eliminarSede,
+            marcarFueraDeServicio,
+            servicios, // Exponer servicios maestros
+            obtenerDisponibilidadRecursoDB
         }}>
             {children}
         </ContextoInventario.Provider>

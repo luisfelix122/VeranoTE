@@ -23,9 +23,17 @@ const BarraNavegacionPanel = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const manejarCierreSesion = () => {
-        cerrarSesion();
-        navigate('/');
+    const manejarCierreSesion = async () => {
+        try {
+            setMostrarMenuUsuario(false);
+            // Intentar cierre formal
+            await cerrarSesion();
+            navigate('/', { replace: true });
+        } catch (err) {
+            console.error("Error en flujo de salida:", err);
+            // Salida forzada
+            window.location.href = '/';
+        }
     };
 
     return (
@@ -45,7 +53,7 @@ const BarraNavegacionPanel = () => {
                                 <>
                                     <span className="mx-1 text-blue-600">-</span>
                                     <span className="ml-1 text-blue-600 font-medium">
-                                        {sedes.find(s => s.id === usuario.sede)?.nombre || (usuario.sede || '').charAt(0).toUpperCase() + (usuario.sede || '').slice(1)}
+                                        {sedes.find(s => s.id === usuario.sede)?.nombre || String(usuario.sede || '').charAt(0).toUpperCase() + String(usuario.sede || '').slice(1)}
                                     </span>
                                 </>
                             )}
@@ -80,7 +88,7 @@ const BarraNavegacionPanel = () => {
                                     </button>
                                     <div className="border-t border-gray-100 my-1"></div>
                                     <button
-                                        onClick={() => { manejarCierreSesion(); setMostrarMenuUsuario(false); }}
+                                        onClick={manejarCierreSesion}
                                         className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                                     >
                                         <LogOut size={16} /> Cerrar Sesión

@@ -11,10 +11,13 @@ const Soporte = () => {
     const { sedes } = useContext(ContextoInventario);
 
     // Helpers para encontrar contactos dinámicos
-    const adminCosta = usuarios.find(u => u.rol === 'admin' && u.sede === 'costa');
-    const vendorsCosta = usuarios.filter(u => u.rol === 'vendedor' && u.sede === 'costa');
-    const adminRural = usuarios.find(u => u.rol === 'admin' && u.sede === 'rural');
-    const vendorsRural = usuarios.filter(u => u.rol === 'vendedor' && u.sede === 'rural');
+    // Helpers para encontrar contactos dinámicos desde la base de datos (Vista v_usuarios_completos)
+    // Sede 1: Costa, Sede 2: Rural/Sierra
+    const adminCosta = usuarios.find(u => (u.rol === 'ADMIN_SEDE' || u.rol === 'admin') && (u.sede_id === 1 || u.sede_id === '1'));
+    const vendorsCosta = usuarios.filter(u => (u.rol === 'VENDEDOR' || u.rol === 'vendedor') && (u.sede_id === 1 || u.sede_id === '1'));
+
+    const adminRural = usuarios.find(u => (u.rol === 'ADMIN_SEDE' || u.rol === 'admin') && (u.sede_id === 2 || u.sede_id === '2'));
+    const vendorsRural = usuarios.filter(u => (u.rol === 'VENDEDOR' || u.rol === 'vendedor') && (u.sede_id === 2 || u.sede_id === '2'));
 
     const formatPhone = (phone) => {
         if (!phone) return 'N/A';
@@ -238,21 +241,23 @@ const Soporte = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {cargandoGuias ? (
                                 <p className="text-center col-span-full text-gray-500 py-10">Cargando guías de seguridad...</p>
-                            ) : guiasSeguridad.filter(g =>
-                                !busqueda ||
-                                g.nombre.toLowerCase().includes(busqueda) ||
-                                g.guia_seguridad.toLowerCase().includes(busqueda)
-                            ).length === 0 ? (
+                            ) : guiasSeguridad.filter(g => {
+                                const b = busqueda.toLowerCase();
+                                return !b ||
+                                    (g.nombre?.toLowerCase().includes(b)) ||
+                                    (g.guia_seguridad?.toLowerCase().includes(b));
+                            }).length === 0 ? (
                                 <div className="col-span-full text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-200">
                                     <Info className="mx-auto text-gray-400 mb-2" size={32} />
                                     <p className="text-gray-500">No se encontraron guías que coincidan con tu búsqueda.</p>
                                 </div>
                             ) : (
-                                guiasSeguridad.filter(g =>
-                                    !busqueda ||
-                                    g.nombre.toLowerCase().includes(busqueda) ||
-                                    g.guia_seguridad.toLowerCase().includes(busqueda)
-                                ).map((guia) => (
+                                guiasSeguridad.filter(g => {
+                                    const b = busqueda.toLowerCase();
+                                    return !b ||
+                                        (g.nombre?.toLowerCase().includes(b)) ||
+                                        (g.guia_seguridad?.toLowerCase().includes(b));
+                                }).map((guia) => (
                                     <div key={guia.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow group">
                                         <div className="h-32 overflow-hidden relative">
                                             <img

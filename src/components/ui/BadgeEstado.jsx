@@ -12,7 +12,7 @@ const BadgeEstado = ({ estado }) => {
         devuelto: { color: "bg-gray-100 text-gray-800", texto: "Devuelto (Histórico)" }
     };
     const { color, texto } = config[estado] || { color: "bg-gray-100 text-gray-800", texto: estado };
-    return <span className={`px-2 py-1 rounded-full text-xs font-bold ${color}`}>{texto}</span>;
+    return <span className={`px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap ${color}`}>{texto}</span>;
 };
 
 export default BadgeEstado;

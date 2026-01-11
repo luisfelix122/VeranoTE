@@ -1,5 +1,155 @@
 import { supabase } from '../supabase/client';
 
+// Función de Auto-Reparación de Base de Datos
+
+// Helper para normalizar roles (DB Enum -> Frontend String)
+// Helper para normalizar nombres compuestos de forma robusta (3FN compliant en la lógica de entrada)
+const mapearNombreRobusto = (datos) => {
+    if (datos.nombres && datos.apellidos) return { nombres: datos.nombres, apellidos: datos.apellidos };
+    const nombreCompleto = (datos.nombre || '').trim();
+    if (!nombreCompleto) return { nombres: 'Usuario', apellidos: '.' };
+    const partes = nombreCompleto.split(/\s+/);
+    if (partes.length === 1) return { nombres: partes[0], apellidos: '.' };
+    return {
+        nombres: partes.slice(0, -1).join(' '),
+        apellidos: partes.slice(-1).join(' ')
+    };
+};
+
+export const normalizarRol = (rolDB) => {
+    if (!rolDB) return 'cliente';
+
+    // Si es un string con comas (resultado de v_usuarios_completos o similar)
+    const rolesStr = typeof rolDB === 'string' ? rolDB.toUpperCase() : String(rolDB).toUpperCase();
+
+    if (rolesStr.includes('OWNER')) return 'dueno';
+    if (rolesStr.includes('ADMIN_SEDE') || rolesStr.includes('ADMIN')) return 'admin';
+    if (rolesStr.includes('VENDEDOR')) return 'vendedor';
+    if (rolesStr.includes('MECANICO')) return 'mecanico';
+
+    // Fallback estricto
+    if (rolesStr === 'OWNER') return 'dueno';
+    if (rolesStr === 'ADMIN_SEDE' || rolesStr === 'ADMIN') return 'admin';
+    if (rolesStr === 'VENDEDOR') return 'vendedor';
+    if (rolesStr === 'MECANICO') return 'mecanico';
+
+    return 'cliente';
+};
+
+/* === MAPPER DE BASE DE DATOS (CAPA DE TRADUCCIÓN 3FN) === */
+/* === MAPPER DE BASE DE DATOS (CAPA DE TRADUCCIÓN 3FN) === */
+const DB_MAPPER = {
+    recurso: {
+        toFrontend: (item) => ({
+            ...item,
+            categoriaId: item.categoria_id,
+            sedeId: item.sede_id,
+            categoria: item.categorias?.nombre || item.categoria || 'Sin Categoría',
+            stock: item.stock_fisico_inicial,
+            stockTotal: item.stock_fisico_inicial,
+            precioPorHora: item.precio_lista_hora,
+            imagen: item.imagen_url,
+            // Limpieza de campos internos para el frontend
+            precio_lista_hora: undefined,
+            stock_fisico_inicial: undefined,
+            imagen_url: undefined
+        }),
+        toDB: (item) => ({
+            nombre: item.nombre,
+            categoria_id: item.categoriaId || item.categoria_id,
+            sede_id: item.sedeId || item.sede_id,
+            precio_lista_hora: Number(item.precioPorHora) || 0,
+            stock_fisico_inicial: Number(item.stockTotal || item.stock) || 0,
+            imagen_url: item.imagen,
+            activo: item.activo,
+            descripcion: item.descripcion,
+            estado_operativo: item.estado_operativo || 'Disponible'
+        })
+    },
+    alquiler: {
+        toFrontend: (item) => ({
+            ...item,
+            montoPagado: Number(item.monto_pagado || 0),
+            saldoPendiente: Number(item.saldo_pendiente || 0),
+            totalFinal: Number(item.total_final || 0),
+            totalServicio: Number(item.total_servicio || 0),
+            garantia: Number(item.garantia || 0),
+            fechaInicio: item.fecha_inicio,
+            fechaFinEstimada: item.fecha_fin_estimada,
+            tipoReserva: item.tipo_reserva
+        })
+    },
+    promocion: {
+        toFrontend: (item) => ({
+            ...item,
+            nombre: item.codigo || 'Promoción S/N',
+            es_automatico: !item.codigo?.startsWith('CUPON_') && !item.codigo,
+            beneficio: { tipo: item.tipo, valor: Number(item.valor) },
+            condicion: {
+                minHoras: Number(item.minimo_dias || 0) * 24,
+                minCantidad: Number(item.minimo_total || 0),
+                categoria_id: item.categoria_id,
+                recurso_id: item.recurso_id
+            },
+            codigo_cupon: item.codigo
+        }),
+        toDB: (item) => ({
+            codigo: item.codigo_cupon || item.nombre,
+            descripcion: item.descripcion,
+            tipo: item.beneficio?.tipo || 'porcentaje',
+            valor: Number(item.beneficio?.valor) || 0,
+            activo: item.activo,
+            sede_id: item.sede_id || 1,
+            categoria_id: item.condicion?.categoria_id || null,
+            recurso_id: item.condicion?.recurso_id || null,
+            minimo_total: Number(item.condicion?.minCantidad) || 0,
+            minimo_dias: Math.ceil(Number(item.condicion?.minHoras || 0) / 24),
+            fecha_inicio: item.fecha_inicio || new Date().toISOString(),
+            fecha_fin: item.fecha_fin || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+        })
+    }
+};
+export const repararEstadosFaltantes = async () => {
+    const estadosRequeridos = [
+        { id: 'en_preparacion', nombre: 'En Preparación' },
+        { id: 'listo_para_entrega', nombre: 'Listo para Entrega' },
+        { id: 'limpieza', 'nombre': 'En Limpieza' },
+        { id: 'no_show', 'nombre': 'No Show' },
+        { id: 'mantenimiento', 'nombre': 'En Mantenimiento' }
+    ];
+
+    try {
+        // 1. Verificar cuáles faltan (si la tabla es legible públicamente o por el usuario)
+        const { data: existentes, error } = await supabase.from('estados_alquiler').select('id');
+
+        if (error) {
+            console.warn("No se pudieron verificar los estados (RLS o error conexión):", error.message);
+            // Intentamos insertar a ciegas con ON CONFLICT (id) DO NOTHING implícito?
+            // Supabase client 'insert' falla por duplicado si no usamos upsert.
+            // Usaremos UPSERT para asegurar que existan.
+            const { error: errorUpsert } = await supabase.from('estados_alquiler').upsert(estadosRequeridos, { onConflict: 'id', ignoreDuplicates: true });
+            if (errorUpsert) console.error("Fallo intento blind-upsert estados:", errorUpsert);
+            return;
+        }
+
+        const idsExistentes = new Set(existentes.map(e => e.id));
+        const faltantes = estadosRequeridos.filter(e => !idsExistentes.has(e.id));
+
+        if (faltantes.length > 0) {
+            console.log("Detectados estados faltantes, intentando reparar:", faltantes);
+            const { error: errorInsert } = await supabase.from('estados_alquiler').insert(faltantes);
+
+            if (errorInsert) {
+                console.error("No se pudieron insertar los estados faltantes (Posible error de permisos RLS):", errorInsert);
+            } else {
+                console.log("✅ Estados faltantes insertados correctamente.");
+            }
+        }
+    } catch (err) {
+        console.error("Excepción en autoreparación DB:", err);
+    }
+};
+
 export const obtenerRecursos = async () => {
     // Consultamos la tabla base 'recursos' para incluir los desactivados (activo=false) para el administrador
     const { data, error } = await supabase
@@ -16,13 +166,8 @@ export const obtenerRecursos = async () => {
         console.error('Error al obtener recursos:', error);
         return [];
     }
-    // Aplanar la estructura para que el frontend reciba 'categoria' como string
-    return data.map(item => ({
-        ...item,
-        categoria: item.categorias?.nombre || 'Sin Categoría',
-        stock: item.stock_total, // Nota: El stock dinámico se enriquece en el Contexto posteriormente
-        stockTotal: item.stock_total
-    }));
+    // Usar el Mapper para transformar los datos de la DB al formato del Frontend (Capa de abstracción 3FN)
+    return data.map(item => DB_MAPPER.recurso.toFrontend(item));
 };
 
 export const obtenerCategorias = async () => {
@@ -38,10 +183,10 @@ export const obtenerCategorias = async () => {
     return data;
 };
 
-export const crearCategoriaDB = async (nombre, sedeId = null) => {
+export const crearCategoriaDB = async (nombre, descripcion = '') => {
     const { data, error } = await supabase
         .from('categorias')
-        .insert([{ nombre, sede_id: sedeId }])
+        .insert([{ nombre, descripcion }])
         .select()
         .single();
 
@@ -84,7 +229,15 @@ export const obtenerSedes = async () => {
         .from('sedes')
         .select(`
             *,
+            distritos (
+                nombre,
+                provincias (
+                    nombre,
+                    departamentos ( nombre )
+                )
+            ),
             sede_servicios (
+                servicio_id,
                 servicios ( nombre )
             )
         `);
@@ -94,20 +247,26 @@ export const obtenerSedes = async () => {
         return [];
     }
 
-    // Formatear servicios como array de strings
-    return data.map(sede => ({
-        ...sede,
-        servicios: sede.sede_servicios.map(ss => ss.servicios.nombre)
-    }));
+    // Formatear servicios como array de IDs y nombres para facilitar edición
+    return data.map(sede => {
+        const d = sede.distritos;
+        const p = d?.provincias;
+        const dep = p?.departamentos;
+        const ubicacionCompleta = d ? `${sede.direccion}, ${d.nombre}, ${p.nombre}, ${dep.nombre}` : sede.direccion;
+
+        return {
+            ...sede,
+            ubicacionCompleta,
+            serviciosIds: sede.sede_servicios.map(ss => ss.servicio_id),
+            serviciosNombres: sede.sede_servicios.map(ss => ss.servicios.nombre)
+        };
+    });
 };
 
-export const obtenerHorarios = async () => {
-    const { data, error } = await supabase
-        .from('horarios_sede')
-        .select('*');
-
+export const obtenerServicios = async () => {
+    const { data, error } = await supabase.from('servicios').select('*');
     if (error) {
-        console.error('Error al obtener horarios:', error);
+        console.error('Error al obtener servicios maestros:', error);
         return [];
     }
     return data;
@@ -144,36 +303,39 @@ export const calcularCotizacion = async (items, fechaInicio, tipoReserva, client
 
 export const obtenerConfiguracion = async () => {
     const { data, error } = await supabase
-        .from('configuracion')
-        .select('*');
+        .from('parametros_negocio')
+        .select('*')
+        .eq('id', 1)
+        .single();
 
     if (error) {
-        console.error('Error al obtener configuración:', error);
-        return [];
+        console.error('Error al obtener parámetros de negocio:', error);
+        return {
+            TIPO_CAMBIO: 3.85,
+            GARANTIA_PORCENTAJE: 0.20,
+            IGV_PORCENTAJE: 0.18,
+            CONTACTO_TELEFONO: '(01) 555-0123',
+            CONTACTO_EMAIL: 'contacto@alquileresperuanos.pe',
+            SEDE_ID_DEFECTO: 1
+        };
     }
-    // Convertir array a objeto clave-valor para fácil acceso
-    const config = {};
-    data.forEach(item => {
-        config[item.clave] = item.valor;
-    });
-    return config;
+
+    return {
+        tipoCambio: data.tipo_cambio_usd,
+        porcentajeGarantia: data.porcentaje_garantia,
+        porcentajeIgv: data.porcentaje_igv,
+        contactoTelefono: data.contacto_telefono,
+        contactoEmail: data.contacto_email,
+        sedeIdDefecto: data.sede_id_defecto || 1,
+        appNombre: data.app_nombre,
+        appDescripcion: data.app_descripcion,
+        linkFacebook: data.link_facebook,
+        linkInstagram: data.link_instagram,
+        linkTwitter: data.link_twitter
+    };
 };
 
-export const obtenerContenidoWeb = async () => {
-    const { data, error } = await supabase
-        .from('contenido_web')
-        .select('*');
 
-    if (error) {
-        console.error('Error al obtener contenido web:', error);
-        return {};
-    }
-    const contenido = {};
-    data.forEach(item => {
-        contenido[item.clave] = item.valor;
-    });
-    return contenido;
-};
 
 export const obtenerUsuarios = async () => {
     // Leemos de la VISTA normalizada que ya hace los Joins
@@ -188,33 +350,55 @@ export const obtenerUsuarios = async () => {
         return [];
     }
 
+    if (!data || !Array.isArray(data)) return [];
+
     // Mapeo ligero para asegurar compatibilidad con la UI existente
     return data.map(u => ({
         ...u,
-        rol: u.rol,      // La vista ya devuelve el ID del rol como 'rol'
-        sede: u.sede_id  // La vista devuelve 'sede_id'
+        rol: normalizarRol(u.rol),      // Normalizar el rol para consistencia con el resto de la app
+        sede: u.sede_id || u.sede       // Compatibilidad con ambos nombres de columna
     }));
 };
 
 export const obtenerUsuarioPorId = async (id) => {
-    // Usamos la vista para obtener todos los datos aplanados
-    const { data, error } = await supabase
-        .from('v_usuarios_completos')
-        .select('*')
-        .eq('id', id)
-        .single();
+    try {
+        console.log('DEBUG: Consultando v_usuarios_completos para ID:', id);
+        const { data, error } = await supabase
+            .from('v_usuarios_completos')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-    if (error) {
-        console.error('Error al obtener usuario por ID:', error);
+        if (error) {
+            console.warn('DEBUG: No se pudo obtener perfil extendido (vista), intentando fallback de Auth:', error.message);
+
+            // Fallback: Si la vista falla, obtener al menos el rol de la metadata de Auth
+            const { data: authUser, error: authError } = await supabase.auth.getUser();
+            if (authError || !authUser?.user) return null;
+
+            return {
+                id: authUser.user.id,
+                email: authUser.user.email,
+                rol: normalizarRol(authUser.user.user_metadata?.rol || 'cliente'),
+                nombre: authUser.user.user_metadata?.nombre || 'Usuario (Modo Seguro)',
+                nombres: authUser.user.user_metadata?.nombre || 'Usuario',
+                apellidos: '',
+                sede: authUser.user.user_metadata?.sede || null
+            };
+        }
+
+        console.log('DEBUG: Usuario obtenido exitosamente:', data.email, data.rol);
+
+        // Mapeo ligero
+        return {
+            ...data,
+            rol: normalizarRol(data.rol),
+            sede: data.sede_id ? Number(data.sede_id) : (data.sede || null)
+        };
+    } catch (err) {
+        console.error("DEBUG: Excepción en obtenerUsuarioPorId:", err);
         return null;
     }
-
-    // Mapeo ligero
-    return {
-        ...data,
-        rol: data.rol,
-        sede: data.sede_id
-    };
 };
 
 export const crearReserva = async (datosReserva) => {
@@ -241,17 +425,91 @@ export const crearReserva = async (datosReserva) => {
     };
 
     try {
-        const { data, error } = await supabase.rpc('crear_reserva_robusta', payload);
+        console.log("🚀 Iniciando creación de reserva con payload:", payload);
+        const { data: rpcData, error } = await supabase.rpc('crear_reserva_robusta', payload);
 
         if (error) {
-            console.error('Error al crear reserva (RPC Error):', error);
-            console.error('Payload enviado:', payload);
+            console.error('❌ Error RPC crear_reserva_robusta:', error);
             return { success: false, error: error.message };
         }
-        return data;
+
+        const alquilerId = rpcData.id;
+        console.log("✅ Reserva creada (RPC). ID:", alquilerId);
+
+        // --- POST-PROCESAMIENTO: COMPLETAR TABLAS SATÉLITES ---
+        // El usuario necesita que se rellenen: Pagos, Comprobantes, Perfiles.
+        // Lo hacemos aquí para asegurar que ocurra aunque el RPC no lo haga internamente.
+
+        // 1. Obtener datos frescos del alquiler creado (para montos exactos)
+        const { data: alq, error: errFetch } = await supabase
+            .from('alquileres')
+            .select('*')
+            .eq('id', alquilerId)
+            .single();
+
+        if (alq) {
+            // CALCULO DE PAGO MANUAL (La columna monto_pagado ya no existe en la tabla física)
+            let montoPagado = 0;
+            if (datosReserva.tipoReserva === 'web') {
+                montoPagado = Number(alq.total_final || 0) * 0.6; // 60% adelanto
+            } else {
+                montoPagado = Number(alq.total_final || 0); // 100% en tienda
+            }
+
+            // 2. Registrar PAGO
+            if (montoPagado > 0) {
+                const { error: errPago } = await supabase.from('pagos').insert([{
+                    alquiler_id: alquilerId,
+                    monto: montoPagado,
+                    metodo: (datosReserva.metodoPago || 'EFECTIVO').toUpperCase(),
+                    fecha: new Date().toISOString()
+                }]);
+                if (errPago) console.warn("⚠️ Error registrando pago satélite:", errPago);
+                else console.log("💰 Pago registrado en tabla 'pagos' por S/", montoPagado);
+            }
+
+            // 3. Registrar COMPROBANTE
+            const tipoComp = datosReserva.tipoComprobante || 'boleta';
+            const serie = tipoComp === 'factura' ? 'F001' : 'B001';
+            const correlativo = String(Date.now()).slice(-8); // Autogenerado simple para cumplir requisito
+
+            const datosComp = {
+                alquiler_id: alquilerId,
+                tipo: tipoComp,
+                serie: serie,
+                numero: correlativo,
+                fecha_emision: new Date().toISOString(),
+                total: Number(alq.total_final || 0),
+                igv: Number(alq.total_final || 0) * 0.18, // Aproximado
+                estado: 'emitido',
+                // Datos del cliente para el comprobante
+                cliente_nombre: datosReserva.datosFactura?.razonSocial || 'Cliente Final',
+                cliente_documento: datosReserva.datosFactura?.ruc || '00000000',
+                cliente_direccion: datosReserva.datosFactura?.direccion || ''
+            };
+
+            const { error: errComp } = await supabase.from('comprobantes').insert([datosComp]);
+            if (errComp) console.warn("⚠️ Error registrando comprobante satélite:", errComp);
+            else console.log("📄 Comprobante registrado en tabla 'comprobantes'");
+
+            // 4. Guardar PERFIL DE FACTURACIÓN (Si aplica)
+            if (tipoComp === 'factura' && datosReserva.datosFactura && datosReserva.clienteId) {
+                const { error: errPerfil } = await supabase.from('perfiles_facturacion').upsert([{
+                    usuario_id: datosReserva.clienteId,
+                    numero_documento: datosReserva.datosFactura.ruc,
+                    nombre_facturacion: datosReserva.datosFactura.razonSocial,
+                    direccion_fiscal: datosReserva.datosFactura.direccion,
+                    es_predeterminado: true
+                }], { onConflict: 'numero_documento' });
+
+                if (errPerfil) console.warn("⚠️ Error guardando perfil facturación:", errPerfil);
+                else console.log("💾 Perfil de facturación guardado");
+            }
+        }
+
+        return { success: true, ...rpcData }; // Mantener contrato de retorno
     } catch (err) {
-        console.error('Error inesperado al crear reserva (Network/Client):', err);
-        console.error('Payload fallido:', payload);
+        console.error('❌ Error inesperado al crear reserva (Cliente):', err);
         return { success: false, error: "Error de conexión o datos inválidos." };
     }
 };
@@ -370,10 +628,8 @@ export const registrarDevolucionDB = async (alquilerId, vendedorId, devolverGara
 const transformarAlquiler = (a) => {
     let vendedorInfo = 'Web / Auto-servicio';
     if (a.vendedor) {
-        const nombre = a.vendedor.personas?.nombre_completo || a.vendedor.nombre || 'Vendedor'; // Fallback
-        let rolNombre = a.vendedor.roles?.nombre || 'Vendedor';
-        rolNombre = rolNombre ? rolNombre.charAt(0).toUpperCase() + rolNombre.slice(1) : 'Vendedor';
-        vendedorInfo = `${nombre} (${rolNombre})`;
+        const nombre = a.vendedor.personas?.nombre_completo || a.vendedor.nombre || 'Vendedor';
+        vendedorInfo = `${nombre}`;
     }
 
     const clienteData = a.cliente || {};
@@ -400,22 +656,36 @@ const transformarAlquiler = (a) => {
         fechaInicio: a.fecha_inicio,
         fechaFin: a.fecha_fin_estimada || a.fecha_fin,
         sedeId: a.sede_id,
+        sedeNombre: a.sedes?.nombre || `Sede ${a.sede_id}`, // Mapeo de nombre de sede
+        sede: a.sedes?.nombre || `Sede ${a.sede_id}`, // Propiedad compatible
         vendedorId: a.vendedor_id,
         clienteId: a.cliente_id,
-        // Correction: Map DB columns to frontend keys
-        totalFinal: a.total_calculado || a.total_final,
-        saldo_pendiente: a.saldo_pendiente,
-        montoPagado: a.monto_pagado,
-        totalServicio: a.total_calculado - (a.monto_garantia || 0), // Aproximate if not stored
-        garantia: a.monto_garantia
+
+        // --- Totales y Costos ---
+        // total_servicio en DB es el base. Asignamos a total_bruto para la UI.
+        total_bruto: Number(a.total_servicio || 0),
+        totalServicio: Number(a.total_servicio || 0),
+
+        descuento_manual: Number(a.descuento_manual || 0),
+        descuento_promociones: Number(a.descuento_promociones || 0),
+
+        garantia: Number(a.garantia || a.monto_garantia || 0),
+
+        totalFinal: Number(a.total_final || 0),
+        total_final: Number(a.total_final || 0),
+
+        montoPagado: Number(a.monto_pagado || 0),
+
+        motivo_descuento: a.motivo_reprogramacion || a.motivo_descuento,
+        saldo_pendiente: Number(a.saldo_pendiente || 0),
+        saldoPendiente: Number(a.saldo_pendiente || 0)
     };
 };
 
 export const obtenerAlquileres = async () => {
-    // Consulta adaptada a 3NF:
-    // usuarios -> personas (1:1)
+    // Usamos la VISTA de integridad v_alquileres_resumen para garantizar 3FN y cálculos atómicos en el servidor
     const { data, error } = await supabase
-        .from('alquileres')
+        .from('v_alquileres_resumen')
         .select(`
             *,
             alquiler_detalles (
@@ -428,20 +698,23 @@ export const obtenerAlquileres = async () => {
             ),
             vendedor:usuarios!vendedor_id ( 
                 email, 
-                personas ( nombre_completo ), 
-                roles ( nombre ) 
+                personas ( nombre_completo )
             ),
-            estados_alquiler ( nombre )
+            sedes ( nombre )
         `)
         .order('created_at', { ascending: false });
 
     if (error) {
-        console.error('Error al obtener alquileres:', error);
+        console.error('Error al obtener alquileres resumen:', error);
         return [];
     }
 
-    return data.map(transformarAlquiler);
+    return data.map(a => transformarAlquiler(a));
 };
+
+// ... (other functions)
+
+
 
 export const obtenerPromociones = async () => {
     const { data, error } = await supabase
@@ -452,35 +725,32 @@ export const obtenerPromociones = async () => {
         console.error('Error al obtener promociones:', error);
         return [];
     }
-    return data;
+    return (data || []).map(item => DB_MAPPER.promocion.toFrontend(item));
 };
 
-export const crearPromocionDB = async (promocion) => {
+export const crearPromocionDB = async (promo) => {
     const { data, error } = await supabase
         .from('promociones')
-        .insert([promocion])
-        .select();
+        .insert([DB_MAPPER.promocion.toDB(promo)])
+        .select()
+        .single();
 
-    if (error) {
-        console.error('Error al crear promoción:', error);
-        return { success: false, error };
-    }
-    return { success: true, data: data[0] };
+    if (error) return { success: false, error };
+    return { success: true, data: DB_MAPPER.promocion.toFrontend(data) };
 };
 
 export const editarPromocionDB = async (id, datos) => {
     const { data, error } = await supabase
         .from('promociones')
-        .update(datos)
+        .update(DB_MAPPER.promocion.toDB(datos))
         .eq('id', id)
-        .select();
+        .select()
+        .single();
 
-    if (error) {
-        console.error('Error al editar promoción:', error);
-        return { success: false, error };
-    }
-    return { success: true, data: data[0] };
+    if (error) return { success: false, error };
+    return { success: true, data: DB_MAPPER.promocion.toFrontend(data) };
 };
+
 
 export const eliminarPromocionDB = async (id) => {
     const { error } = await supabase
@@ -497,206 +767,194 @@ export const eliminarPromocionDB = async (id) => {
 
 export const registrarUsuarioDB = async (datosUsuario) => {
     try {
-        console.log("Iniciando registro normalizado para:", datosUsuario.email);
+        console.log("Iniciando registro robusto para:", datosUsuario.email);
 
-        // 1. Insertar en USUARIOS (Credenciales y Rol)
+        const { nombres, apellidos } = mapearNombreRobusto(datosUsuario);
+
+        // 1. Crear la Persona primero (Eslabón base)
+        const { data: persona, error: personaError } = await supabase
+            .from('personas')
+            .insert([{
+                nombres,
+                apellidos,
+                nombre_completo: `${nombres} ${apellidos}`.trim(),
+                numero_documento: datosUsuario.numeroDocumento,
+                tipo_documento: (datosUsuario.tipoDocumento === 'Pasaporte' ? 'PASAPORTE' : datosUsuario.tipoDocumento) || 'DNI',
+                telefono: datosUsuario.telefono || null,
+                fecha_nacimiento: datosUsuario.fechaNacimiento || null,
+                direccion: datosUsuario.direccion || null,
+                nacionalidad: datosUsuario.nacionalidad || datosUsuario.pais || 'Perú',
+                tipo_persona_id: datosUsuario.tipoPersonaId || ((['admin', 'vendedor', 'mecanico', 'dueno'].includes(datosUsuario.rol)) ? 'STAFF' : 'CLIENTE')
+            }])
+            .select()
+            .single();
+
+        if (personaError) throw personaError;
+
+        // 2. Crear cuenta en Supabase Auth (Opcional pero recomendado si queremos login)
+        // Para no cerrar la sesión del admin/vendedor actual, creamos un cliente Auth temporal
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
+        const authClient = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+
+        const { data: authData, error: authError } = await authClient.auth.signUp({
+            email: datosUsuario.email,
+            password: datosUsuario.password || datosUsuario.numeroDocumento,
+            options: {
+                data: {
+                    nombre: datosUsuario.nombres,
+                    rol: datosUsuario.rol || 'cliente'
+                }
+            }
+        });
+
+        if (authError) {
+            // Si el auth falla (ej. email duplicado), borramos la persona (rollback)
+            await supabase.from('personas').delete().eq('id', persona.id);
+            throw authError;
+        }
+
+        const usuarioUUID = authData.user.id;
+
+        // 3. Crear el vínculo en la tabla pública de 'usuarios'
         const { data: user, error: userError } = await supabase
             .from('usuarios')
             .insert([{
+                id: usuarioUUID,
+                persona_id: persona.id,
                 email: datosUsuario.email,
-                password_hash: datosUsuario.password, // Mapeo a columna correcta (password_hash)
-                rol_id: datosUsuario.rol || 'cliente',
-                activo: true
+                estado: true
             }])
             .select()
             .single();
 
         if (userError) throw userError;
 
-        const nuevoId = user.id;
+        // 4. Asignar Rol específico (Basado en la nueva arquitectura 3FN de Cargos)
+        const staffMapeo = {
+            'admin': 'ADMIN_SEDE',
+            'vendedor': 'VENDEDOR',
+            'mecanico': 'MECANICO',
+            'dueno': 'OWNER'
+        };
 
-        // 2. Insertar en PERSONAS (Datos Biográficos)
-        const { error: personaError } = await supabase
-            .from('personas')
-            .insert([{
-                usuario_id: nuevoId,
-                nombre_completo: datosUsuario.nombre,
-                numero_documento: datosUsuario.numeroDocumento,
-                tipo_documento: datosUsuario.tipoDocumento || 'DNI',
-                telefono: datosUsuario.telefono,
-                fecha_nacimiento: datosUsuario.fechaNacimiento || null,
-                nacionalidad: datosUsuario.nacionalidad || 'Perú',
-                direccion: datosUsuario.direccion || null
-            }]);
+        const cargoCodigo = staffMapeo[datosUsuario.rol];
 
-        if (personaError) {
-            // Rollback manual: Borrar el usuario si falla la persona
-            console.error("Error al crear persona, haciendo rollback de usuario...", personaError);
-            await supabase.from('usuarios').delete().eq('id', nuevoId);
-            throw personaError;
-        }
+        if (cargoCodigo) {
+            // A. Registrar en Empleados
+            const { data: emp, error: errEmp } = await supabase.from('empleados').insert([{
+                persona_id: persona.id,
+                sede_id: datosUsuario.sede || null
+            }]).select().single();
 
-        // 3. Insertar Contacto de Emergencia Inicial (si existe)
-        if (datosUsuario.contactoEmergencia) {
-            const { error: contError } = await supabase
-                .from('contactos_usuario')
-                .insert([{
-                    usuario_id: nuevoId,
-                    nombre_completo: datosUsuario.contactoEmergencia, // Asumimos que viene el nombre
-                    telefono: datosUsuario.telefonoEmergencia || '', // Si venía, si no string vacío
-                    relacion: 'Contacto Inicial',
-                    es_principal: true
+            if (errEmp) throw errEmp;
+
+            // B. Vincular con el Cargo Maestro (Normalización 3FN)
+            const { data: cargo } = await supabase.from('cargos').select('id').eq('codigo', cargoCodigo).single();
+            if (cargo) {
+                await supabase.from('empleado_roles').insert([{
+                    empleado_id: emp.id,
+                    cargo_id: cargo.id
                 }]);
-            if (contError) console.warn("Error al guardar contacto de emergencia inicial:", contError);
-        }
-
-        // 4. Insertar en EMPLEADOS (Solo si tiene sede o es staff)
-        // Verificamos si es un rol de staff para crear entrada en empleados OR si tiene sede explícita
-        const rolesStaff = ['admin', 'vendedor', 'mecanico'];
-        if (rolesStaff.includes(datosUsuario.rol) || datosUsuario.sede || datosUsuario.codigoEmpleado) {
-            if (datosUsuario.sede) {
-                const { error: empError } = await supabase
-                    .from('empleados')
-                    .insert([{
-                        usuario_id: nuevoId,
-                        sede_id: datosUsuario.sede,
-                        codigo_empleado: datosUsuario.codigoEmpleado,
-                        turno: datosUsuario.turno,
-                        especialidad: datosUsuario.especialidad
-                    }]);
-
-                if (empError) console.error("Error al crear datos de empleado", empError);
             }
-        }
-
-        // 5. Insertar en CLIENTES_DETALLES (Si es cliente o tiene licencia)
-        if (datosUsuario.rol === 'cliente' || datosUsuario.licenciaConducir !== undefined) {
-            const { error: cliError } = await supabase
-                .from('clientes_detalles')
-                .insert([{
-                    usuario_id: nuevoId,
-                    licencia_conducir: !!datosUsuario.licenciaConducir, // Forzar booleano
-                    preferencias: {} // JSONB default
-                }]);
-
-            if (cliError) console.error("Error al crear detalles de cliente", cliError);
+        } else {
+            // Es un Cliente
+            await supabase.from('clientes').insert([{
+                persona_id: persona.id,
+                tiene_licencia_conducir: !!datosUsuario.licenciaConducir
+            }]);
         }
 
         return { success: true, data: user };
 
     } catch (error) {
         console.error('Error al registrar usuario completo:', error);
-        return { success: false, error };
+        return { success: false, error: error.message || error };
     }
 };
 
-export const obtenerContactosUsuario = async (usuarioId) => {
-    const { data, error } = await supabase
-        .from('contactos_usuario')
-        .select('*')
-        .eq('usuario_id', usuarioId)
-        .order('es_principal', { ascending: false }); // Principal primero
 
-    if (error) {
-        console.error('Error al obtener contactos:', error);
-        return [];
-    }
-    return data;
-};
-
-export const agregarContactoDB = async (contacto) => {
-    const { data, error } = await supabase
-        .from('contactos_usuario')
-        .insert([contacto])
-        .select();
-
-    if (error) {
-        console.error('Error al agregar contacto:', error);
-        return { success: false, error };
-    }
-    return { success: true, data: data[0] };
-};
-
-export const eliminarContactoDB = async (id) => {
-    const { error } = await supabase
-        .from('contactos_usuario')
-        .delete()
-        .eq('id', id);
-
-    if (error) return { success: false, error };
-    return { success: true };
-};
 
 export const actualizarUsuarioDB = async (id, datos) => {
     const errors = [];
 
-    // 1. Usuarios (Auth & System info)
-    const datosUsuarios = {};
-    if (datos.email) datosUsuarios.email = datos.email;
-    if (datos.password) datosUsuarios.password = datos.password;
-    if (datos.rol) datosUsuarios.rol_id = datos.rol;
-    if (datos.activo !== undefined) datosUsuarios.activo = datos.activo;
-    if (datos.preguntaSecreta) datosUsuarios.pregunta_secreta = datos.preguntaSecreta;
-    if (datos.respuestaSecreta) datosUsuarios.respuesta_secreta = datos.respuestaSecreta;
-
-    if (Object.keys(datosUsuarios).length > 0) {
-        const { error } = await supabase.from('usuarios').update(datosUsuarios).eq('id', id);
+    // 1. Usuarios (Auth Table is managed via supabase.auth.updateUser usually, public table here)
+    if (datos.email || datos.estado !== undefined) {
+        const { error } = await supabase
+            .from('usuarios')
+            .update({
+                email: datos.email,
+                estado: datos.estado !== undefined ? (datos.estado ? 'activo' : 'inactivo') : undefined,
+                pregunta_secreta: datos.preguntaSecreta, // Guardar pregunta
+                respuesta_secreta: datos.respuestaSecreta // Guardar respuesta
+            })
+            .eq('id', id);
         if (error) errors.push("Usuarios: " + error.message);
     }
 
-    // 2. Personas (Personal info)
-    const datosPersonas = {};
-    if (datos.nombre) datosPersonas.nombre_completo = datos.nombre;
-    if (datos.numeroDocumento) datosPersonas.numero_documento = datos.numeroDocumento;
-    if (datos.tipoDocumento) datosPersonas.tipo_documento = datos.tipoDocumento;
-    if (datos.telefono) datosPersonas.telefono = datos.telefono;
-    if (datos.direccion) datosPersonas.direccion = datos.direccion;
-    if (datos.nacionalidad) datosPersonas.nacionalidad = datos.nacionalidad;
-    if (datos.fechaNacimiento) datosPersonas.fecha_nacimiento = datos.fechaNacimiento;
-    if (datos.licenciaConducir !== undefined) datosPersonas.licencia_conducir = datos.licenciaConducir;
+    // 2. Obtener persona_id para actualizar tablas vinculadas
+    const { data: userRecord } = await supabase.from('usuarios').select('persona_id').eq('id', id).single();
+    const pId = userRecord?.persona_id;
 
-    if (Object.keys(datosPersonas).length > 0) {
-        // Try update first
-        const { error } = await supabase.from('personas').update(datosPersonas).eq('usuario_id', id);
-        if (error) {
-            // Check if it's because row doesn't exist? (unlikely for created user, but possible)
-            errors.push("Personas: " + error.message);
-        }
-    }
+    if (pId) {
+        // 3. Personas
+        const datosPersonas = {};
 
-    // 3. Empleados (Sede assignment)
-    // Only if sede/sede_id is explicitly passed (e.g. by Admin or Logic)
-    const sedeId = datos.sede || datos.sede_id;
-    if (sedeId) {
-        // Upsert logic: Try update, if 0 rows modified (no error but no data), then insert?
-        // Supabase update returns data/count?
-        // Let's safe-bet upsert if constraints allow, or just check existence.
-        // Simplest: Try Update. If success matches 0 rows, Insert.
-        const { count, error } = await supabase
-            .from('empleados')
-            .update({ sede_id: sedeId })
-            .eq('usuario_id', id)
-            .select('usuario_id', { count: 'exact' });
+        // Manejo de Nombres y Apellidos
+        // Prioridad: Si vienen separados (nombres/apellidos), usarlos.
+        // También actualizamos 'nombre_completo' para mantener consistencia.
+        if (datos.nombres || datos.apellidos) {
+            if (datos.nombres) datosPersonas.nombres = datos.nombres.trim();
+            if (datos.apellidos) datosPersonas.apellidos = datos.apellidos.trim();
 
-        if (error) {
-            errors.push("Empleados Update: " + error.message);
-        } else if (count === 0) {
-            // Need to insert
-            const { error: errorIns } = await supabase
-                .from('empleados')
-                .insert({ usuario_id: id, sede_id: sedeId });
-            if (errorIns) {
-                // Ignore 23505 (dup) just in case race condition
-                if (errorIns.code !== '23505') errors.push("Empleados Insert: " + errorIns.message);
+            // Reconstruir nombre completo si es posible (necesitamos los valores actuales si alguno falta)
+            // Para simplificar, si estamos actualizando, asumimos que el frontend envía lo que tiene.
+            // Si falta alguno, podríamos consultar la DB, pero por performance, intentamos actualizar con lo que hay.
+            // Mejor estrategia: si mandan nombre/apellido, concatenarlos en nombre_completo
+
+            const nuevoNombre = datos.nombres || ''; // Si es undefined, cuidado.
+            const nuevoApellido = datos.apellidos || '';
+
+            // NOTA: Esto asume que el frontend envía AMBOS si edita el perfil. 
+            // Si Perfil.jsx envía patch parcial, esto podría borrar parte del nombre si no lo manejamos.
+            // Pero Perfil.jsx envía todo el objeto 'datos' al guardar.
+
+            if (datos.nombres && datos.apellidos) {
+                datosPersonas.nombre_completo = `${datos.nombres.trim()} ${datos.apellidos.trim()}`;
             }
+        }
+
+        if (datos.numeroDocumento) datosPersonas.numero_documento = datos.numeroDocumento;
+        if (datos.tipoDocumento) datosPersonas.tipo_documento = datos.tipoDocumento; // Mapeo faltante
+        if (datos.nacionalidad) datosPersonas.nacionalidad = datos.nacionalidad;     // Mapeo faltante
+        if (datos.telefono) datosPersonas.telefono = datos.telefono;
+        if (datos.direccion) datosPersonas.direccion = datos.direccion;
+        if (datos.fechaNacimiento) datosPersonas.fecha_nacimiento = datos.fechaNacimiento;
+
+        if (Object.keys(datosPersonas).length > 0) {
+            const { error } = await supabase.from('personas').update(datosPersonas).eq('id', pId);
+            if (error) errors.push("Personas: " + error.message);
+        }
+
+        // 4. Clientes (Licencia)
+        if (datos.licenciaConducir !== undefined) {
+            await supabase.from('clientes').update({ tiene_licencia_conducir: datos.licenciaConducir }).eq('persona_id', pId);
+        }
+
+        // 5. Empleados (Sede/Cargo)
+        if (datos.sede_id || datos.rol) {
+            await supabase.from('empleados').update({
+                sede_id: datos.sede_id,
+                cargo: datos.rol // Si viene el rol interno
+            }).eq('persona_id', pId);
         }
     }
 
     if (errors.length > 0) {
         console.error("Errores al actualizar usuario:", errors);
-        return { success: false, error: errors.join('. ') };
+        return { success: false, errors };
     }
-
     return { success: true };
 };
 
@@ -773,6 +1031,20 @@ export const reprogramarAlquilerDB = async (alquilerId, horasAdicionales) => {
     });
     if (error) {
         console.error('Error al reprogramar:', error);
+        return { success: false, error };
+    }
+    return data;
+};
+
+export const aplicarAjusteFijoManualDB = async (alquilerId, monto, motivo) => {
+    // monto positivo = descuento, negativo = recargo
+    const { data, error } = await supabase.rpc('aplicar_ajuste_fijo_manual', {
+        p_alquiler_id: alquilerId,
+        p_monto: monto,
+        p_motivo: motivo
+    });
+    if (error) {
+        console.error('Error al aplicar ajuste fijo:', error);
         return { success: false, error };
     }
     return data;
@@ -859,26 +1131,52 @@ export const registrarNoShowDB = async (alquilerId) => {
 };
 
 export const actualizarRecursoDB = async (id, datos) => {
-    // Mapear camelCase a snake_case
-    const datosDB = {};
-    if (datos.nombre) datosDB.nombre = datos.nombre;
-    if (datos.precioPorHora) datosDB.precio_por_hora = datos.precioPorHora;
-    if (datos.stock !== undefined) datosDB.stock_total = datos.stock;
-    if (datos.imagen) datosDB.imagen = datos.imagen;
-    if (datos.descripcion) datosDB.descripcion = datos.descripcion;
-    if (datos.activo !== undefined) datosDB.activo = datos.activo;
+    // 1. Manejar Categoría si viene el nombre (Mapear nombre a ID para integridad 3FN)
+    let categoriaId = datos.categoria_id || datos.categoriaId;
+
+    if (datos.categoria && !categoriaId) {
+        const { data: catExistente } = await supabase
+            .from('categorias')
+            .select('id')
+            .ilike('nombre', datos.categoria.trim())
+            .maybeSingle();
+
+        if (catExistente) {
+            categoriaId = catExistente.id;
+        } else {
+            // Si no existe, la creamos (Lógica de autogestión de catálogos)
+            const { data: nuevaCat, error: errorCat } = await supabase
+                .from('categorias')
+                .insert({ nombre: datos.categoria.trim() })
+                .select()
+                .single();
+            if (!errorCat && nuevaCat) categoriaId = nuevaCat.id;
+        }
+    }
+
+    // 2. Traducir datos con el Mapper Robusto
+    const datosParaDB = DB_MAPPER.recurso.toDB({ ...datos, categoria_id: categoriaId });
+
+    // Limpiar campos que no deben actualizarse si vienen vacíos
+    Object.keys(datosParaDB).forEach(key => {
+        if (datosParaDB[key] === undefined) delete datosParaDB[key];
+    });
 
     const { data, error } = await supabase
         .from('recursos')
-        .update(datosDB)
+        .update(datosParaDB)
         .eq('id', id)
-        .select();
+        .select(`
+            *,
+            categorias ( nombre )
+        `)
+        .single();
 
     if (error) {
-        console.error('Error al actualizar recurso:', error);
+        console.error('Error al actualizar recurso en DB:', error);
         return { success: false, error };
     }
-    return { success: true, data: data[0] };
+    return { success: true, data: DB_MAPPER.recurso.toFrontend(data) };
 };
 
 export const crearRecursoDB = async (datos) => {
@@ -902,27 +1200,23 @@ export const crearRecursoDB = async (datos) => {
         }
     }
 
-    // 2. Mapear frontend -> backend
-    const datosDB = {
-        nombre: datos.nombre,
-        precio_por_hora: Number(datos.precioPorHora),
-        stock_total: Number(datos.stock),
-        imagen: datos.imagen,
-        categoria_id: categoriaId,
-        sede_id: datos.sedeId || 'costa',
-        activo: true
-    };
+    // 2. Insertar Recurso usando el Mapper Robusto (Garantía de Integridad)
+    const datosParaDB = DB_MAPPER.recurso.toDB({ ...datos, categoria_id: categoriaId });
 
     const { data, error } = await supabase
         .from('recursos')
-        .insert(datosDB)
-        .select();
+        .insert([datosParaDB])
+        .select(`
+            *,
+            categorias ( nombre )
+        `)
+        .single();
 
     if (error) {
         console.error('Error al crear recurso:', error);
         return { success: false, error };
     }
-    return { success: true, data: data[0] };
+    return { success: true, data: DB_MAPPER.recurso.toFrontend(data) };
 };
 
 export const reactivarRecursoDB = async (id) => {
@@ -990,15 +1284,9 @@ export const eliminarRecursoDB = async (id) => {
 
 
 
-
-
 // --- GESTIÓN DE CONTACTOS (NORMALIZADA) ---
 
-
-
-// --- AGREGAR AL FINAL DE src/services/db.js ---(NORMALIZADA) ---
-
-export const obtenerContactos = async (usuarioId) => {
+export const obtenerContactosUsuario = async (usuarioId) => {
     const { data, error } = await supabase
         .from('contactos_usuario')
         .select('*')
@@ -1011,7 +1299,7 @@ export const obtenerContactos = async (usuarioId) => {
     return data;
 };
 
-export const agregarContacto = async (usuarioId, contacto) => {
+export const agregarContactoDB = async (usuarioId, contacto) => {
     const { data, error } = await supabase
         .from('contactos_usuario')
         .insert([{
@@ -1029,7 +1317,7 @@ export const agregarContacto = async (usuarioId, contacto) => {
     return { success: true, data: data[0] };
 };
 
-export const eliminarContacto = async (id) => {
+export const eliminarContactoDB = async (id) => {
     const { error } = await supabase
         .from('contactos_usuario')
         .delete()
@@ -1042,120 +1330,10 @@ export const eliminarContacto = async (id) => {
     return { success: true };
 };
 
-export const obtenerTickets = async (usuarioId) => {
+export const obtenerPerfilAlquileres = async (usuarioId) => {
+    // Usamos la VISTA de integridad v_alquileres_resumen para garantizar consistencia 3FN
     const { data, error } = await supabase
-        .from('soporte_tickets')
-        .select(`
-            *,
-            usuario:usuarios!usuario_id ( 
-                email,
-                personas ( nombre_completo ),
-                roles ( nombre ) 
-            )
-        `)
-        .eq('usuario_id', usuarioId)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('Error al obtener tickets:', error);
-        return [];
-    }
-
-    return data.map(t => ({
-        ...t,
-        usuario: {
-            ...t.usuario,
-            nombre: t.usuario?.personas?.nombre_completo || 'Usuario',
-            rol: t.usuario?.roles?.nombre || 'usuario'
-        }
-    }));
-};
-
-export const crearTicket = async (usuarioId, datos) => {
-    // 1. Crear el Ticket
-    const { data: ticket, error: errorTicket } = await supabase
-        .from('soporte_tickets')
-        .insert([{
-            usuario_id: usuarioId,
-            asunto: datos.asunto,
-            mensaje: datos.mensaje,
-            estado: 'pendiente'
-        }])
-        .select()
-        .single();
-
-    if (errorTicket) return { success: false, error: errorTicket };
-
-    // 2. Obtener Admins y Dueños para la notificación
-    const { data: destinatarios } = await supabase
-        .from('usuarios')
-        .select('id')
-        .in('rol_id', ['admin', 'dueno']);
-
-    const usuariosANotificar = destinatarios || [{ id: 'u2' }]; // Fallback a admin default si falla
-
-    // 3. Crear Mensaje Automático para CADA destinatario
-    const mensajesParaInsertar = usuariosANotificar.map(dest => ({
-        remitente_id: usuarioId,
-        destinatario_id: dest.id,
-        asunto: `[Ticket #${ticket.id}] ${datos.asunto}`,
-        contenido: datos.mensaje,
-        leido: false
-    }));
-
-    const { error: errorMensaje } = await supabase
-        .from('mensajes')
-        .insert(mensajesParaInsertar);
-
-    if (errorMensaje) console.warn("No se pudo crear copia en mensajes:", errorMensaje);
-
-    return { success: true, data: ticket };
-};
-
-export const obtenerMensajes = async (usuarioId) => {
-    const { data, error } = await supabase
-        .from('mensajes')
-        .select(`
-            *,
-            remitente:usuarios!remitente_id ( 
-                email,
-                personas ( nombre_completo ), 
-                roles ( nombre ) 
-            ),
-            destinatario:usuarios!destinatario_id ( 
-                email,
-                personas ( nombre_completo ), 
-                roles ( nombre ) 
-            )
-        `)
-        .or(`remitente_id.eq.${usuarioId},destinatario_id.eq.${usuarioId}`)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('Error al obtener mensajes:', error);
-        return [];
-    }
-
-    // Flatten result for UI
-    return data.map(m => ({
-        ...m,
-        remitente: {
-            ...m.remitente,
-            nombre: m.remitente?.personas?.nombre_completo || 'Desconocido',
-            rol: m.remitente?.roles?.nombre
-        },
-        destinatario: {
-            ...m.destinatario,
-            nombre: m.destinatario?.personas?.nombre_completo || 'Desconocido',
-            rol: m.destinatario?.roles?.nombre
-        }
-    }));
-};
-
-
-export const obtenerMisGastos = async (usuarioId) => {
-    const { data, error } = await supabase
-        .from('alquileres')
+        .from('v_alquileres_resumen')
         .select(`
             *,
             alquiler_detalles (
@@ -1163,68 +1341,24 @@ export const obtenerMisGastos = async (usuarioId) => {
                 recursos ( nombre, imagen_url )
             ),
             cliente:usuarios!cliente_id ( 
-                email,
+                email, 
                 personas ( nombre_completo, numero_documento )
             ),
             vendedor:usuarios!vendedor_id ( 
-                email,
-                personas ( nombre_completo ),
-                roles ( nombre ) 
+                email, 
+                personas ( nombre_completo )
             ),
-            estados_alquiler ( nombre )
+            estados_alquiler:estados_alquiler ( nombre )
         `)
-        .eq('cliente_id', usuarioId)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('Error al obtener mis gastos:', error);
-        return [];
-    }
-    return data.map(transformarAlquiler);
-};
-
-
-
-export const obtenerPerfilAlquileres = async (usuarioId) => {
-    const { data, error } = await supabase
-        .from('v_perfil_alquileres')
-        .select('*')
         .eq('cliente_id', usuarioId)
         .order('fecha_inicio', { ascending: false });
 
     if (error) {
-        console.error('Error al obtener historial alquileres:', error);
+        console.error('Error al obtener historial alquileres resumen:', error);
         return [];
     }
-    return data;
-};
 
-export const obtenerPerfilSoporte = async (usuarioId) => {
-    const { data, error } = await supabase
-        .from('v_perfil_soporte')
-        .select('*')
-        .eq('usuario_id', usuarioId)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('Error al obtener historial soporte:', error);
-        return [];
-    }
-    return data;
-};
-
-export const obtenerMisReclamos = async (usuarioId) => {
-    const { data, error } = await supabase
-        .from('v_mis_reclamos')
-        .select('*')
-        .eq('usuario_id', usuarioId)
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error('Error al obtener mis reclamos:', error);
-        return [];
-    }
-    return data;
+    return data.map(a => transformarAlquiler(a));
 };
 
 export const obtenerEmergencias = async () => {
@@ -1242,9 +1376,8 @@ export const obtenerEmergencias = async () => {
 
 export const obtenerGuiasSeguridad = async () => {
     const { data, error } = await supabase
-        .from('recursos')
-        .select('id, nombre, guia_seguridad, imagen')
-        .not('guia_seguridad', 'is', null);
+        .from('guias_seguridad')
+        .select('id, nombre:titulo, guia_seguridad:contenido, imagen:imagen_url');
 
     if (error) {
         console.error('Error al obtener guías:', error);
@@ -1267,84 +1400,126 @@ export const obtenerPagina = async (slug) => {
     return data;
 };
 
-// Función para cambiar contraseña de forma segura
 export async function cambiarPassword(usuarioId, passwordActual, nuevoPassword) {
-    const { data, error } = await supabase
-        .rpc('cambiar_password', {
-            p_usuario_id: usuarioId,
-            p_password_actual: passwordActual,
-            p_nuevo_password: nuevoPassword
+    try {
+        // 1. Verificar contraseña actual (Re-autenticando)
+        // Necesitamos el email del usuario actual. Si no lo tenemos a mano, lo buscamos o asumimos que la sesión actual es la correcta.
+        // Mejor enfoque: Usar la sesión actual si coincide con usuarioId
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user || user.id !== usuarioId) {
+            return { exito: false, mensaje: "Sesión inválida o usuario incorrecto" };
+        }
+
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: user.email,
+            password: passwordActual
         });
 
-    if (error) {
-        console.error("Error al cambiar password:", error);
-        return { exito: false, mensaje: error.message };
-    }
+        if (signInError) {
+            return { exito: false, mensaje: "La contraseña actual es incorrecta" };
+        }
 
-    return { exito: data, mensaje: data ? 'Contraseña actualizada correctamente' : 'La contraseña actual es incorrecta' };
+        // 2. Actualizar contraseña
+        const { error: updateError } = await supabase.auth.updateUser({
+            password: nuevoPassword
+        });
+
+        if (updateError) throw updateError;
+
+        return { exito: true, mensaje: 'Contraseña actualizada correctamente' };
+
+    } catch (error) {
+        console.error("Error al cambiar password:", error);
+        return { exito: false, mensaje: error.message || "Error al actualizar contraseña" };
+    }
 }
 
-// Función para actualizar el tipo de cambio con API Externa (USD -> PEN)
 export const actualizarTipoCambioReal = async () => {
     try {
-        // Usamos una API pública y gratuita de tasas de cambio
         const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
         if (!response.ok) throw new Error('Error en API de tipo de cambio');
 
         const data = await response.json();
-        const tipoCambioActual = data.rates.PEN; // Ejemplo: 3.85
+        const tipoCambioActual = data.rates.PEN;
 
         if (tipoCambioActual) {
-            // Actualizamos la base de datos para que todos los cálculos usen el valor real
-            const { error } = await supabase
-                .from('configuracion')
-                .update({ valor: tipoCambioActual.toString() })
-                .eq('clave', 'TIPO_CAMBIO');
+            const { error: errorUpdate } = await supabase
+                .from('parametros_negocio')
+                .update({ tipo_cambio_usd: tipoCambioActual })
+                .eq('id', 1);
 
-            if (error) {
-                console.error('Error actualizando tipo de cambio en BD:', error);
-            } else {
-                console.log('Tipo de cambio actualizado a:', tipoCambioActual);
-            }
+            if (errorUpdate) throw errorUpdate;
+            console.log("Tipo de cambio actualizado a:", tipoCambioActual);
             return tipoCambioActual;
         }
     } catch (error) {
-        console.error('No se pudo obtener el tipo de cambio:', error);
-        return null; // Fallback silencioso, se usará el valor anterior de la BD
+        console.error('No se pudo actualizar el tipo de cambio:', error);
+        return null;
     }
 };
 
+export const crearSedeDB = async (datosSede) => {
+    const { serviciosIds, ...camposSede } = datosSede;
 
-
-
-export const crearSedeDB = async (sede) => {
-    // sede: { nombre, direccion, telefono, hora_apertura, hora_cierre }
-    const { data, error } = await supabase
+    // 1. Insertar la Sede
+    const { data: sede, error: errorSede } = await supabase
         .from('sedes')
-        .insert([sede])
+        .insert([camposSede])
         .select()
         .single();
 
-    if (error) {
-        console.error("Error creating sede:", error);
-        throw error;
+    if (errorSede) throw errorSede;
+
+    // 2. Vincular Servicios (Tabla Relacional 3NF)
+    if (serviciosIds && serviciosIds.length > 0) {
+        const vínculos = serviciosIds.map(idServicio => ({
+            sede_id: sede.id,
+            servicio_id: idServicio
+        }));
+        const { error: errorVinculos } = await supabase
+            .from('sede_servicios')
+            .insert(vínculos);
+
+        if (errorVinculos) throw errorVinculos;
     }
-    return data;
+
+    return sede;
 };
 
-export const actualizarSedeDB = async (id, datos) => {
-    const { data, error } = await supabase
+export const actualizarSedeDB = async (id, datosSede) => {
+    const { serviciosIds, ...camposSede } = datosSede;
+
+    // 1. Actualizar datos base de la Sede
+    const { data: sede, error: errorSede } = await supabase
         .from('sedes')
-        .update(datos)
+        .update(camposSede)
         .eq('id', id)
         .select()
         .single();
 
-    if (error) {
-        console.error("Error updating sede:", error);
-        throw error;
+    if (errorSede) throw errorSede;
+
+    // 2. Sincronizar Servicios (Limpiar y Re-insertar para mantener consistencia)
+    if (serviciosIds !== undefined) {
+        // Borrar vínculos anteriores
+        await supabase.from('sede_servicios').delete().eq('sede_id', id);
+
+        // Insertar nuevos si hay
+        if (serviciosIds.length > 0) {
+            const vínculos = serviciosIds.map(idServicio => ({
+                sede_id: id,
+                servicio_id: idServicio
+            }));
+            const { error: errorVinculos } = await supabase
+                .from('sede_servicios')
+                .insert(vínculos);
+
+            if (errorVinculos) throw errorVinculos;
+        }
     }
-    return data;
+
+    return sede;
 };
 
 export const eliminarSedeDB = async (id) => {
@@ -1379,31 +1554,31 @@ export const estimarDisponibilidad = async (recursoId) => {
 
     if (error) {
         console.error('Error al estimar disponibilidad:', error);
-        return null; // O manejar error
+        return null;
     }
-    return data; // Retorna timestamp o null
+    return data;
 };
 
 export const obtenerDisponibilidadRecursoDB = async (recursoId) => {
     const { data, error } = await supabase
         .rpc('obtener_disponibilidad_recurso', {
-            p_recurso_id: recursoId
+            p_recurso_id: recursoId,
+            p_fecha: new Date().toISOString().split('T')[0] // Se requiere fecha hoy por defecto
         });
 
     if (error) {
         console.error('Error al obtener disponibilidad backend:', error);
-        return null; // Retornar null para usar fallback local
+        return null;
     }
     return data;
 };
 
 export const buscarClientesDB = async (busqueda) => {
-    // Usamos la v_usuarios_completos para tener nombre y numero_documento aplanados
     const { data, error } = await supabase
         .from('v_usuarios_completos')
         .select('*')
         .or(`nombre.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%,email.ilike.%${busqueda}%`)
-        .eq('rol', 'cliente') // La vista usa 'rol' como alias de 'rol_id'
+        .eq('rol', 'cliente')
         .limit(10);
 
     if (error) {
@@ -1413,12 +1588,8 @@ export const buscarClientesDB = async (busqueda) => {
     return data;
 };
 
-// --- NUEVAS FUNCIONES PARA POS (NORMALIZADA) ---
-
 export const buscarClientes = async (termino) => {
     if (!termino || termino.length < 3) return [];
-
-    // Buscamos en la vista completa normalizada
     const { data, error } = await supabase
         .from('v_usuarios_completos')
         .select('*')
@@ -1430,7 +1601,6 @@ export const buscarClientes = async (termino) => {
         return [];
     }
 
-    // Mapeo simple para UI
     return data.map(u => ({
         id: u.id,
         nombre: u.nombre,
@@ -1440,136 +1610,115 @@ export const buscarClientes = async (termino) => {
     }));
 };
 
-/**
- * Registra un cliente rápido desde el POS.
- */
 export const crearClienteRapidoDB = async (datos) => {
-    try {
-        // 1. Validar datos mínimos
-        if (!datos.nombre || !datos.numeroDocumento) {
-            return { success: false, error: "Nombre y DNI son obligatorios." };
-        }
-
-        // 2. Generar credenciales automáticas
-        const emailGenerado = datos.email || `${datos.numeroDocumento}@cliente.sinemail.com`;
-        const passwordGenerado = datos.numeroDocumento;
-
-        // 3. Insertar en USUARIOS
-        const { data: usuario, error: errorUsuario } = await supabase
-            .from('usuarios')
-            .insert([{
-                email: emailGenerado,
-                password_hash: passwordGenerado,
-                rol_id: 'cliente',
-                activo: true
-            }])
-            .select()
-            .single();
-
-        if (errorUsuario) {
-            if (errorUsuario.code === '23505') {
-                return { success: false, error: "Este cliente (DNI/Email) ya está registrado." };
-            }
-            throw errorUsuario;
-        }
-
-        // 4. Insertar en PERSONAS
-        const { error: errorPersona } = await supabase
-            .from('personas')
-            .insert([{
-                usuario_id: usuario.id,
-                nombre_completo: datos.nombre,
-                tipo_documento: datos.tipoDocumento || 'DNI',
-                numero_documento: datos.numeroDocumento,
-                telefono: datos.telefono || null,
-                direccion: datos.direccion || null,
-                nacionalidad: datos.nacionalidad || 'Perú'
-            }]);
-
-        if (errorPersona) {
-            await supabase.from('usuarios').delete().eq('id', usuario.id);
-            throw errorPersona;
-        }
-
-        // 5. Insertar en CLIENTES_DETALLES
-        await supabase
-            .from('clientes_detalles')
-            .insert([{
-                usuario_id: usuario.id,
-                licencia_conducir: !!datos.licenciaConducir,
-                preferencias: {}
-            }]);
-
-        return { success: true, data: usuario };
-
-    } catch (error) {
-        console.error("Error al crear cliente rápido:", error);
-        return { success: false, error: error.message || "Error desconocido" };
-    }
+    const payload = {
+        ...datos,
+        rol: 'cliente',
+        email: datos.email || `${datos.numeroDocumento}@cliente.com`,
+        password: datos.password || datos.numeroDocumento
+    };
+    return await registrarUsuarioDB(payload);
 };
 
-
-
-
-/**
- * Inicia sesión verificando credenciales contra la base de datos.
- */
 export const loginDB = async (email, password) => {
     try {
-        // 1. Buscar usuario por email
-        const { data: usuarioAuth, error: errorAuth } = await supabase
-            .from('usuarios')
-            .select('id, password, rol_id, activo')
-            .eq('email', email)
-            .single();
+        console.log('--- DEBUG LOGIN START ---');
+        console.log('1. Intentando auth.signInWithPassword para:', email);
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
 
-        if (errorAuth || !usuarioAuth) {
-            return { success: false, error: 'Usuario no encontrado' };
+        if (authError) {
+            console.log('DEBUG: Error en auth:', authError.message);
+            return { success: false, error: "Credenciales Incorrectas" };
         }
 
-        if (!usuarioAuth.activo) {
-            return { success: false, error: 'Usuario desactivado' };
-        }
+        const userId = authData.user.id;
+        console.log('2. Auth exitoso. Buscando perfil en vista v_usuarios_completos para UUID:', userId);
 
-        // 2. Verificar contraseña (comparación directa por ahora, según lógica actual)
-        // Nota: En producción esto debería usar bcrypt.compare()
-        if (usuarioAuth.password !== password) {
-            return { success: false, error: 'Contraseña incorrecta' };
-        }
-
-        // 3. Obtener perfil completo para la sesión
-        // Usamos la vista que ya trae todo formateado
         const { data: perfilCompleto, error: errorPerfil } = await supabase
             .from('v_usuarios_completos')
             .select('*')
-            .eq('id', usuarioAuth.id)
+            .eq('id', userId)
             .single();
 
+        console.log('3. Resultado de la consulta a la vista:', errorPerfil ? 'ERROR' : 'OK');
+
+        let datosUsuario = {};
         if (errorPerfil) {
-            console.error("Error cargando perfil:", errorPerfil);
-            // Fallback: usar datos básicos si falla la vista (ej: falta de permisos)
-            return {
-                success: true,
-                data: {
-                    id: usuarioAuth.id,
-                    email: email,
-                    rol: 'cliente',
-                    nombre: 'Usuario'
-                }
+            console.warn("DEBUG: Error perfil vista (posible 403 o no existe):", errorPerfil.message);
+            datosUsuario = {
+                id: userId,
+                email: email,
+                rol: normalizarRol(authData.user.user_metadata?.rol || 'cliente'),
+                nombre: authData.user.user_metadata?.nombre || 'Usuario (Sin Perfil)'
+            };
+        } else {
+            console.log('4. Perfil encontrado:', perfilCompleto.nombre, 'Rol:', perfilCompleto.rol);
+            datosUsuario = {
+                ...perfilCompleto,
+                rol: normalizarRol(perfilCompleto.rol),
+                sede: perfilCompleto.sede_id ? Number(perfilCompleto.sede_id) : (perfilCompleto.sede || null),
+                nombres: perfilCompleto.nombres,
+                apellidos: perfilCompleto.apellidos,
+                nacionalidad: perfilCompleto.nacionalidad
             };
         }
 
-        // Mapeo final para consistencia con frontend
-        const usuarioFormat = {
-            ...perfilCompleto,
-            rol: perfilCompleto.rol, // View already returns string 'rol'
-            sede: perfilCompleto.sede_id
-        };
-
-        return { success: true, data: usuarioFormat };
-
+        console.log('5. Retornando datos finales de loginDB');
+        return { success: true, data: datosUsuario };
     } catch (error) {
-        console.error("Login error:", error);
+        console.error("DEBUG CRASH en loginDB:", error);
         return { success: false, error: error.message };
     }
+};
+
+// --- GESTIÓN DE AUDITORÍA ---
+
+export const registrarAuditoriaDB = async (usuarioId, tabla, accion, datos) => {
+    const { error } = await supabase
+        .from('auditoria_log')
+        .insert({
+            usuario_id: usuarioId,
+            tabla: tabla,
+            accion: accion,
+            datos_json: datos,
+            fecha: new Date().toISOString()
+        });
+
+    if (error) {
+        console.error("Error al registrar auditoría:", error);
+        return { success: false, error };
+    }
+    return { success: true };
+};
+
+export const obtenerMisGastos = async (usuarioId) => {
+    // Reutilizamos obtenerPerfilAlquileres que ya tiene la lógica correcta y transformada
+    return await obtenerPerfilAlquileres(usuarioId);
+};
+export const obtenerParametrosNegocio = async () => {
+    const { data, error } = await supabase
+        .from('parametros_negocio')
+        .select(`
+            *,
+            sedes ( nombre )
+        `)
+        .eq('id', 1)
+        .single();
+
+    if (error) {
+        console.error('Error al obtener parámetros de negocio:', error);
+        return null;
+    }
+    return data;
+};
+
+export const obtenerCargosDB = async () => {
+    const { data, error } = await supabase
+        .from('cargos')
+        .select('*')
+        .order('nombre', { ascending: true });
+    return error ? [] : data;
 };

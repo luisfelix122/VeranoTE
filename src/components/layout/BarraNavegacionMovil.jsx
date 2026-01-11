@@ -35,10 +35,9 @@ const BarraNavegacionMovil = ({ setMostrarLogin }) => {
             action: () => {
                 if (usuario) {
                     if (usuario.rol === 'cliente') navigate('/mis-gastos');
-                    else if (usuario.rol === 'admin') navigate('/admin/inventario');
+                    else if (usuario.rol === 'admin' || usuario.rol === 'dueno') navigate('/admin/inventario');
                     else if (usuario.rol === 'vendedor') navigate('/vendedor/operaciones');
-                    else if (usuario.rol === 'dueno') navigate('/admin/reportes');
-                    else if (usuario.rol === 'mecanico') navigate('/admin/reportes'); // Mechanics go to reportes too usually
+                    else if (usuario.rol === 'mecanico') navigate('/mecanico');
                 }
             }
         },

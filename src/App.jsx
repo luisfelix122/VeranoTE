@@ -10,7 +10,7 @@ import { ProveedorCarrito, ContextoCarrito } from './contexts/ContextoCarrito';
 
 import { ProveedorPromociones, ContextoPromociones } from './contexts/ContextoPromociones';
 import { ProveedorUI, usarUI } from './contexts/ContextoUI';
-import { ProveedorSoporte } from './contexts/ContextoSoporte';
+
 
 import Modal from './components/ui/Modal';
 import Boton from './components/ui/Boton';
@@ -36,11 +36,9 @@ function App() {
             <ProveedorInventario>
                 <ProveedorCarrito>
                     <ProveedorPromociones>
-                        <ProveedorSoporte>
-                            <ProveedorUI>
-                                <AppContenido />
-                            </ProveedorUI>
-                        </ProveedorSoporte>
+                        <ProveedorUI>
+                            <AppContenido />
+                        </ProveedorUI>
                     </ProveedorPromociones>
                 </ProveedorCarrito>
             </ProveedorInventario>
@@ -75,20 +73,22 @@ function AppContenido() {
     // Actualizar tipo de cambio al montar
 
 
-    // Sincronizar Sede con el Usuario (Admin/Vendedor)
     React.useEffect(() => {
         if (usuario && (usuario.rol === 'admin' || usuario.rol === 'vendedor') && usuario.sede) {
-            if (sedeActual !== usuario.sede) {
-                setSedeActual(usuario.sede);
+            const idSedeUsuario = Number(usuario.sede);
+            if (Number(sedeActual) !== idSedeUsuario) {
+                setSedeActual(idSedeUsuario);
             }
         }
     }, [usuario, setSedeActual, sedeActual]);
+
 
 
     // Login State
     const [email, setEmail] = useState('cliente@demo.com');
     const [password, setPassword] = useState('123');
     const [errorLogin, setErrorLogin] = useState('');
+    const [cargandoLogin, setCargandoLogin] = useState(false);
 
     // Registro State
     const [regNombre, setRegNombre] = useState('');
@@ -352,18 +352,36 @@ function AppContenido() {
     const manejarLogin = async (e) => {
         e.preventDefault();
         setErrorLogin('');
+        setCargandoLogin(true);
 
         try {
-            const exito = await iniciarSesion(email, password);
-            if (exito) {
+            const res = await iniciarSesion(email, password);
+            console.log("DEBUG: Login Response:", res);
+            if (res.success) {
                 setMostrarLogin(false);
                 setErrorLogin('');
+
+                // Redirección inteligente según rol
+                const user = res.data;
+                console.log("DEBUG: Login exitoso, redirigiendo...", user.email, "Rol:", user.rol);
+
+                if (user.rol === 'admin' || user.rol === 'dueno') {
+                    router.navigate('/admin/inventario');
+                } else if (user.rol === 'vendedor') {
+                    router.navigate('/vendedor/operaciones');
+                } else if (user.rol === 'mecanico') {
+                    router.navigate('/mecanico');
+                } else {
+                    console.log("DEBUG: Rol de cliente, se mantiene en tienda.");
+                }
             } else {
-                setErrorLogin('Credenciales inválidas');
+                setErrorLogin(res.error || 'Credenciales inválidas');
             }
         } catch (error) {
             console.error("Login error handler:", error);
             setErrorLogin('Error de conexión');
+        } finally {
+            setCargandoLogin(false);
         }
     };
 
@@ -560,7 +578,7 @@ function AppContenido() {
             const datosReserva = {
                 clienteId: usuario.id,
                 vendedorId: null, // Si es online, va null
-                sedeId: sedeActual || 'costa',
+                sedeId: sedeActual || configuracion.sedeIdDefecto || 1,
                 items: carrito.map(i => ({
                     id: Number(i.id),
                     nombre: i.nombre,
@@ -571,7 +589,7 @@ function AppContenido() {
                     categoria: i.categoria
                 })),
                 fechaInicio: fechaInicio.toISOString(), // Asegurar formato ISO
-                tipoReserva: 'web', // Force 'web' so DB applies 60% advance rule
+                tipoReserva: (fechaReserva !== new Date().toISOString().split('T')[0]) ? 'anticipada' : tipoReserva, // Respetar selección o forzar anticipada si es futuro
                 // tipoReservaOriginal: tipoReserva || 'inmediata', // Optional if tracked in another column
                 metodoPago: metodoPago || 'transferencia',
                 tipoComprobante: tipoComprobante || 'boleta',
@@ -1148,8 +1166,15 @@ function AppContenido() {
                                     </div>
                                     {recError && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertTriangle size={16} /> {recError}</div>}
                                     <div className="flex gap-3">
-                                        <Boton type="button" variante="secundario" onClick={() => setRecoveryMode(false)} className="flex-1">Cancelar</Boton>
-                                        <Boton type="submit" variante="primario" className="flex-1" disabled={recLoading}>{recLoading ? 'Buscando...' : 'Continuar'}</Boton>
+                                        <Boton type="button" variante="secundario" onClick={() => setRecoveryMode(false)} className="flex-1" disabled={recLoading}>Cancelar</Boton>
+                                        <Boton type="submit" variante="primario" className="flex-1" disabled={recLoading}>
+                                            {recLoading ? (
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                                    <span>Buscando...</span>
+                                                </div>
+                                            ) : 'Continuar'}
+                                        </Boton>
                                     </div>
                                 </form>
                             )}
@@ -1179,8 +1204,15 @@ function AppContenido() {
                                         </div>
                                         {recError && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertTriangle size={16} /> {recError}</div>}
                                         <div className="flex gap-3">
-                                            <Boton type="button" variante="secundario" onClick={() => setRecStep(1)} className="flex-1">Atrás</Boton>
-                                            <Boton type="submit" variante="primario" className="flex-1" disabled={recLoading}>{recLoading ? 'Verificar' : 'Siguiente'}</Boton>
+                                            <Boton type="button" variante="secundario" onClick={() => setRecStep(1)} className="flex-1" disabled={recLoading}>Atrás</Boton>
+                                            <Boton type="submit" variante="primario" className="flex-1" disabled={recLoading}>
+                                                {recLoading ? (
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                                        <span>Verificando...</span>
+                                                    </div>
+                                                ) : 'Siguiente'}
+                                            </Boton>
                                         </div>
                                     </form>
                                 )
@@ -1224,7 +1256,14 @@ function AppContenido() {
                                             <input type="password" className="w-full p-3 border rounded-xl" value={recConfirm} onChange={e => setRecConfirm(e.target.value)} required />
                                         </div>
                                         {recError && <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg flex items-center gap-2"><AlertTriangle size={16} /> {recError}</div>}
-                                        <Boton type="submit" variante="primario" className="w-full" disabled={recLoading}>{recLoading ? 'Guardando...' : 'Finalizar'}</Boton>
+                                        <Boton type="submit" variante="primario" className="w-full" disabled={recLoading}>
+                                            {recLoading ? (
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                                    <span>Guardando...</span>
+                                                </div>
+                                            ) : 'Finalizar'}
+                                        </Boton>
                                     </form>
                                 )
                             }
@@ -1569,7 +1608,12 @@ function AppContenido() {
                                         type="submit"
                                         disabled={isRegistering}
                                     >
-                                        {isRegistering ? 'Registrando...' : 'Registrarse'}
+                                        {isRegistering ? (
+                                            <div className="flex items-center justify-center gap-2">
+                                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                                <span>Registrando...</span>
+                                            </div>
+                                        ) : 'Registrarse'}
                                     </Boton>
                                     <p className="text-center text-sm text-gray-600">¿Ya tienes cuenta? <button type="button" onClick={() => setModoRegistro(false)} className="text-blue-600 font-bold">Inicia Sesión</button></p>
                                 </form>
@@ -1582,8 +1626,15 @@ function AppContenido() {
                                     <button type="button" onClick={() => setRecoveryMode(true)} className="text-xs text-blue-600 hover:underline">¿Olvidaste tu contraseña?</button>
                                 </div>
                                 {errorLogin && <div className="text-red-500 text-sm bg-red-50 p-2 rounded flex items-center gap-2"><AlertTriangle size={16} />{errorLogin}</div>}
-                                <Boton type="submit" variante="primario" className="w-full">Iniciar Sesión</Boton>
-                                <p className="text-center text-sm text-gray-600">¿No tienes cuenta? <button type="button" onClick={() => setModoRegistro(true)} className="text-blue-600 font-bold">Regístrate</button></p>
+                                <Boton type="submit" variante="primario" className="w-full" disabled={cargandoLogin}>
+                                    {cargandoLogin ? (
+                                        <div className="flex items-center justify-center gap-2">
+                                            <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                            <span>Iniciando sesión...</span>
+                                        </div>
+                                    ) : 'Iniciar Sesión'}
+                                </Boton>
+                                <p className="text-center text-sm text-gray-600">¿No tienes cuenta? <button type="button" onClick={() => setModoRegistro(true)} className="text-blue-600 font-bold" disabled={cargandoLogin}>Regístrate</button></p>
 
                             </form>
                         ))}

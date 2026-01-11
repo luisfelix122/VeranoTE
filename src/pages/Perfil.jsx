@@ -5,7 +5,7 @@ import {
     AlertTriangle, Lock, Eye, EyeOff, Calendar
 } from 'lucide-react';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
-import { obtenerContactosUsuario, agregarContactoDB, eliminarContactoDB, obtenerPerfilAlquileres, obtenerPerfilSoporte, registrarPagoSaldoDB } from '../services/db';
+import { obtenerContactosUsuario, agregarContactoDB, eliminarContactoDB, obtenerPerfilAlquileres, registrarPagoSaldoDB } from '../services/db';
 import { obtenerTarjetas, agregarTarjeta, eliminarTarjeta } from '../services/cardService';
 import Boton from '../components/ui/Boton';
 import { PAISES } from '../constants/paises';
@@ -35,22 +35,36 @@ const Perfil = () => {
         return { codigo: '+51', numero: phone }; // Default Perú si no matchea
     };
 
+    const getInitialNombres = () => {
+        if (usuario.nombres) return usuario.nombres;
+        if (usuario.nombre) return usuario.nombre.trim().split(' ')[0] || '';
+        return '';
+    };
+
+    const getInitialApellidos = () => {
+        if (usuario.apellidos) return usuario.apellidos;
+        if (usuario.nombre) {
+            const parts = usuario.nombre.trim().split(' ');
+            return parts.slice(1).join(' ') || '';
+        }
+        return '';
+    };
+
     const [datos, setDatos] = useState({
-        nombre: usuario.nombre || '',
+        nombres: getInitialNombres(),
+        apellidos: getInitialApellidos(),
         email: usuario.email || '',
         // telefono: se maneja compuesto en el submit, pero inicializamos los componentes
         telefono_codigo: splitPhone(usuario.telefono).codigo,
         telefono_numero: splitPhone(usuario.telefono).numero,
         tipoDocumento: usuario.tipoDocumento || 'DNI',
-        numeroDocumento: usuario.numeroDocumento || '',
-        fechaNacimiento: usuario.fechaNacimiento || '',
+        numeroDocumento: usuario.numero_documento || usuario.numeroDocumento || '',
+        fechaNacimiento: usuario.fechaNacimiento || usuario.fechaNacimiento || '',
         nacionalidad: usuario.nacionalidad || 'Nacional',
-        licenciaConducir: usuario.licenciaConducir || false,
-        direccion: usuario.direccion || '',
-        licenciaConducir: usuario.licenciaConducir || false,
+        licenciaConducir: usuario.licencia_conducir || usuario.licenciaConducir || false,
         direccion: usuario.direccion || '',
 
-        codigoEmpleado: usuario.codigoEmpleado || '',
+        codigoEmpleado: usuario.codigo_empleado || usuario.codigoEmpleado || '',
         turno: usuario.turno || 'Mañana',
         especialidad: usuario.especialidad || '',
         experiencia: usuario.experiencia || '',
@@ -82,9 +96,22 @@ const Perfil = () => {
         }
         // Sincronizar formulario si el usuario cambia (ej. al guardar)
         if (usuario) {
+            console.log("Cargando datos de perfil para:", usuario);
             const { codigo, numero } = splitPhone(usuario.telefono);
+
+            // Estrategia Fallback
+            let nombresFinal = usuario.nombres;
+            let apellidosFinal = usuario.apellidos;
+
+            if (!nombresFinal && usuario.nombre) {
+                const partes = usuario.nombre.trim().split(' ');
+                nombresFinal = partes[0];
+                apellidosFinal = partes.slice(1).join(' ') || '';
+            }
+
             setDatos({
-                nombre: usuario.nombre || '',
+                nombres: nombresFinal || '',
+                apellidos: apellidosFinal || '',
                 email: usuario.email || '',
                 telefono_codigo: codigo,
                 telefono_numero: numero,
@@ -92,8 +119,6 @@ const Perfil = () => {
                 numeroDocumento: usuario.numero_documento || usuario.numeroDocumento || '', // Handle snake_case or camelCase fallback
                 fechaNacimiento: usuario.fecha_nacimiento || usuario.fechaNacimiento || '',
                 nacionalidad: usuario.nacionalidad || 'Nacional',
-                licenciaConducir: usuario.licencia_conducir || usuario.licenciaConducir || false,
-                direccion: usuario.direccion || '',
                 licenciaConducir: usuario.licencia_conducir || usuario.licenciaConducir || false,
                 direccion: usuario.direccion || '',
 
@@ -251,7 +276,7 @@ const Perfil = () => {
 
         const tarjetaParaGuardar = {
             nombre: nuevaTarjeta.nombre,
-            numero: nuevaTarjeta.numero.slice(-4),
+            numero: nuevaTarjeta.numero, // Enviamos completo, el servicio se encarga de guardar solo los últimos 4
             exp: nuevaTarjeta.exp,
             principal: tarjetas.length === 0,
             marca: detectingMarca.nombre,
@@ -419,8 +444,12 @@ const Perfil = () => {
                     </h3>
                     <div className="grid md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">Nombre Completo</label>
-                            <input className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" value={datos.nombre} onChange={e => setDatos({ ...datos, nombre: e.target.value })} />
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Nombres</label>
+                            <input className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" value={datos.nombres} onChange={e => setDatos({ ...datos, nombres: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Apellidos</label>
+                            <input className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" value={datos.apellidos} onChange={e => setDatos({ ...datos, apellidos: e.target.value })} />
                         </div>
                         <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-1">Teléfono</label>

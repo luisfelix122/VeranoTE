@@ -4,11 +4,14 @@ import { ContextoInventario } from '../contexts/ContextoInventario';
 import { ContextoAutenticacion } from '../contexts/ContextoAutenticacion';
 import { formatearFecha } from '../utils/formatters';
 import { generarComprobantePenalidad } from '../utils/pdfGenerator';
+import Modal from '../components/ui/Modal';
 import Boton from '../components/ui/Boton';
 
 const PanelVendedor = () => {
     const { alquileres, entregarAlquiler, devolverAlquiler: devolverAlquilerContext, aprobarParaEntrega, solicitarPreparacion, anularAlquiler, sedeActual } = useContext(ContextoInventario);
     const { usuario } = useContext(ContextoAutenticacion);
+    const [modalConfig, setModalConfig] = React.useState({ abierto: false, accion: null, data: null });
+    const [demoProcesado, setDemoProcesado] = React.useState(false);
 
     // Filtrar por ID de vendedor (del usuario logueado) O por Sede (si al vendedor no se le asignó pero está en la misma sede)
     const misAlquileres = alquileres.filter(a => {
@@ -39,18 +42,21 @@ const PanelVendedor = () => {
         return est === 'en_uso' || est === 'en uso';
     });
 
-    // DEBUG: Ver qué está pasando
-    const debugInfo = {
-        usuarioId: usuario?.id,
-        usuarioSede: usuario?.sede,
-        sedeActualContext: sedeActual,
-        totalAlquileres: alquileres.length,
-        misAlquileresCount: misAlquileres.length,
-        estadosEncontrados: [...new Set(alquileres.map(a => a.estado_id || a.estado))],
-        sedesEncontradas: [...new Set(alquileres.map(a => a.sedeId))],
-        vendedorIdsEncontrados: [...new Set(alquileres.map(a => a.vendedorId))],
-        ejemploAlquiler: alquileres[0] || 'No hay alquileres'
-    };
+    // 🟢 MOCK DEMO: Agregar item falso para visualizar diseño (Solicitud Usuario)
+    // Solo si no hay reales Y no ha sido procesado aún
+    if (enUso.length === 0 && !demoProcesado) {
+        enUso.push({
+            id: 'demo-visual-1',
+            cliente: 'Cliente Demo Visual',
+            fechaEntrega: new Date(),
+            garantia: 50.00,
+            items: [
+                { id: 999, cantidad: 2, nombre: 'Moto Demo Visual', horas: 1 }
+            ],
+            estado: 'en_uso',
+            estado_id: 'en_uso'
+        });
+    }
 
     // Función para manejar la solicitud de preparación
     const handleSolicitarPreparacion = async (id) => {
@@ -59,23 +65,51 @@ const PanelVendedor = () => {
         }
     };
 
-    // Función para manejar la devolución de un alquiler
-    const devolverAlquiler = async (id, vendedorId, devolverGarantia) => {
-        if (!window.confirm("¿Confirmar recepción del equipo?")) return;
+    // Función que abre el modal dependiendo de la acción
+    const devolverAlquiler = (id, vendedorId, devolverGarantia) => {
+        const alquiler = enUso.find(a => a.id === id);
+        if (!alquiler) return;
 
-        await devolverAlquilerContext(id, vendedorId, devolverGarantia);
-
-        // Si NO se devuelve la garantía, generamos el comprobante de penalidad
         if (!devolverGarantia) {
-            const alquiler = enUso.find(a => a.id === id);
-            if (alquiler && alquiler.garantia > 0) {
-                if (window.confirm("Has retenido la garantía. ¿Deseas imprimir el Comprobante de Penalidad/Retención?")) {
-                    generarComprobantePenalidad(alquiler, alquiler.garantia, "Retención por daños o incumplimiento (Decisión Vendedor)");
-                }
+            // Caso Retener Garantía
+            setModalConfig({
+                abierto: true,
+                accion: 'retener',
+                data: { id, vendedorId, devolverGarantia, alquiler }
+            });
+        } else {
+            // Caso Devolución Normal
+            if (confirm("¿Confirmar recepción del equipo y devolución de garantía?")) {
+                ejecutarDevolucionReal(id, vendedorId, true, alquiler);
             }
         }
     };
 
+    const ejecutarDevolucionReal = async (id, vendedorId, devolverGarantia, alquiler) => {
+        // 🟢 FIX: Interceptar item demo para evitar llamar al backend (error uuid)
+        if (id === 'demo-visual-1') {
+            setDemoProcesado(true); // Ocultar item
+            if (!devolverGarantia) {
+                // Estaban pidiendo ticket bonito
+                generarComprobantePenalidad(alquiler, alquiler.garantia, "Retención Mock Demo (Daños)");
+            }
+            alert("✅ Procesado correctamente. El equipo ha pasado a limpieza (Mecánico).");
+            return;
+        }
+        await devolverAlquilerContext(id, vendedorId, devolverGarantia);
+    };
+
+    const confirmarAccionModal = async () => {
+        const { accion, data } = modalConfig;
+        if (accion === 'retener') {
+            await ejecutarDevolucionReal(data.id, data.vendedorId, false, data.alquiler);
+            // Generar PDF
+            if (data.id !== 'demo-visual-1' && data.alquiler.garantia > 0) {
+                generarComprobantePenalidad(data.alquiler, data.alquiler.garantia, "Retención por daños o incumplimiento (Decisión Vendedor)");
+            }
+        }
+        setModalConfig({ ...modalConfig, abierto: false });
+    };
 
     return (
         <div className="space-y-8 px-4 sm:px-6 lg:px-8">
@@ -191,6 +225,39 @@ const PanelVendedor = () => {
                     </div>
                 </div>
             </div>
+
+            {/* MODAL DE CONFIRMACIÓN BONITO */}
+            <Modal
+                titulo="Confirmar Retención"
+                abierto={modalConfig.abierto}
+                alCerrar={() => setModalConfig({ ...modalConfig, abierto: false })}
+            >
+                <div className="space-y-4">
+                    <div className="bg-red-50 p-4 rounded-lg border border-red-100 flex items-start gap-3">
+                        <AlertTriangle className="text-red-500 shrink-0 mt-1" />
+                        <div>
+                            <h3 className="font-bold text-red-800">Has seleccionado retener la garantía</h3>
+                            <p className="text-sm text-red-600 mt-1">
+                                Esto marcará la devolución como completada pero NO devolverá el dinero al cliente (S/ {Number(modalConfig.data?.alquiler?.garantia || 0).toFixed(2)}).
+                            </p>
+                        </div>
+                    </div>
+
+                    <p className="text-gray-600 text-sm">
+                        ¿Deseas confirmar la retención e imprimir el <span className="font-bold">Comprobante de Penalidad</span>?
+                    </p>
+
+                    <div className="flex justify-end gap-3 mt-6">
+                        <Boton variant="secundario" onClick={() => setModalConfig({ ...modalConfig, abierto: false })}>
+                            Cancelar
+                        </Boton>
+                        <Boton variante="peligro" onClick={confirmarAccionModal}>
+                            <Printer size={16} className="mr-2 inline" />
+                            Confirmar e Imprimir
+                        </Boton>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

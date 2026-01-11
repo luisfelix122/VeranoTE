@@ -27,21 +27,34 @@ const Tienda = () => {
         }
     }, []);
 
+    // Verificación de staff para redirección rápida
     useEffect(() => {
-        if (usuario) {
-            if (usuario.rol === 'admin') navigate('/admin/inventario');
-            else if (usuario.rol === 'dueno') navigate('/admin/reportes');
-            else if (usuario.rol === 'vendedor') navigate('/vendedor/operaciones');
-            else if (usuario.rol === 'mecanico') navigate('/mecanico');
+        if (usuario && usuario.rol !== 'cliente') {
+            const pathActual = window.location.pathname;
+            let destino = '';
+
+            if (usuario.rol === 'admin' || usuario.rol === 'dueno') destino = '/admin/inventario';
+            else if (usuario.rol === 'vendedor') destino = '/vendedor/operaciones';
+            else if (usuario.rol === 'mecanico') destino = '/mecanico';
+
+            if (destino && pathActual !== destino) {
+                console.log("DEBUG Tienda: Redirigiendo staff...", usuario.email, "a", destino);
+                navigate(destino, { replace: true });
+            }
         }
     }, [usuario, navigate]);
 
-    const categorias = ['Todas', ...categoriasDB
-        .filter(c => c.activo !== false && c.sede_id === sedeActual)
-        .map(c => c.nombre)];
+    // Filtramos el inventario primero por Sede para saber qué categorías existen realmente aquí
+    const idSedeParaFiltro = sedeActual || (sedes.length > 0 ? sedes[0].id : null);
+    const inventarioPorSede = inventario.filter(p => !idSedeParaFiltro || Number(p.sedeId) === Number(idSedeParaFiltro) || Number(p.sede_id) === Number(idSedeParaFiltro));
+
+    // Extraemos las categorías únicas presentes en este inventario
+    const categoriasDisponibles = Array.from(new Set(inventarioPorSede.map(p => p.categoria))).sort();
+
+    const categorias = ['Todas', ...categoriasDisponibles];
 
     // Map inventory - Ya viene con stock real del backend
-    const inventarioConStock = inventario;
+    const inventarioConStock = inventarioPorSede;
 
     const filtrados = inventarioConStock.filter(p => {
         const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
@@ -61,10 +74,16 @@ const Tienda = () => {
         return 0;
     });
 
-    // Reiniciar página al filtrar
+    // Resetear filtros al cambiar de sede
+    useEffect(() => {
+        setCategoria('Todas');
+        setPaginaActual(1);
+    }, [sedeActual]);
+
+    // Reiniciar página al buscar o cambiar categoría dentro de la misma sede
     useEffect(() => {
         setPaginaActual(1);
-    }, [busqueda, categoria, sedeActual]);
+    }, [busqueda, categoria]);
 
     const totalPaginas = Math.ceil(filtrados.length / itemsPorPagina);
     const productosVisibles = filtrados.slice(
@@ -123,8 +142,8 @@ const Tienda = () => {
                                     </button>
                                 </div>
                                 <select
-                                    value={sedeActual}
-                                    onChange={(e) => setSedeActual(e.target.value)}
+                                    value={sedeActual || ''}
+                                    onChange={(e) => setSedeActual(Number(e.target.value))}
                                     className="w-full pl-14 pr-24 py-4 rounded-xl bg-transparent border-none outline-none text-gray-900 font-bold text-sm md:text-base cursor-pointer hover:bg-white/50 transition-colors appearance-none relative z-10"
                                 >
                                     {sedes.map(s => (

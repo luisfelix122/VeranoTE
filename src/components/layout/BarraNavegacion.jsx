@@ -45,6 +45,12 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
         }, 100);
     };
 
+    const manejarCierreSesion = async () => {
+        await cerrarSesion();
+        setMostrarMenuUsuario(false);
+        navigate('/');
+    };
+
     return (
         <nav className="fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-7xl rounded-full bg-white/80 backdrop-blur-xl border border-white/50 shadow-2xl z-50 transition-all duration-500 ease-in-out">
             <div className="w-full h-full px-6 flex items-center justify-between">
@@ -86,6 +92,12 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
                                         <>
                                             <Boton variante="fantasma" onClick={() => navigate('/vendedor/operaciones')} className="text-xs font-medium">{t('nav.operaciones')}</Boton>
                                             <Boton variante="fantasma" onClick={() => navigate('/vendedor/punto-venta')} className="text-xs font-medium">{t('nav.punto_venta')}</Boton>
+                                        </>
+                                    )}
+                                    {usuario.rol === 'mecanico' && (
+                                        <>
+                                            <Boton variante="fantasma" onClick={() => navigate('/mecanico')} className="text-xs font-medium">{t('nav.taller', 'Taller')}</Boton>
+                                            <Boton variante="fantasma" onClick={() => navigate('/mecanico/reportes')} className="text-xs font-medium">{t('nav.reportes')}</Boton>
                                         </>
                                     )}
                                     {usuario.rol === 'cliente' && (
@@ -138,10 +150,32 @@ const BarraNavegacion = ({ setMostrarLogin }) => {
                                                         </button>
                                                     </div>
                                                 )}
+
+                                                {/* Enlaces Móviles para Staff */}
+                                                {['admin', 'vendedor', 'mecanico', 'dueno'].includes(usuario.rol) && (
+                                                    <div className="lg:hidden border-b border-gray-100 mb-2 pb-2">
+                                                        <p className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Panel de Control</p>
+                                                        {(usuario.rol === 'admin' || usuario.rol === 'dueno') && (
+                                                            <button onClick={() => { navigate('/admin/inventario'); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
+                                                                <Sun size={16} /> {t('nav.inventario', 'Gestión Admin')}
+                                                            </button>
+                                                        )}
+                                                        {usuario.rol === 'vendedor' && (
+                                                            <button onClick={() => { navigate('/vendedor/operaciones'); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
+                                                                <Sun size={16} /> {t('nav.operaciones', 'Operaciones')}
+                                                            </button>
+                                                        )}
+                                                        {usuario.rol === 'mecanico' && (
+                                                            <button onClick={() => { navigate('/mecanico'); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
+                                                                <Sun size={16} /> {t('nav.taller', 'Panel Mecánico')}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 <button onClick={() => { navigate('/perfil'); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center gap-3 transition-colors">
                                                     <User size={16} /> {t('nav.mi_perfil')}
                                                 </button>
-                                                <button onClick={() => { cerrarSesion(); setMostrarMenuUsuario(false); }} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors mt-1">
+                                                <button onClick={manejarCierreSesion} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors mt-1">
                                                     <LogOut size={16} /> {t('nav.cerrar_sesion')}
                                                 </button>
                                             </div>

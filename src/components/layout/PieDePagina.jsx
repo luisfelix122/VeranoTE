@@ -13,8 +13,10 @@ const PieDePagina = () => {
     const navigate = useNavigate();
     const { t } = useTranslation();
 
-    const telefono = configuracion?.CONTACTO_TELEFONO || '(01) 555-0123';
-    const email = configuracion?.CONTACTO_EMAIL || 'contacto@alquileresperuanos.pe';
+    const telefono = configuracion?.contactoTelefono || '(01) 555-0123';
+    const email = configuracion?.contactoEmail || 'contacto@alquileresperuanos.pe';
+    const appNombre = configuracion?.appNombre || t('nav.app_name', 'Alquiler de Verano');
+    const appDescripcion = configuracion?.appDescripcion || 'La plataforma líder para tus mejores recuerdos de verano...';
 
     const handleNavegacionProtegida = (ruta) => {
         if (!usuario) {
@@ -40,20 +42,20 @@ const PieDePagina = () => {
                                 <Waves className="text-white relative z-10 mt-1" size={22} strokeWidth={2.5} />
                             </div>
                             <span className="text-2xl font-bold text-white tracking-tight">
-                                {t('nav.app_name', 'Alquiler de Verano')}
+                                {appNombre}
                             </span>
                         </div>
                         <p className="text-gray-400 text-sm leading-relaxed mb-6">
-                            La plataforma líder para tus mejores recuerdos de verano. Calidad, seguridad y diversión garantizada en cada aventura.
+                            {appDescripcion}
                         </p>
                         <div className="flex gap-4">
-                            <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white hover:text-blue-400">
+                            <a href={configuracion?.linkFacebook || "https://facebook.com"} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white hover:text-blue-400">
                                 <Facebook size={20} />
                             </a>
-                            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white hover:text-pink-400">
+                            <a href={configuracion?.linkInstagram || "https://instagram.com"} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white hover:text-pink-400">
                                 <Instagram size={20} />
                             </a>
-                            <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white hover:text-sky-400">
+                            <a href={configuracion?.linkTwitter || "https://twitter.com"} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white hover:text-sky-400">
                                 <Twitter size={20} />
                             </a>
                         </div>
@@ -112,10 +114,10 @@ const PieDePagina = () => {
                                                 rel="noopener noreferrer"
                                                 className="text-xs text-gray-500 opacity-70 group-hover:opacity-100 group-hover:text-blue-400 transition-all hover:underline"
                                             >
-                                                {sede.direccion}
+                                                {sede.ubicacionCompleta}
                                             </a>
                                         ) : (
-                                            <span className="text-xs text-gray-500 opacity-70">{sede.direccion}</span>
+                                            <span className="text-xs text-gray-500 opacity-70">{sede.ubicacionCompleta}</span>
                                         )}
                                     </div>
                                 </li>
@@ -147,7 +149,7 @@ const PieDePagina = () => {
 
                 <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-500 text-center md:text-left">
                     <p>
-                        © 2025 {t('nav.app_name', 'Alquiler de Verano')}. Todos los derechos reservados.
+                        © 2025 {appNombre}. Todos los derechos reservados.
                     </p>
                     <div className="flex gap-6">
                         <button onClick={() => abrirModalInfo('privacidad', 'Política de Privacidad')} className="hover:text-white transition-colors">Privacidad</button>

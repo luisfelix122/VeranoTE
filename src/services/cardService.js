@@ -2,34 +2,40 @@ import { supabase } from '../supabase/client';
 
 export const obtenerTarjetas = async (usuarioId) => {
     const { data, error } = await supabase
-        .from('tarjetas_credito')
+        .from('tarjetas')
         .select('*')
         .eq('usuario_id', usuarioId)
-        .order('es_principal', { ascending: false });
+        .order('principal', { ascending: false });
 
     if (error) {
         console.error('Error al obtener tarjetas:', error);
         return [];
     }
-    return data;
+    return data.map(t => ({
+        ...t,
+        numero: t.numero, // Ya guardamos solo los ultimos 4
+        numero_oculto: t.numero, // Compatibilidad con UI
+        expiracion: t.exp, // Compatibilidad
+        titular: t.nombre // Compatibilidad
+    }));
 };
 
 export const agregarTarjeta = async (usuarioId, tarjeta) => {
     // Si es principal, desmarcar otras
     if (tarjeta.principal) {
-        await supabase.from('tarjetas_credito').update({ es_principal: false }).eq('usuario_id', usuarioId);
+        await supabase.from('tarjetas').update({ principal: false }).eq('usuario_id', usuarioId);
     }
 
     const { data, error } = await supabase
-        .from('tarjetas_credito')
+        .from('tarjetas')
         .insert([{
             usuario_id: usuarioId,
-            numero_oculto: tarjeta.numero ? tarjeta.numero.slice(-4) : '0000', // Guardar solo ultimos 4
-            token: 'tok_simulado_' + Date.now(),
-            expiracion: tarjeta.exp,
-            titular: tarjeta.nombre,
+            numero: (tarjeta.numero.replace(/\D/g, '') || '0000').slice(-4),
+            exp: tarjeta.exp,
+            nombre: tarjeta.nombre,
             marca: tarjeta.marca || 'Desconocida',
-            es_principal: tarjeta.principal
+            principal: tarjeta.principal || false,
+            tipo: tarjeta.tipo || 'credito'
         }])
         .select()
         .single();
@@ -43,7 +49,7 @@ export const agregarTarjeta = async (usuarioId, tarjeta) => {
 
 export const eliminarTarjeta = async (id) => {
     const { error } = await supabase
-        .from('tarjetas_credito')
+        .from('tarjetas')
         .delete()
         .eq('id', id);
 
